@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# Testing
+.pytest_cache/
+.coverage*
+htmlcov/
+coverage.xml
+.testmondata
+test-results*.xml
+
+# Type checking
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Project specific
+*.db
+*.sqlite*
+.env.local
+.env.development
+.env.test
+.env.production

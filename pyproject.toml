@@ -1,0 +1,121 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sonarr-metadata-rewrite"
+version = "0.1.0"
+description = "Compatibility layer that overwrites Sonarr-generated metadata files with TMDB translations"
+license = {text = "MIT"}
+authors = [{name = "Kai Yang", email = "kfstorm@outlook.com"}]
+keywords = ["sonarr", "tmdb", "metadata", "translation", "nfo", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.0",
+]
+
+[project.scripts]
+sonarr-metadata = "sonarr_metadata.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sonarr_metadata"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+include = ["src/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = []
+
+[tool.mypy]
+python_version = "3.10"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --cov=src/sonarr_metadata --cov-report=term-missing"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (integration tests)",
+    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests",
+]
+asyncio_mode = "auto"
+
+[tool.vulture]
+paths = ["src", "tests", "vulture_whitelist.py"]
+
+[tool.coverage.run]
+source = ["src/sonarr_metadata"]
+branch = true
+parallel = true
+sigterm = true
+
+[tool.coverage.report]
+show_missing = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "httpx>=0.28.1",
+    "responses>=0.25.7",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.0.0",
+    "vulture>=2.3",
+    "tach>=0.29.0",
+    "pytest-cov>=6.2.1",
+    "coverage>=7.10.2",
+    "diff-cover>=9.0.0",
+]

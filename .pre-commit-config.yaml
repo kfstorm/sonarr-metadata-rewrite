@@ -1,0 +1,61 @@
+# Pre-commit configuration for sonarr-metadata-rewrite project
+# See https://pre-commit.com for more information
+
+repos:
+  # Local hooks using our project tools
+  - repo: local
+    hooks:
+      # Run lint script with check-only mode
+      - id: lint
+        name: Lint (code quality checks)
+        entry: scripts/lint.sh
+        language: system
+        types: [python]
+        args: [--check]
+        pass_filenames: false
+
+      # Run unit tests
+      - id: unit-tests
+        name: Unit tests
+        entry: scripts/run-unit-tests.sh
+        language: system
+        pass_filenames: false
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Basic file checks
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: debug-statements
+
+      # Python specific
+      - id: check-ast
+      - id: name-tests-test
+        args: [--pytest-test-first]
+        exclude: ^tests/fixtures/
+
+# Global pre-commit settings
+default_stages: [pre-commit]
+fail_fast: false
+
+# CI settings (for when run in CI/CD)
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

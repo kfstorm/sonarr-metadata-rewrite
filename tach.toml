@@ -1,0 +1,15 @@
+source_roots = ["src"]
+
+# Module dependency declarations for Tach validation
+# Note: depends_on = [] is explicitly declared for modules with no dependencies
+# to ensure Tach properly enforces dependency restrictions
+
+[[modules]]
+path = "sonarr_metadata.main"
+depends_on = [
+    "sonarr_metadata.config",
+]
+
+[[modules]]
+path = "sonarr_metadata.config"
+depends_on = []
