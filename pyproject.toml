@@ -26,13 +26,19 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "watchdog>=3.0.0",
+    "httpx>=0.24.0",
+    "diskcache>=5.6.0",
 ]
 
 [project.scripts]
-sonarr-metadata = "sonarr_metadata.main:cli"
+sonarr-metadata = "sonarr_metadata_rewrite.main:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sonarr_metadata"]
+packages = ["src/sonarr_metadata_rewrite"]
 
 [tool.black]
 line-length = 88
@@ -71,6 +77,7 @@ ignore = []
 
 [tool.mypy]
 python_version = "3.10"
+plugins = ["pydantic.mypy"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
@@ -80,9 +87,14 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 files = ["src", "tests"]
 
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --strict-markers --cov=src/sonarr_metadata --cov-report=term-missing"
+addopts = "-ra -q --strict-markers --cov=src/sonarr_metadata_rewrite --cov-report=term-missing"
 testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (integration tests)",
@@ -95,7 +107,7 @@ asyncio_mode = "auto"
 paths = ["src", "tests", "vulture_whitelist.py"]
 
 [tool.coverage.run]
-source = ["src/sonarr_metadata"]
+source = ["src/sonarr_metadata_rewrite"]
 branch = true
 parallel = true
 sigterm = true

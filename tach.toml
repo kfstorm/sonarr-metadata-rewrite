@@ -1,15 +1,62 @@
 source_roots = ["src"]
 
+[external]
+# Exclude packages that are required dependencies but not directly imported in code:
+# - python_dotenv: Required by pydantic-settings for .env file loading, but not directly imported
+exclude = ["python_dotenv"]
+
 # Module dependency declarations for Tach validation
 # Note: depends_on = [] is explicitly declared for modules with no dependencies
 # to ensure Tach properly enforces dependency restrictions
 
 [[modules]]
-path = "sonarr_metadata.main"
+path = "sonarr_metadata_rewrite.config"
+depends_on = []
+
+[[modules]]
+path = "sonarr_metadata_rewrite.models"
+depends_on = []
+
+[[modules]]
+path = "sonarr_metadata_rewrite.translator"
 depends_on = [
-    "sonarr_metadata.config",
+    "sonarr_metadata_rewrite.config",
+    "sonarr_metadata_rewrite.models",
 ]
 
 [[modules]]
-path = "sonarr_metadata.config"
-depends_on = []
+path = "sonarr_metadata_rewrite.metadata_processor"
+depends_on = [
+    "sonarr_metadata_rewrite.config",
+    "sonarr_metadata_rewrite.models",
+    "sonarr_metadata_rewrite.translator",
+]
+
+[[modules]]
+path = "sonarr_metadata_rewrite.file_monitor"
+depends_on = [
+    "sonarr_metadata_rewrite.config",
+]
+
+[[modules]]
+path = "sonarr_metadata_rewrite.file_scanner"
+depends_on = [
+    "sonarr_metadata_rewrite.config",
+]
+
+[[modules]]
+path = "sonarr_metadata_rewrite.rewrite_service"
+depends_on = [
+    "sonarr_metadata_rewrite.config",
+    "sonarr_metadata_rewrite.file_monitor",
+    "sonarr_metadata_rewrite.file_scanner",
+    "sonarr_metadata_rewrite.metadata_processor",
+    "sonarr_metadata_rewrite.translator",
+]
+
+[[modules]]
+path = "sonarr_metadata_rewrite.main"
+depends_on = [
+    "sonarr_metadata_rewrite.config",
+    "sonarr_metadata_rewrite.rewrite_service",
+]

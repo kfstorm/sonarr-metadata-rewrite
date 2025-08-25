@@ -46,3 +46,6 @@ logs/
 .env.development
 .env.test
 .env.production
+
+# Test data
+tests/data/

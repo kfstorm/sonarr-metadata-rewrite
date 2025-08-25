@@ -1,36 +1,60 @@
 """Unit tests for configuration module."""
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from sonarr_metadata.config import get_tmdb_api_key
+from sonarr_metadata_rewrite.config import Settings, get_settings
 
 
-class TestGetTmdbApiKey:
-    """Test TMDB API key retrieval."""
+def test_settings_with_required_fields(test_data_dir: Path) -> None:
+    """Test Settings with required fields."""
+    settings = Settings(
+        tmdb_api_key="test_api_key_1234567890abcdef",
+        rewrite_root_dir=test_data_dir,
+    )
+    assert settings.tmdb_api_key == "test_api_key_1234567890abcdef"
+    assert settings.rewrite_root_dir == test_data_dir
+    assert settings.preferred_languages == ["zh-CN"]  # default
+    assert settings.periodic_scan_interval_seconds == 3600  # default
 
-    def test_get_tmdb_api_key_success(self) -> None:
-        """Test successful API key retrieval."""
-        test_key = "test_api_key_1234567890abcdef"
 
-        with patch.dict(os.environ, {"TMDB_API_KEY": test_key}):
-            result = get_tmdb_api_key()
-            assert result == test_key
+def test_settings_with_all_fields(test_data_dir: Path) -> None:
+    """Test Settings with all fields specified."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages=["ja-JP", "ko-KR"],
+        periodic_scan_interval_seconds=1800,
+        cache_duration_hours=168,
+        cache_dir=test_data_dir / "custom_cache",
+        original_files_backup_dir=test_data_dir / "custom_backups",
+    )
+    assert settings.preferred_languages == ["ja-JP", "ko-KR"]
+    assert settings.periodic_scan_interval_seconds == 1800
+    assert settings.cache_duration_hours == 168
+    assert settings.cache_dir == test_data_dir / "custom_cache"
+    assert settings.original_files_backup_dir == test_data_dir / "custom_backups"
 
-    def test_get_tmdb_api_key_missing(self) -> None:
-        """Test error when API key is missing."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(
-                ValueError, match="TMDB_API_KEY environment variable is required"
-            ):
-                get_tmdb_api_key()
 
-    def test_get_tmdb_api_key_empty(self) -> None:
-        """Test error when API key is empty."""
-        with patch.dict(os.environ, {"TMDB_API_KEY": ""}):
-            with pytest.raises(
-                ValueError, match="TMDB_API_KEY environment variable is required"
-            ):
-                get_tmdb_api_key()
+def test_get_settings_from_env(test_data_dir: Path) -> None:
+    """Test get_settings from environment variables."""
+    env_vars = {
+        "TMDB_API_KEY": "env_test_key",
+        "REWRITE_ROOT_DIR": str(test_data_dir),
+        "PREFERRED_LANGUAGES": '["en", "fr"]',
+    }
+    with patch.dict(os.environ, env_vars):
+        settings = get_settings()
+        assert settings.tmdb_api_key == "env_test_key"
+        assert settings.rewrite_root_dir == test_data_dir
+
+
+def test_settings_backup_disabled(test_data_dir: Path) -> None:
+    """Test Settings with backup disabled."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        original_files_backup_dir=None,
+    )
+    assert settings.original_files_backup_dir is None
