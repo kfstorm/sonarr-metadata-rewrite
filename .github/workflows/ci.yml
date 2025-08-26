@@ -45,6 +45,28 @@ jobs:
       run: ./scripts/combine-coverage.sh
 
     - name: Coverage comment
+      if: github.event_name == 'pull_request'
       uses: py-cov-action/python-coverage-comment-action@v3
       with:
         GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Get coverage percentage for badge
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      id: coverage-percentage
+      run: |
+        COVERAGE=$(uv run coverage report --format=total)
+        echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+        echo "Coverage percentage: $COVERAGE%"
+
+    - name: Create coverage badge
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: schneegans/dynamic-badges-action@v1.7.0
+      with:
+        auth: ${{ secrets.GIST_SECRET }}
+        gistID: ${{ secrets.GIST_ID }}
+        filename: coverage.json
+        label: Coverage
+        message: ${{ steps.coverage-percentage.outputs.coverage }}%
+        valColorRange: ${{ steps.coverage-percentage.outputs.coverage }}
+        maxColorRange: 100
+        minColorRange: 0
