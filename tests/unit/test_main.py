@@ -51,7 +51,16 @@ class TestCli:
         result = runner.invoke(cli, ["--version"])
 
         assert result.exit_code == 0
-        assert "version 0.1.0" in result.output
+        assert "version" in result.output
+        # Version format should be semantic version or dev version
+        assert any(
+            pattern in result.output
+            for pattern in [
+                "version 0.",
+                "dev",
+                "+g",
+            ]  # Covers both release and dev versions
+        )
 
     def test_cli_help(self) -> None:
         """Test CLI help option."""

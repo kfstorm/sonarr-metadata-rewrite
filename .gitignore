@@ -10,6 +10,9 @@ dist/
 *.egg-info/
 *.egg
 
+# Auto-generated version file
+src/**/_version.py
+
 # Virtual environments
 .env
 .venv

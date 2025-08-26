@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "sonarr-metadata-rewrite"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Compatibility layer that overwrites Sonarr-generated metadata files with TMDB translations"
 license = {text = "MIT"}
 authors = [{name = "Kai Yang", email = "kfstorm@outlook.com"}]
@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sonarr-metadata = "sonarr_metadata_rewrite.main:cli"
+sonarr-metadata-rewrite = "sonarr_metadata_rewrite.main:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sonarr_metadata_rewrite"]
@@ -111,9 +111,16 @@ source = ["src/sonarr_metadata_rewrite"]
 branch = true
 parallel = true
 sigterm = true
+relative_files = true
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/sonarr_metadata_rewrite/_version.py"
 
 [dependency-groups]
 dev = [
