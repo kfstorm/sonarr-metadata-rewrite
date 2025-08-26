@@ -35,7 +35,7 @@ def mock_series_response() -> dict[str, Any]:
                 "name": "普通话",
                 "english_name": "Mandarin",
                 "data": {
-                    "title": "测试剧集",
+                    "name": "测试剧集",
                     "overview": "这是一个测试剧集的描述",
                     "homepage": "",
                 },
@@ -46,7 +46,7 @@ def mock_series_response() -> dict[str, Any]:
                 "name": "English",
                 "english_name": "English",
                 "data": {
-                    "title": "Test Series",
+                    "name": "Test Series",
                     "overview": "This is a test series description",
                     "homepage": "http://example.com",
                 },
@@ -57,7 +57,7 @@ def mock_series_response() -> dict[str, Any]:
                 "name": "日本語",
                 "english_name": "Japanese",
                 "data": {
-                    "title": "テストシリーズ",
+                    "name": "テストシリーズ",
                     "overview": "これはテストシリーズの説明です",
                     "homepage": "",
                 },
@@ -77,7 +77,7 @@ def mock_episode_response() -> dict[str, Any]:
                 "iso_639_1": "zh",
                 "name": "普通话",
                 "english_name": "Mandarin",
-                "data": {"title": "测试剧集", "overview": "这是一个测试剧集的描述"},
+                "data": {"name": "测试剧集", "overview": "这是一个测试剧集的描述"},
             }
         ],
     }
@@ -236,12 +236,12 @@ def test_get_translations_filters_empty_data(
             {
                 "iso_639_1": "zh",
                 "iso_3166_1": "CN",
-                "data": {"title": "", "overview": ""},
+                "data": {"name": "", "overview": ""},
             },
             {
                 "iso_639_1": "en",
                 "iso_3166_1": "US",
-                "data": {"title": "Valid Title", "overview": ""},
+                "data": {"name": "Valid Title", "overview": ""},
             },
         ],
     }

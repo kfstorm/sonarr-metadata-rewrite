@@ -14,20 +14,19 @@ echo ""
 # Change to project root directory
 cd "$(dirname "$0")/.."
 
-# Check for TMDB API key
-if [ -z "$TMDB_API_KEY" ]; then
-    echo -e "${RED}❌ TMDB_API_KEY environment variable is required for integration tests${NC}"
-    echo "Please set your TMDB API key:"
-    echo "  export TMDB_API_KEY=your_api_key_here"
-    exit 1
-fi
-
 # Set coverage file for integration tests
 export COVERAGE_FILE=.coverage.integration
 
+# Install dependencies if needed (including testcontainers)
+echo -e "${YELLOW}📦 Ensuring test dependencies are installed...${NC}"
+uv sync --group dev
+
 # Run integration tests
-echo -e "${YELLOW}🌐 Running integration tests (requires TMDB API access)...${NC}"
-uv run pytest tests/integration/ -v --cov-report=term-missing -m integration
+echo -e "${YELLOW}🌐 Running integration tests...${NC}"
+echo ""
+
+# Run with increased verbosity and timeout for container operations
+uv run pytest tests/integration/ -v --cov-report=term-missing -m integration --tb=short
 
 echo ""
 echo -e "${GREEN}✅ Integration tests completed!${NC}"

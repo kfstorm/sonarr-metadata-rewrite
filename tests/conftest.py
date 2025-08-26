@@ -115,19 +115,6 @@ def test_settings(test_data_dir: Path) -> Settings:
 
 
 @pytest.fixture
-def temp_nfo_file(test_data_dir: Path) -> Generator[Path, None, None]:
-    """Create a temporary .nfo file within test_data_dir for testing with cleanup."""
-    import uuid
-
-    temp_file = test_data_dir / f"temp_{uuid.uuid4().hex[:8]}.nfo"
-    try:
-        yield temp_file
-    finally:
-        if temp_file.exists():
-            temp_file.unlink()
-
-
-@pytest.fixture
 def create_test_files() -> Generator[Callable[[str, Path], Path], None, None]:
     """Factory fixture to create test files from inline data with cleanup."""
     created_files = []

@@ -67,6 +67,11 @@ class MetadataProcessor:
                     selected_language=None,
                 )
 
+            # Apply fallback logic for empty translation fields
+            selected_translation = self._apply_fallback_to_translation(
+                nfo_path, selected_translation
+            )
+
             # Create backup if enabled
             backup_created = self._backup_original(nfo_path)
 
@@ -141,6 +146,64 @@ class MetadataProcessor:
         else:
             # Unknown file type
             return None
+
+    def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
+        """Extract original title and description from .nfo file.
+
+        Args:
+            nfo_path: Path to .nfo file
+
+        Returns:
+            Tuple of (original_title, original_description)
+        """
+        tree = ET.parse(nfo_path)
+        root = tree.getroot()
+
+        # Extract title
+        original_title = ""
+        title_element = root.find("title")
+        if title_element is not None and title_element.text:
+            original_title = title_element.text.strip()
+
+        # Extract plot/description
+        original_description = ""
+        plot_element = root.find("plot")
+        if plot_element is not None and plot_element.text:
+            original_description = plot_element.text.strip()
+
+        return original_title, original_description
+
+    def _apply_fallback_to_translation(
+        self, nfo_path: Path, translation: TranslatedContent
+    ) -> TranslatedContent:
+        """Apply fallback logic to translation with empty fields.
+
+        Args:
+            nfo_path: Path to .nfo file to get original content from
+            translation: Selected translation that may have empty fields
+
+        Returns:
+            TranslatedContent with empty fields replaced by original content
+        """
+        # If both title and description are present, no fallback needed
+        if translation.title and translation.description:
+            return translation
+
+        # Extract original content for fallback
+        original_title, original_description = self._extract_original_content(nfo_path)
+
+        # Apply fallback for empty fields
+        final_title = translation.title if translation.title else original_title
+        final_description = (
+            translation.description if translation.description else original_description
+        )
+
+        # Return new TranslatedContent with fallback applied
+        return TranslatedContent(
+            title=final_title,
+            description=final_description,
+            language=translation.language,
+        )
 
     def _backup_original(self, nfo_path: Path) -> bool:
         """Create backup of original .nfo file.

@@ -25,6 +25,3 @@ _.on_modified
 # Test mock attributes that vulture may not detect
 _.return_value
 _.side_effect
-
-# Test fixtures that appear unused but are available for future use
-temp_nfo_file

@@ -41,7 +41,7 @@ repos:
       - id: check-ast
       - id: name-tests-test
         args: [--pytest-test-first]
-        exclude: ^tests/fixtures/
+        exclude: ^tests/.*/fixtures/
 
 # Global pre-commit settings
 default_stages: [pre-commit]

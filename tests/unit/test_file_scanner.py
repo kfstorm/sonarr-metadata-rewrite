@@ -1,6 +1,7 @@
 """Unit tests for file scanner."""
 
 import shutil
+import time
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -69,8 +70,6 @@ def test_scanner_finds_nfo_files_through_start(
         file_scanner.start(callback_tracker)
 
         # Give scanner time to run initial scan
-        import time
-
         time.sleep(0.1)
 
         # Stop scanner
@@ -115,8 +114,6 @@ def test_scanner_case_insensitive_detection(
         file_scanner.start(callback_tracker)
 
         # Give scanner time to run initial scan
-        import time
-
         time.sleep(0.1)
 
         # Stop scanner
@@ -150,8 +147,6 @@ def test_scanner_missing_directory_handling(
         file_scanner.start(callback_tracker)
 
         # Give scanner time to try scanning
-        import time
-
         time.sleep(0.1)
 
         # Stop scanner

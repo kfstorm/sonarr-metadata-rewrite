@@ -19,7 +19,7 @@ class Translator:
         self.cache_expire_seconds = settings.cache_duration_hours * 3600
         self.client = httpx.Client(
             base_url="https://api.themoviedb.org/3",
-            params={"api_key": self.api_key},
+            headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=30.0,
         )
 
@@ -72,10 +72,10 @@ class Translator:
                 f"{language_code}-{country_code}" if country_code else language_code
             )
 
-            # Extract title and description, skip if both are empty
-            title = data.get("title", "").strip()
+            title = data.get("name", "").strip()
             description = data.get("overview", "").strip()
 
+            # Skip if both title and description are empty
             if not title and not description:
                 continue
 

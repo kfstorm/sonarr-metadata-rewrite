@@ -184,3 +184,93 @@ def test_process_file_no_preferred_translation(
     )  # Translations were found, just not preferred
     assert result.file_modified is False  # File was not changed
     assert result.selected_language is None
+
+
+def test_apply_fallback_to_translation_no_fallback_needed(
+    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+) -> None:
+    """Test fallback logic when translation has both title and description."""
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Create test .nfo file with original content
+    test_path = create_test_files(
+        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
+    )
+
+    translation = TranslatedContent(
+        title="完整标题", description="完整描述", language="zh-CN"
+    )
+
+    result = processor._apply_fallback_to_translation(test_path, translation)
+
+    # Should return the same translation since both fields are present
+    assert result.title == "完整标题"
+    assert result.description == "完整描述"
+    assert result.language == "zh-CN"
+
+
+def test_apply_fallback_to_translation_empty_title(
+    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+) -> None:
+    """Test fallback logic when translation has empty title."""
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Create test .nfo file with original content
+    test_path = create_test_files(
+        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
+    )
+
+    translation = TranslatedContent(title="", description="翻译描述", language="zh-CN")
+
+    result = processor._apply_fallback_to_translation(test_path, translation)
+
+    # Should use original title but keep translated description
+    assert result.title == "Breaking Bad"  # Original title from test data
+    assert result.description == "翻译描述"  # Translated description
+    assert result.language == "zh-CN"
+
+
+def test_apply_fallback_to_translation_empty_description(
+    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+) -> None:
+    """Test fallback logic when translation has empty description."""
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Create test .nfo file with original content
+    test_path = create_test_files(
+        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
+    )
+
+    translation = TranslatedContent(title="绝命毒师", description="", language="zh-CN")
+
+    result = processor._apply_fallback_to_translation(test_path, translation)
+
+    # Should use translated title but fallback to original description
+    assert result.title == "绝命毒师"  # Translated title
+    assert (
+        "high school chemistry teacher" in result.description
+    )  # Original description from test data
+    assert result.language == "zh-CN"
+
+
+def test_apply_fallback_to_translation_both_empty(
+    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+) -> None:
+    """Test fallback logic when translation has both empty title and description."""
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Create test .nfo file with original content
+    test_path = create_test_files(
+        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
+    )
+
+    translation = TranslatedContent(title="", description="", language="zh-CN")
+
+    result = processor._apply_fallback_to_translation(test_path, translation)
+
+    # Should use both original title and description
+    assert result.title == "Breaking Bad"  # Original title from test data
+    assert (
+        "high school chemistry teacher" in result.description
+    )  # Original description from test data
+    assert result.language == "zh-CN"
