@@ -1,6 +1,6 @@
 """Shared test configuration and fixtures."""
 
-import shutil
+import tempfile
 from collections.abc import Callable, Generator
 from pathlib import Path
 from unittest.mock import Mock
@@ -10,16 +10,100 @@ import pytest
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import ProcessResult
 
+# Inline test data constants
+SAMPLE_TVSHOW_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Breaking Bad</title>
+  <plot>A high school chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing and selling methamphetamine in order to secure his family's future.</plot>
+  <uniqueid type="tmdb" default="true">1396</uniqueid>
+  <uniqueid type="imdb">tt0903747</uniqueid>
+  <genre>Drama</genre>
+  <genre>Crime</genre>
+  <premiered>2008-01-20</premiered>
+  <year>2008</year>
+  <status>Ended</status>
+  <mpaa>TV-MA</mpaa>
+  <studio>AMC</studio>
+  <runtime>47</runtime>
+  <actor>
+    <name>Bryan Cranston</name>
+    <role>Walter White</role>
+    <order>0</order>
+  </actor>
+  <actor>
+    <name>Aaron Paul</name>
+    <role>Jesse Pinkman</role>
+    <order>1</order>
+  </actor>
+</tvshow>
+"""  # noqa: E501
+
+SAMPLE_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Walter White, a struggling high school chemistry teacher, is diagnosed with advanced lung cancer. He turns to a life of crime, producing and selling methamphetamine with a former student, Jesse Pinkman, with the goal of securing his family's financial future before he dies.</plot>
+  <uniqueid type="tmdb" default="true">1396</uniqueid>
+  <uniqueid type="imdb">tt0959621</uniqueid>
+  <aired>2008-01-20</aired>
+  <season>1</season>
+  <episode>1</episode>
+  <runtime>58</runtime>
+  <director>Vince Gilligan</director>
+  <writer>Vince Gilligan</writer>
+  <mpaa>TV-MA</mpaa>
+  <rating>8.2</rating>
+  <votes>25487</votes>
+  <actor>
+    <name>Bryan Cranston</name>
+    <role>Walter White</role>
+  </actor>
+  <actor>
+    <name>Aaron Paul</name>
+    <role>Jesse Pinkman</role>
+  </actor>
+</episodedetails>
+"""  # noqa: E501
+
+SAMPLE_NO_TMDB_ID_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Series Without TMDB ID</title>
+  <plot>This series only has IMDB and TVDB IDs, no TMDB ID for testing</plot>
+  <uniqueid type="imdb" default="true">tt1234567</uniqueid>
+  <uniqueid type="tvdb">123456</uniqueid>
+  <genre>Drama</genre>
+  <premiered>2020-01-01</premiered>
+</tvshow>
+"""
+
+SAMPLE_INVALID_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Broken XML Test</title>
+  <plot>This file has malformed XML for error testing</plot>
+  <uniqueid type="tmdb" default="true">999</uniqueid>
+  <genre>Test
+  <!-- Missing closing tag for genre -->
+</tvshow>
+"""
+
+# Map of sample names to content
+SAMPLE_DATA = {
+    "tvshow.nfo": SAMPLE_TVSHOW_NFO,
+    "episode.nfo": SAMPLE_EPISODE_NFO,
+    "no_tmdb_id.nfo": SAMPLE_NO_TMDB_ID_NFO,
+    "invalid.nfo": SAMPLE_INVALID_NFO,
+}
+
 
 @pytest.fixture
-def test_data_dir() -> Path:
-    """Shared test data directory for all tests."""
-    return Path(__file__).parent / "data"
+def test_data_dir() -> Generator[Path, None, None]:
+    """Create a temporary test data directory for all tests."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield Path(temp_dir)
 
 
 @pytest.fixture
 def test_settings(test_data_dir: Path) -> Settings:
-    """Standard test settings using shared test data directory."""
+    """Standard test settings using temporary test data directory."""
     return Settings(
         tmdb_api_key="test_key_12345",
         rewrite_root_dir=test_data_dir,
@@ -44,14 +128,17 @@ def temp_nfo_file(test_data_dir: Path) -> Generator[Path, None, None]:
 
 
 @pytest.fixture
-def create_test_files() -> Generator[Callable[[Path, Path], Path], None, None]:
-    """Factory fixture to create test files from samples with cleanup."""
+def create_test_files() -> Generator[Callable[[str, Path], Path], None, None]:
+    """Factory fixture to create test files from inline data with cleanup."""
     created_files = []
 
-    def _create_file(source_path: Path, dest_path: Path) -> Path:
-        """Copy a sample file to destination for testing."""
+    def _create_file(sample_name: str, dest_path: Path) -> Path:
+        """Create a test file from inline sample data."""
+        if sample_name not in SAMPLE_DATA:
+            raise ValueError(f"Unknown sample: {sample_name}")
+
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, dest_path)
+        dest_path.write_text(SAMPLE_DATA[sample_name])
         created_files.append(dest_path)
         return dest_path
 

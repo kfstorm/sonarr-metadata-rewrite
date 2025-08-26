@@ -77,11 +77,10 @@ def test_service_integration_successful_processing(
     mock_logger: Mock,
     rewrite_service: RewriteService,
     test_data_dir: Path,
-    create_test_files: Callable[[Path, Path], Path],
+    create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test integration: service processes files successfully through callback."""
-    sample_path = test_data_dir / "samples" / "tvshow.nfo"
-    test_path = create_test_files(sample_path, test_data_dir / "integration_test.nfo")
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "integration_test.nfo")
 
     # Mock translator to return successful translation
     with patch.object(
@@ -107,11 +106,10 @@ def test_service_integration_processing_failure(
     mock_logger: Mock,
     rewrite_service: RewriteService,
     test_data_dir: Path,
-    create_test_files: Callable[[Path, Path], Path],
+    create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test integration: service handles processing failures through callback."""
-    sample_path = test_data_dir / "samples" / "no_tmdb_id.nfo"
-    test_path = create_test_files(sample_path, test_data_dir / "failure_test.nfo")
+    test_path = create_test_files("no_tmdb_id.nfo", test_data_dir / "failure_test.nfo")
 
     # Directly call the callback (simulating file monitor/scanner trigger)
     rewrite_service._process_file(test_path)
@@ -127,7 +125,8 @@ def test_service_integration_processing_exception(
     mock_logger: Mock, rewrite_service: RewriteService, test_data_dir: Path
 ) -> None:
     """Test integration: service handles processing exceptions through callback."""
-    test_path = test_data_dir / "samples" / "tvshow.nfo"
+    test_path = test_data_dir / "tvshow.nfo"
+    test_path.write_text("dummy content")
 
     with patch.object(
         rewrite_service.metadata_processor,
