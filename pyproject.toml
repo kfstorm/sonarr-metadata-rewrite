@@ -111,6 +111,7 @@ source = ["src/sonarr_metadata_rewrite"]
 branch = true
 parallel = true
 sigterm = true
+relative_files = true
 
 [tool.coverage.report]
 show_missing = true
