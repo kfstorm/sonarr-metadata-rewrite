@@ -59,6 +59,9 @@ jobs:
   build-and-push:
     needs: extract-metadata
     uses: ./.github/workflows/docker-build-reusable.yml
+    permissions:
+      contents: read
+      packages: write
     with:
       push: true
       tags: ${{ needs.extract-metadata.outputs.tags }}

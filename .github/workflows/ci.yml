@@ -73,6 +73,8 @@ jobs:
 
   docker-build:
     uses: ./.github/workflows/docker-build-reusable.yml
+    permissions:
+      contents: read
     with:
       push: false
       tags: sonarr-metadata-rewrite:ci-test
