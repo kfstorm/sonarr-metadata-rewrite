@@ -687,3 +687,80 @@ def test_multiple_rapid_processing_only_first_modifies(
         expected_success=True,
         expected_file_modified=False,
     )
+
+
+def test_backup_not_overwritten_on_subsequent_processing(
+    test_data_dir: Path,
+) -> None:
+    """Test that backup files are not overwritten on subsequent processing."""
+    # Create processor with backup enabled
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo with original English content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "Original English Title", "Original English plot")
+
+    # Mock translator returns Chinese translation
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="中文标题", description="中文剧情描述", language="zh-CN"
+        )
+    }
+
+    # First processing - should create backup and translate
+    result1 = processor.process_file(nfo_path)
+    assert_process_result(
+        result1,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify backup was created with original content
+    backup_path = test_data_dir / "backups" / "tvshow.nfo"
+    assert backup_path.exists(), "Backup file should exist"
+
+    tree = ET.parse(backup_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+    assert title_elem is not None and title_elem.text == "Original English Title"
+    assert plot_elem is not None and plot_elem.text == "Original English plot"
+
+    # Manually change the file to simulate external modification
+    # (e.g., different translation)
+    create_custom_nfo(nfo_path, "日本語タイトル", "日本語の説明")
+
+    # Second processing - should NOT overwrite the backup
+    result2 = processor.process_file(nfo_path)
+    assert_process_result(
+        result2,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify backup still contains ORIGINAL content, not the Japanese content
+    tree = ET.parse(backup_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+    assert title_elem is not None and title_elem.text == "Original English Title"
+    assert plot_elem is not None and plot_elem.text == "Original English plot"
+
+    # Verify that backup was NOT overwritten with Japanese content
+    backup_content = backup_path.read_text()
+    assert (
+        "日本語タイトル" not in backup_content
+    ), "Backup should not contain Japanese content"
+    assert (
+        "日本語の説明" not in backup_content
+    ), "Backup should not contain Japanese content"
