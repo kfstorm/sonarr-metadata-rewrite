@@ -122,16 +122,21 @@ The `--user` parameter in the Docker examples above is **critical** for maintain
 - Sonarr or other applications may not be able to read the rewritten files
 
 **For Docker run:**
+
 ```bash
 --user $(id -u):$(id -g)
 ```
+
 This automatically uses your current user's UID and GID.
 
 **For Docker Compose:**
+
 ```yaml
 user: "${UID:-1000}:${GID:-1000}"
 ```
+
 Set the UID and GID environment variables first:
+
 ```bash
 export UID=$(id -u)
 export GID=$(id -g)
@@ -139,6 +144,7 @@ docker compose up -d
 ```
 
 **To check your user ID:**
+
 ```bash
 id -u  # Shows your user ID (UID)
 id -g  # Shows your group ID (GID)
@@ -289,6 +295,7 @@ If you're seeing permission denied errors or files owned by root:
 - Files should be owned by your user, not root
 
 **Fix for existing root-owned files:**
+
 ```bash
 # Stop the container first
 docker stop sonarr-metadata-rewrite
