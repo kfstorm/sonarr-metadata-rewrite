@@ -190,33 +190,78 @@ class MetadataProcessor:
             if tmdb_id_text and tmdb_id_text.strip():
                 tmdb_id = int(tmdb_id_text.strip())
 
-        if tmdb_id is None:
-            return None
-
         # Determine if this is a series or episode file
         if root.tag == "tvshow":
             # Series file
+            if tmdb_id is None:
+                return None
             return TmdbIds(series_id=tmdb_id)
         elif root.tag == "episodedetails":
-            # Episode file - extract season and episode numbers
+            # Episode file - extract season and episode numbers first
             season_element = root.find("season")
             episode_element = root.find("episode")
 
-            if season_element is not None and episode_element is not None:
-                season_text = season_element.text
-                episode_text = episode_element.text
-                if season_text is not None and episode_text is not None:
-                    season = int(season_text.strip())
-                    episode = int(episode_text.strip())
-                    return TmdbIds(series_id=tmdb_id, season=season, episode=episode)
-                else:
-                    return None
-            else:
+            if season_element is None or episode_element is None:
                 # Missing season/episode information
                 return None
+
+            season_text = season_element.text
+            episode_text = episode_element.text
+            if season_text is None or episode_text is None:
+                return None
+
+            season = int(season_text.strip())
+            episode = int(episode_text.strip())
+
+            # If no TMDB ID in episode file, try to find it from parent tvshow.nfo
+            if tmdb_id is None:
+                tmdb_id = self._find_series_tmdb_id_from_parent(nfo_path)
+                if tmdb_id is None:
+                    return None
+
+            return TmdbIds(series_id=tmdb_id, season=season, episode=episode)
         else:
             # Unknown file type
             return None
+
+    def _find_series_tmdb_id_from_parent(self, episode_nfo_path: Path) -> int | None:
+        """Find TMDB series ID from parent directory's tvshow.nfo file.
+
+        Args:
+            episode_nfo_path: Path to episode .nfo file
+
+        Returns:
+            TMDB series ID if found, None otherwise
+        """
+        # Start from the episode file's directory and walk up to find tvshow.nfo
+        current_dir = episode_nfo_path.parent
+
+        # Check up to 3 levels up to find tvshow.nfo (handles Season subdirectories)
+        for _ in range(3):
+            tvshow_path = current_dir / "tvshow.nfo"
+            if tvshow_path.exists() and tvshow_path.is_file():
+                try:
+                    tree = ET.parse(tvshow_path)
+                    root = tree.getroot()
+
+                    # Only process if it's actually a tvshow file
+                    if root.tag == "tvshow":
+                        uniqueid_elements = root.findall('.//uniqueid[@type="tmdb"]')
+                        if uniqueid_elements:
+                            tmdb_id_text = uniqueid_elements[0].text
+                            if tmdb_id_text and tmdb_id_text.strip():
+                                return int(tmdb_id_text.strip())
+                except (ET.ParseError, ValueError, AttributeError):
+                    # Failed to parse or extract TMDB ID, continue searching
+                    pass
+
+            # Move up one directory level
+            parent_dir = current_dir.parent
+            if parent_dir == current_dir:  # Reached filesystem root
+                break
+            current_dir = parent_dir
+
+        return None
 
     def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
         """Extract original title and description from .nfo file.
