@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<tvshow>
-  <title>Test Title</title>
-  <plot>Test plot</plot>
-  <uniqueid type="tmdb" default="true">1396</uniqueid>
-</tvshow>
