@@ -18,7 +18,7 @@ Create a compatibility layer that monitors Sonarr-generated .nfo files and overw
 
 ### 💾 Backup & Recovery
 - [x] **Original File Preservation**: Keep backups of original Sonarr-generated files
-- [ ] **Rollback Capability**: Ability to restore original English metadata if needed
+- [x] **Rollback Capability**: Ability to restore original English metadata if needed
 - [x] **Safe File Operations**: Prevent data loss through atomic file operations
 
 ## Advanced Features

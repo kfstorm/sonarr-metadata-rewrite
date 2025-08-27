@@ -359,3 +359,77 @@ def verify_translations(
     )
 
     return successful_translations
+
+
+def is_translated(metadata: dict[str, Any]) -> bool:
+    """Check if metadata contains Chinese translations.
+
+    Args:
+        metadata: Parsed metadata dictionary
+
+    Returns:
+        True if either title or plot contains Chinese characters
+    """
+    title_translated = any(
+        "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
+    )
+    plot_translated = any(
+        "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
+    )
+    return title_translated or plot_translated
+
+
+def count_translations(nfo_files: list[Path]) -> int:
+    """Count how many NFO files have been translated.
+
+    Args:
+        nfo_files: List of NFO files to check
+
+    Returns:
+        Number of files containing Chinese translations
+    """
+    translations = 0
+    for nfo_file in nfo_files:
+        metadata = parse_nfo_content(nfo_file)
+        if is_translated(metadata):
+            translations += 1
+    return translations
+
+
+def metadata_matches(current: dict[str, Any], original: dict[str, Any]) -> bool:
+    """Check if current metadata matches original metadata.
+
+    Args:
+        current: Current metadata dictionary
+        original: Original metadata dictionary
+
+    Returns:
+        True if both title and plot match exactly
+    """
+    title_matches = current.get("title") == original.get("title")
+    plot_matches = current.get("plot") == original.get("plot")
+    return title_matches and plot_matches
+
+
+def wait_and_verify_translations(
+    nfo_files: list[Path], wait_seconds: int, min_expected: int = 1
+) -> int:
+    """Wait for translations and verify they occurred.
+
+    Args:
+        nfo_files: List of NFO files to check
+        wait_seconds: Seconds to wait before checking
+        min_expected: Minimum number of expected translations
+
+    Returns:
+        Number of translations found
+
+    Raises:
+        AssertionError: If fewer than min_expected translations found
+    """
+    time.sleep(wait_seconds)
+    translations = count_translations(nfo_files)
+    assert (
+        translations >= min_expected
+    ), f"Expected at least {min_expected} translations, got {translations}"
+    return translations
