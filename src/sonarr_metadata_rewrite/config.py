@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         description="Root directory to monitor and rewrite .nfo files"
     )
     periodic_scan_interval_seconds: int = Field(
-        default=3600, description="How often to scan the directory (seconds)"
+        default=86400, description="How often to scan the directory (seconds)"
     )
 
     # Translation preferences

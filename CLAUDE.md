@@ -52,7 +52,7 @@ uv run sonarr-metadata-rewrite --version
 REWRITE_ROOT_DIR=/home/user/media \
 PREFERRED_LANGUAGES='zh-CN,ja-JP' \
 CACHE_DURATION_HOURS=720 \
-PERIODIC_SCAN_INTERVAL_SECONDS=3600 \
+PERIODIC_SCAN_INTERVAL_SECONDS=86400 \
 uv run sonarr-metadata-rewrite
 ```
 

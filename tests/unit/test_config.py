@@ -17,7 +17,7 @@ def test_settings_with_required_fields(test_data_dir: Path) -> None:
     assert settings.tmdb_api_key == "test_api_key_1234567890abcdef"
     assert settings.rewrite_root_dir == test_data_dir
     assert settings.preferred_languages == ["zh-CN"]
-    assert settings.periodic_scan_interval_seconds == 3600  # default
+    assert settings.periodic_scan_interval_seconds == 86400  # default
 
 
 def test_settings_with_all_fields(test_data_dir: Path) -> None:
