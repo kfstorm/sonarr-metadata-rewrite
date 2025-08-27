@@ -1,6 +1,7 @@
 """Complete metadata file processing unit."""
 
 import logging
+import os
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -324,6 +325,9 @@ class MetadataProcessor:
         if plot_element is not None:
             plot_element.text = translation.description
 
+        # Get original file ownership before replacement
+        original_stat = nfo_path.stat()
+
         # Write the updated XML back to file atomically
         # Use a temporary file to ensure atomic writes
         temp_path = nfo_path.with_suffix(".nfo.tmp")
@@ -331,6 +335,16 @@ class MetadataProcessor:
             # Configure XML formatting
             ET.indent(tree, space="  ", level=0)
             tree.write(temp_path, encoding="utf-8", xml_declaration=True, method="xml")
+
+            # Preserve original file ownership on temporary file
+            try:
+                os.chown(temp_path, original_stat.st_uid, original_stat.st_gid)
+            except (OSError, PermissionError) as e:
+                # Log warning but continue - ownership preservation is best-effort
+                logger.warning(
+                    f"Could not preserve file ownership for {nfo_path}: {e}. "
+                    "This may happen in restricted environments."
+                )
 
             # Atomic replacement
             temp_path.replace(nfo_path)
