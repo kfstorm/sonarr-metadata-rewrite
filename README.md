@@ -36,6 +36,7 @@ You'll need Docker and a free TMDB API key from
 ```bash
 docker run -d \
   --name sonarr-metadata-rewrite \
+  --user $(id -u):$(id -g) \
   -e TMDB_API_KEY=your_api_key_here \
   -e REWRITE_ROOT_DIR=/media \
   -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
@@ -54,6 +55,7 @@ services:
   sonarr-metadata-rewrite:
     image: kfstorm/sonarr-metadata-rewrite:latest
     container_name: sonarr-metadata-rewrite
+    user: "${UID:-1000}:${GID:-1000}"
     environment:
       - TMDB_API_KEY=your_api_key_here
       - REWRITE_ROOT_DIR=/media
@@ -109,6 +111,38 @@ ORIGINAL_FILES_BACKUP_DIR=./backups   # Backup original files (default: ./backup
 
 You can list multiple languages separated by commas - it'll try them in
 order.
+
+### File Permissions (Important!)
+
+The `--user` parameter in the Docker examples above is **critical** for maintaining proper file permissions. Here's why:
+
+- Without `--user`, Docker runs the container as root by default
+- Files created by the container (rewritten .nfo files, cache, backups) will be owned by root
+- This can cause permission issues when trying to access files from your host system
+- Sonarr or other applications may not be able to read the rewritten files
+
+**For Docker run:**
+```bash
+--user $(id -u):$(id -g)
+```
+This automatically uses your current user's UID and GID.
+
+**For Docker Compose:**
+```yaml
+user: "${UID:-1000}:${GID:-1000}"
+```
+Set the UID and GID environment variables first:
+```bash
+export UID=$(id -u)
+export GID=$(id -g)
+docker compose up -d
+```
+
+**To check your user ID:**
+```bash
+id -u  # Shows your user ID (UID)
+id -g  # Shows your group ID (GID)
+```
 
 ### Highly Recommended Volume Mappings
 
@@ -244,6 +278,26 @@ hooks that run all the checks automatically.
   `<uniqueid type="tmdb">123456</uniqueid>`)
 - Check that TMDB has translations in your preferred language for that content
 - Make sure Sonarr is actually writing new `.nfo` files (try refreshing a series)
+
+### File permission issues
+
+If you're seeing permission denied errors or files owned by root:
+
+- Make sure you're using the `--user` parameter in your Docker command
+- For existing containers, stop and recreate with the proper `--user` setting
+- Check file ownership: `ls -la /path/to/your/tv/shows/`
+- Files should be owned by your user, not root
+
+**Fix for existing root-owned files:**
+```bash
+# Stop the container first
+docker stop sonarr-metadata-rewrite
+
+# Fix ownership (replace with your actual path and user)
+sudo chown -R $(id -u):$(id -g) /path/to/your/tv/shows/
+
+# Restart with proper --user parameter
+```
 
 ### Worried about API limits
 
