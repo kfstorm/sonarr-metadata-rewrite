@@ -23,7 +23,7 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 # Runtime stage
-FROM python:3.10-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
