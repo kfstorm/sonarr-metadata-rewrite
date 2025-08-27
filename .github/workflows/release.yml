@@ -1,0 +1,88 @@
+name: Release and Docker Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  schedule:
+    # Daily at midnight UTC for nightly builds
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: kfstorm/sonarr-metadata-rewrite
+
+jobs:
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        generate_release_notes: true
+        make_latest: true
+
+  extract-metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+    steps:
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.IMAGE_NAME }}
+        tags: |
+          # For releases (tags starting with v)
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          # For nightly builds (scheduled runs)
+          type=raw,value=nightly,enable={{is_default_branch}}
+          type=raw,value=nightly-{{date 'YYYY-MM-DD'}},enable={{is_default_branch}}
+          # Latest tag for releases only
+          type=raw,value=latest,enable={{is_default_branch}}
+        flavor: |
+          latest=false
+
+  build-and-push:
+    needs: extract-metadata
+    uses: ./.github/workflows/docker-build-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      push: true
+      tags: ${{ needs.extract-metadata.outputs.tags }}
+      labels: ${{ needs.extract-metadata.outputs.labels }}
+      platforms: linux/amd64,linux/arm64
+    secrets:
+      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+  update-docker-hub-description:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+
+    - name: Update Docker Hub description
+      uses: peter-evans/dockerhub-description@v4
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+        repository: ${{ env.IMAGE_NAME }}
+        readme-filepath: ./README.md

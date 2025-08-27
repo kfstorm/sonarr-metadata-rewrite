@@ -266,3 +266,221 @@ def test_apply_fallback_to_translation_both_empty(
         "high school chemistry teacher" in result.description
     )  # Original description from test data
     assert result.language == "zh-CN"
+
+
+def test_process_file_multiple_preferred_languages_first_match(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test that first available preferred language is selected."""
+    from unittest.mock import Mock
+
+    from sonarr_metadata_rewrite.config import Settings
+    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Setup settings with multiple preferred languages
+    settings = Settings(
+        tmdb_api_key="test_key_12345",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="ko-KR,ja-JP,zh-CN",  # Korean -> Japanese -> Chinese
+        periodic_scan_interval_seconds=1,
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+
+    # Mock translator with available translations (missing Korean)
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
+        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
+        "en": TranslatedContent("English Title", "English Description", "en"),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_multi_lang.nfo")
+
+    result = processor.process_file(test_path)
+
+    # Should select Japanese (ja-JP) as it's first available in preferred languages
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="ja-JP",  # Should pick Japanese, not Chinese
+        expected_file_modified=True,
+        expected_message_contains="Successfully translated",
+    )
+
+
+def test_process_file_multiple_preferred_languages_no_matches(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test when none of the preferred languages are available."""
+    from unittest.mock import Mock
+
+    from sonarr_metadata_rewrite.config import Settings
+    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Setup settings with preferred languages that don't match available translations
+    settings = Settings(
+        tmdb_api_key="test_key_12345",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="ko-KR,th-TH,vi-VN",  # Korean, Thai, Vietnamese
+        periodic_scan_interval_seconds=1,
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+
+    # Mock translator with only different languages available
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
+        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
+        "en": TranslatedContent("English Title", "English Description", "en"),
+        "fr": TranslatedContent("Titre français", "Description française", "fr"),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_no_preferred.nfo")
+
+    result = processor.process_file(test_path)
+
+    # Should fail with detailed message about preferred vs available languages
+    assert result.success is False
+    assert result.file_modified is False
+    assert result.selected_language is None
+    assert "preferred languages [ko-KR, th-TH, vi-VN]" in result.message
+    assert "Available: [en, fr, ja-JP, zh-CN]" in result.message  # Should be sorted
+    assert "File unchanged" in result.message
+
+
+def test_process_file_multiple_preferred_languages_partial_matches(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test when some but not all preferred languages are available."""
+    from unittest.mock import Mock
+
+    from sonarr_metadata_rewrite.config import Settings
+    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    # Setup settings with mixed preferred languages (some available, some not)
+    settings = Settings(
+        tmdb_api_key="test_key_12345",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="ar,zh-CN,th-TH,ja-JP",  # Arabic, Chinese, Thai, Japanese
+        periodic_scan_interval_seconds=1,
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+
+    # Mock translator with some matching languages (missing Arabic and Thai)
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
+        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
+        "en": TranslatedContent("English Title", "English Description", "en"),
+        "de": TranslatedContent("Deutscher Titel", "Deutsche Beschreibung", "de"),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files(
+        "tvshow.nfo", test_data_dir / "test_partial_match.nfo"
+    )
+
+    result = processor.process_file(test_path)
+
+    # Should select Chinese (zh-CN) as it's the first available in preferred order
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="zh-CN",  # Should pick Chinese, not Japanese
+        expected_file_modified=True,
+        expected_message_contains="Successfully translated",
+    )
+
+
+def test_process_file_single_preferred_language_available(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test when only one preferred language is specified and it's available."""
+    from unittest.mock import Mock
+
+    from sonarr_metadata_rewrite.config import Settings
+    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    settings = Settings(
+        tmdb_api_key="test_key_12345",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="fr",  # Only French
+        periodic_scan_interval_seconds=1,
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr": TranslatedContent("Titre français", "Description française", "fr"),
+        "en": TranslatedContent("English Title", "English Description", "en"),
+        "de": TranslatedContent("Deutscher Titel", "Deutsche Beschreibung", "de"),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_single_lang.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="fr",
+        expected_file_modified=True,
+        expected_message_contains="Successfully translated",
+    )
+
+
+def test_process_file_single_preferred_language_not_available(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test when only one preferred language is specified and it's not available."""
+    from unittest.mock import Mock
+
+    from sonarr_metadata_rewrite.config import Settings
+    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
+    from sonarr_metadata_rewrite.models import TranslatedContent
+
+    settings = Settings(
+        tmdb_api_key="test_key_12345",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="ar",  # Only Arabic
+        periodic_scan_interval_seconds=1,
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr": TranslatedContent("Titre français", "Description française", "fr"),
+        "en": TranslatedContent("English Title", "English Description", "en"),
+        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files(
+        "tvshow.nfo", test_data_dir / "test_single_missing.nfo"
+    )
+
+    result = processor.process_file(test_path)
+
+    assert result.success is False
+    assert result.file_modified is False
+    assert result.selected_language is None
+    assert "preferred languages [ar]" in result.message
+    assert "Available: [en, fr, zh-CN]" in result.message
+    assert "File unchanged" in result.message

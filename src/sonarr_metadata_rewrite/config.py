@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     )
 
     # Translation preferences
-    preferred_languages: list[str] = Field(
-        default=["zh-CN"], description="Preferred languages in priority order"
+    preferred_languages: str = Field(
+        description="Preferred languages in priority order (comma-separated)"
     )
 
     # Universal caching configuration
@@ -53,6 +53,17 @@ class Settings(BaseSettings):
     enable_file_scanner: bool = Field(
         default=True, description="Enable periodic directory scanning"
     )
+
+    @field_validator("preferred_languages")
+    @classmethod
+    def parse_preferred_languages(cls, v: str) -> list[str]:
+        """Parse preferred languages from comma-separated string."""
+        if isinstance(v, str):
+            languages = [lang.strip() for lang in v.split(",") if lang.strip()]
+            if not languages:
+                raise ValueError("preferred_languages cannot be empty")
+            return languages
+        raise ValueError("preferred_languages must be a comma-separated string")
 
 
 def get_settings() -> Settings:

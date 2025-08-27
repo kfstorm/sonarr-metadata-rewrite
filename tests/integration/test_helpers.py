@@ -279,7 +279,7 @@ class ServiceRunner:
         env_overrides = {
             "REWRITE_ROOT_DIR": str(temp_media_root),
             "TMDB_API_KEY": tmdb_api_key,
-            "PREFERRED_LANGUAGES": '["zh-CN"]',
+            "PREFERRED_LANGUAGES": "zh-CN",
         }
 
         # Apply service-specific configuration

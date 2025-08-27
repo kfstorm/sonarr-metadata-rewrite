@@ -43,24 +43,24 @@ echo "TMDB_API_KEY=your_api_key_here" > .env
 ### Application Usage
 ```bash
 # Run the translation service
-uv run sonarr-metadata
+uv run sonarr-metadata-rewrite
 
 # Check version
-uv run sonarr-metadata --version
+uv run sonarr-metadata-rewrite --version
 
 # Example with all optional settings
 REWRITE_ROOT_DIR=/home/user/media \
-PREFERRED_LANGUAGES='["zh-CN","ja-JP"]' \
+PREFERRED_LANGUAGES='zh-CN,ja-JP' \
 CACHE_DURATION_HOURS=720 \
 PERIODIC_SCAN_INTERVAL_SECONDS=3600 \
-uv run sonarr-metadata
+uv run sonarr-metadata-rewrite
 ```
 
 ## Technical Architecture
 
 ### Current Implementation
 Complete metadata translation service with Click framework providing:
-- Entry point: `sonarr_metadata_rewrite.main:cli` command that runs a persistent service
+- Entry point: `sonarr_metadata_rewrite.main:cli` command that runs a persistent service (CLI: `sonarr-metadata-rewrite`)
 - Real-time file monitoring with watchdog for immediate translation
 - Periodic directory scanning for batch processing of existing files
 - TMDB API integration with caching and rate limiting
