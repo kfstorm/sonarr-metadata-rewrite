@@ -48,7 +48,7 @@ uv run sonarr-metadata-rewrite --version
 # Example with all optional settings
 TMDB_API_KEY=your_key \
 REWRITE_ROOT_DIR=/home/user/media \
-PREFERRED_LANGUAGES='["zh-CN","ja-JP"]' \
+PREFERRED_LANGUAGES='zh-CN,ja-JP' \
 CACHE_DURATION_HOURS=720 \
 PERIODIC_SCAN_INTERVAL_SECONDS=3600 \
 uv run sonarr-metadata-rewrite

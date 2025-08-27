@@ -257,7 +257,7 @@ def test_sonarr_container_integration(
 
             settings = Settings(
                 rewrite_root_dir=temp_media_root,
-                preferred_languages=["zh-CN"],  # Chinese translation
+                preferred_languages="zh-CN",  # Chinese translation
                 periodic_scan_interval_seconds=1,  # Fast for testing
                 original_files_backup_dir=temp_path / "backups",
                 cache_dir=temp_path / "cache",

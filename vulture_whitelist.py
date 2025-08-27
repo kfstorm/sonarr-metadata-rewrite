@@ -4,6 +4,10 @@
 # Pydantic model_config is used by the framework
 _.model_config
 
+# Pydantic validators are used by the framework
+_.parse_preferred_languages
+_.cls
+
 # Signal handler parameters are required by the interface
 _.signum
 _.frame

@@ -17,7 +17,11 @@ class TestCli:
         runner = CliRunner()
 
         with runner.isolated_filesystem():
-            env_vars = {"TMDB_API_KEY": test_key, "REWRITE_ROOT_DIR": "/tmp/test"}
+            env_vars = {
+                "TMDB_API_KEY": test_key,
+                "REWRITE_ROOT_DIR": "/tmp/test",
+                "PREFERRED_LANGUAGES": "zh-CN",
+            }
             with patch.dict(os.environ, env_vars):
                 # Mock the service to avoid actually starting it
                 with patch(
