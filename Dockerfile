@@ -16,12 +16,12 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies into a virtual environment
 RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy and install the pre-built wheel
+# Copy and install the pre-built wheel into the existing venv
 COPY dist/*.whl /tmp/
-RUN uv pip install /tmp/*.whl --no-deps
+RUN uv pip install /tmp/*.whl
 
 # Runtime stage
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.10-slim-bookworm AS runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -53,6 +53,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Set the entry point to the CLI command
 ENTRYPOINT ["sonarr-metadata-rewrite"]
-
-# Default to help command if no arguments provided
-CMD ["--help"]
