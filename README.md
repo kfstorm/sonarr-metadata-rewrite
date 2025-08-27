@@ -114,10 +114,12 @@ order.
 
 ### File Permissions (Important!)
 
-The `--user` parameter in the Docker examples above is **critical** for maintaining proper file permissions. Here's why:
+The `--user` parameter in the Docker examples above is **critical** for
+maintaining proper file permissions. Here's why:
 
 - Without `--user`, Docker runs the container as root by default
-- Files created by the container (rewritten .nfo files, cache, backups) will be owned by root
+- Files created by the container (rewritten .nfo files, cache, backups) will be
+  owned by root
 - This can cause permission issues when trying to access files from your host system
 - Sonarr or other applications may not be able to read the rewritten files
 
