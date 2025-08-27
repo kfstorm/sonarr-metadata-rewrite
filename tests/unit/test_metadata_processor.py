@@ -190,8 +190,6 @@ def test_apply_fallback_to_translation_no_fallback_needed(
     processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
 ) -> None:
     """Test fallback logic when translation has both title and description."""
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Create test .nfo file with original content
     test_path = create_test_files(
         "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
@@ -213,8 +211,6 @@ def test_apply_fallback_to_translation_empty_title(
     processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
 ) -> None:
     """Test fallback logic when translation has empty title."""
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Create test .nfo file with original content
     test_path = create_test_files(
         "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
@@ -234,8 +230,6 @@ def test_apply_fallback_to_translation_empty_description(
     processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
 ) -> None:
     """Test fallback logic when translation has empty description."""
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Create test .nfo file with original content
     test_path = create_test_files(
         "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
@@ -257,8 +251,6 @@ def test_apply_fallback_to_translation_both_empty(
     processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
 ) -> None:
     """Test fallback logic when translation has both empty title and description."""
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Create test .nfo file with original content
     test_path = create_test_files(
         "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"

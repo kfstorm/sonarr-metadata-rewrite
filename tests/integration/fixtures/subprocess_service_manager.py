@@ -1,6 +1,7 @@
 """Subprocess service manager for integration tests."""
 
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -177,8 +178,6 @@ class SubprocessServiceManager:
 
     def _cleanup(self) -> None:
         """Clean up temporary directories and resources."""
-        import shutil
-
         for temp_dir in self.temp_dirs:
             try:
                 if temp_dir.exists():

@@ -10,6 +10,7 @@ import pytest
 
 from tests.integration.fixtures.container_manager import ContainerManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
+from tests.integration.test_helpers import setup_series_with_nfos
 
 # Test API key used for integration tests
 TEST_API_KEY = "testkey12345678901234567890"
@@ -122,3 +123,24 @@ def configured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
         raise RuntimeError("Failed to configure metadata settings")
     print("Metadata settings configured successfully")
     return sonarr_container
+
+
+@pytest.fixture
+def prepared_series_with_nfos(
+    configured_sonarr_container: SonarrClient,
+    temp_media_root: Path,
+) -> Generator[tuple[Path, list[Path], dict[Path, Path], int], None, None]:
+    """Prepare series with .nfo files and return backup mapping.
+
+    Returns:
+        Tuple of (series_path, nfo_files, original_backups, series_id)
+    """
+    series, nfo_files, original_backups = setup_series_with_nfos(
+        configured_sonarr_container, temp_media_root
+    )
+
+    try:
+        series_path = temp_media_root / series.slug
+        yield series_path, nfo_files, original_backups, series.id
+    finally:
+        series.__exit__(None, None, None)
