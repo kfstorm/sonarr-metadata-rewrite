@@ -1,5 +1,6 @@
 """Unit tests for metadata processor."""
 
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import Mock
@@ -484,3 +485,205 @@ def test_process_file_single_preferred_language_not_available(
     assert "preferred languages [ar]" in result.message
     assert "Available: [en, fr, zh-CN]" in result.message
     assert "File unchanged" in result.message
+
+
+# Reprocessing Prevention Tests
+
+
+def create_custom_nfo(path: Path, title: str, plot: str, tmdb_id: int = 1396) -> None:
+    """Helper to create custom .nfo files for reprocessing tests."""
+    content = f"""<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>{title}</title>
+  <plot>{plot}</plot>
+  <uniqueid type="tmdb" default="true">{tmdb_id}</uniqueid>
+</tvshow>
+"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+
+
+def test_content_matches_preferred_translation_skips_processing(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test that processing is skipped when content matches translation."""
+    # Create processor with backup enabled
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo file with Chinese content that matches expected translation
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "中文标题", "中文剧情描述")
+
+    # Mock translator to return the same Chinese translation
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="中文标题", description="中文剧情描述", language="zh-CN"
+        )
+    }
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_file_modified=False,
+        expected_language="zh-CN",
+        expected_message_contains="already matches preferred translation",
+    )
+
+
+def test_preference_changed_better_translation_available_reprocesses(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test that file is reprocessed when better translation becomes available."""
+    # Create processor with backup enabled
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN,ja-JP",  # Chinese preferred over Japanese
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo file with Japanese content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "日本語タイトル", "日本語の説明")
+
+    # Mock translator: Chinese is now available and preferred over Japanese
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="中文标题", description="中文剧情描述", language="zh-CN"
+        ),
+        "ja-JP": TranslatedContent(
+            title="日本語タイトル", description="日本語の説明", language="ja-JP"
+        ),
+    }
+
+    result = processor.process_file(nfo_path)
+
+    # Should reprocess to get better Chinese translation
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify file was actually updated with Chinese content
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+    assert title_elem is not None and title_elem.text == "中文标题"
+    assert plot_elem is not None and plot_elem.text == "中文剧情描述"
+
+
+def test_preference_change_no_translation_reverts_to_original_with_backup(
+    test_data_dir: Path,
+) -> None:
+    """Test reversion to original content when preferences change to unavailable."""
+    # Create processor with preferences that won't match available translations
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="ko-KR,zh-TW",  # Neither available in translations
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo file with Japanese content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "日本語タイトル", "日本語の説明")
+
+    # Create backup with original English content
+    backup_path = test_data_dir / "backups" / "tvshow.nfo"
+    create_custom_nfo(backup_path, "Original Title", "Original plot")
+
+    # Mock translator: No preferred languages available
+    mock_translator.get_translations.return_value = {
+        "ja-JP": TranslatedContent(
+            title="日本語タイトル", description="日本語の説明", language="ja-JP"
+        )
+    }
+
+    result = processor.process_file(nfo_path)
+
+    # Should revert to original content from backup
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="original",
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify file was reverted to original English content
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+    assert title_elem is not None and title_elem.text == "Original Title"
+    assert plot_elem is not None and plot_elem.text == "Original plot"
+
+
+def test_multiple_rapid_processing_only_first_modifies(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test that multiple rapid calls to process same file only modify it once."""
+    # Create processor with backup enabled
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo with English content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "English Title", "English description")
+
+    # Mock translator returns Chinese translation
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="中文标题", description="中文剧情描述", language="zh-CN"
+        )
+    }
+
+    # First processing - should modify file
+    result1 = processor.process_file(nfo_path)
+    assert_process_result(
+        result1,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Second processing immediately after - should skip
+    result2 = processor.process_file(nfo_path)
+    assert_process_result(
+        result2,
+        expected_success=True,
+        expected_file_modified=False,
+        expected_message_contains="already matches preferred translation",
+    )
+
+    # Third processing - still should skip
+    result3 = processor.process_file(nfo_path)
+    assert_process_result(
+        result3,
+        expected_success=True,
+        expected_file_modified=False,
+    )

@@ -1,5 +1,6 @@
 """Complete metadata file processing unit."""
 
+import logging
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -11,6 +12,8 @@ from sonarr_metadata_rewrite.models import (
     TranslatedContent,
 )
 from sonarr_metadata_rewrite.translator import Translator
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataProcessor:
@@ -47,25 +50,93 @@ class MetadataProcessor:
 
             # Apply language preferences to find best translation
             selected_translation = self._select_preferred_translation(all_translations)
+            if selected_translation:
+                # Check if content already matches the selected translation
+                current_title, current_description = self._extract_original_content(
+                    nfo_path
+                )
+
+                if (
+                    current_title == selected_translation.title
+                    and current_description == selected_translation.description
+                ):
+                    return ProcessResult(
+                        success=True,
+                        file_path=nfo_path,
+                        message=(
+                            f"Content already matches preferred translation "
+                            f"({selected_translation.language})"
+                        ),
+                        tmdb_ids=tmdb_ids,
+                        translations_found=True,
+                        file_modified=False,
+                        selected_language=selected_translation.language,
+                    )
+
             if not selected_translation:
-                preferred_langs = ", ".join(self.settings.preferred_languages)
-                available_langs = (
-                    ", ".join(sorted(all_translations.keys()))
-                    if all_translations
-                    else "none"
-                )
-                return ProcessResult(
-                    success=False,  # No work was accomplished
-                    file_path=nfo_path,
-                    message=(
-                        f"File unchanged - no translation available in preferred "
-                        f"languages [{preferred_langs}]. Available: [{available_langs}]"
-                    ),
-                    tmdb_ids=tmdb_ids,
-                    translations_found=bool(all_translations),
-                    file_modified=False,
-                    selected_language=None,
-                )
+                # No preferred translation found - try to revert to original backup
+                original_content = self._get_original_content_from_backup(nfo_path)
+                if original_content:
+                    original_title, original_description = original_content
+                    current_title, current_description = self._extract_original_content(
+                        nfo_path
+                    )
+
+                    # Only revert if current content is different from original
+                    if (
+                        current_title != original_title
+                        or current_description != original_description
+                    ):
+                        selected_translation = TranslatedContent(
+                            title=original_title,
+                            description=original_description,
+                            language="original",
+                        )
+                        # Continue to write original content back
+                    else:
+                        # Already showing original content
+                        preferred_langs = ", ".join(self.settings.preferred_languages)
+                        available_langs = (
+                            ", ".join(sorted(all_translations.keys()))
+                            if all_translations
+                            else "none"
+                        )
+                        return ProcessResult(
+                            success=False,
+                            file_path=nfo_path,
+                            message=(
+                                f"File unchanged - content already matches original "
+                                f"and "
+                                f"no translation available in preferred languages "
+                                f"[{preferred_langs}]. "
+                                f"Available: [{available_langs}]"
+                            ),
+                            tmdb_ids=tmdb_ids,
+                            translations_found=bool(all_translations),
+                            file_modified=False,
+                            selected_language=None,
+                        )
+                else:
+                    # No backup available - return existing failure result
+                    preferred_langs = ", ".join(self.settings.preferred_languages)
+                    available_langs = (
+                        ", ".join(sorted(all_translations.keys()))
+                        if all_translations
+                        else "none"
+                    )
+                    return ProcessResult(
+                        success=False,
+                        file_path=nfo_path,
+                        message=(
+                            f"File unchanged - no translation available in preferred "
+                            f"languages [{preferred_langs}]. "
+                            f"Available: [{available_langs}]"
+                        ),
+                        tmdb_ids=tmdb_ids,
+                        translations_found=bool(all_translations),
+                        file_modified=False,
+                        selected_language=None,
+                    )
 
             # Apply fallback logic for empty translation fields
             selected_translation = self._apply_fallback_to_translation(
@@ -284,4 +355,31 @@ class MetadataProcessor:
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
                 return all_translations[preferred_lang]
+        return None
+
+    def _get_original_content_from_backup(
+        self, nfo_path: Path
+    ) -> tuple[str, str] | None:
+        """Get original content from backup file if available.
+
+        Args:
+            nfo_path: Path to current .nfo file
+
+        Returns:
+            Tuple of (original_title, original_description) if backup exists,
+            None otherwise
+        """
+        if not self.settings.original_files_backup_dir:
+            return None
+
+        # Calculate backup path using same logic as _backup_original()
+        relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
+        backup_path = self.settings.original_files_backup_dir / relative_path
+
+        if backup_path.exists():
+            try:
+                return self._extract_original_content(backup_path)
+            except Exception as e:
+                logger.warning(f"Failed to read backup file {backup_path}: {e}")
+                return None
         return None
