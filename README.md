@@ -5,6 +5,74 @@
 
 Monitors Sonarr-generated .nfo files and overwrites them with TMDB translations in desired languages.
 
+## Installation and Usage
+
+### Direct Installation
+
+```bash
+# Install with uv
+uv tool install sonarr-metadata-rewrite
+
+# Or install with pip
+pip install sonarr-metadata-rewrite
+```
+
+### Docker Usage
+
+To avoid file permission issues when running in a container, always specify the appropriate user and group IDs that match your media file ownership:
+
+#### Docker Run
+```bash
+# Get your user and group ID
+id
+
+# Run with proper user permissions
+docker run -d \
+  --name sonarr-metadata-rewrite \
+  --user $(id -u):$(id -g) \
+  -v /path/to/your/tv/shows:/tv \
+  -v /path/to/config:/config \
+  -e TMDB_API_KEY=your_api_key_here \
+  -e REWRITE_ROOT_DIR=/tv \
+  -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
+  sonarr-metadata-rewrite
+```
+
+#### Docker Compose
+```yaml
+version: '3.8'
+services:
+  sonarr-metadata-rewrite:
+    image: sonarr-metadata-rewrite
+    container_name: sonarr-metadata-rewrite
+    user: "1000:1000"  # Replace with your actual UID:GID
+    environment:
+      - TMDB_API_KEY=your_api_key_here
+      - REWRITE_ROOT_DIR=/tv
+      - PREFERRED_LANGUAGES=zh-CN,ja-JP
+      - CACHE_DURATION_HOURS=720
+      - PERIODIC_SCAN_INTERVAL_SECONDS=86400
+    volumes:
+      - /path/to/your/tv/shows:/tv
+      - /path/to/config:/config
+    restart: unless-stopped
+```
+
+**Important**: 
+- Replace `1000:1000` with your actual user and group ID (run `id` to find them)
+- The user ID should match the owner of your media files to ensure proper permissions
+- Without proper `--user` specification, the container may create files with root ownership
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TMDB_API_KEY` | *required* | Your TMDB API key |
+| `REWRITE_ROOT_DIR` | `/tv` | Root directory to monitor for .nfo files |
+| `PREFERRED_LANGUAGES` | `en-US` | Comma-separated list of language codes (e.g., `zh-CN,ja-JP`) |
+| `CACHE_DURATION_HOURS` | `720` | How long to cache translations (30 days) |
+| `PERIODIC_SCAN_INTERVAL_SECONDS` | `86400` | How often to scan for existing files (24 hours) |
+
 ## Rollback to Original Metadata
 
 If you want to restore the original English metadata from Sonarr:

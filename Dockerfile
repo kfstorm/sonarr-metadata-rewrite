@@ -1,42 +1,58 @@
-# LinuxServer.io-style Docker image for sonarr-metadata-rewrite
-FROM ghcr.io/linuxserver/baseimage-ubuntu:jammy
+# Multi-stage Docker build for sonarr-metadata-rewrite using uv
 
-# Add package information
-LABEL build_version="sonarr-metadata-rewrite version:- Build-date:-"
-LABEL maintainer="kfstorm"
+# Build stage
+FROM ghcr.io/astral-sh/uv:python3.10-bookworm-slim AS builder
 
-# Environment variables
+# Set environment variables for optimal uv behavior
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Create app directory
+WORKDIR /app
+
+# Copy uv configuration files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies into a virtual environment
+RUN uv sync --frozen --no-install-project --no-dev
+
+# Copy and install the pre-built wheel
+COPY dist/*.whl /tmp/
+RUN uv pip install /tmp/*.whl --no-deps
+
+# Runtime stage
+FROM python:3.13-slim-bookworm AS runtime
+
+# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Install Python and uv
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    curl \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Create non-root user
+RUN groupadd --gid 1000 app && \
+    useradd --uid 1000 --gid app --shell /bin/bash --create-home app
 
-# Add uv to PATH
-ENV PATH="/root/.cargo/bin:$PATH"
+# Copy virtual environment from builder stage
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+
+# Create directories for the application
+RUN mkdir -p /app/data && chown -R app:app /app
+
+# Switch to non-root user
+USER app
 
 # Set working directory
 WORKDIR /app
 
-# Copy application files and install
-COPY pyproject.toml uv.lock ./
-COPY src/ ./src/
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python -c "import sonarr_metadata_rewrite" || exit 1
 
-# Install the application and make it available system-wide
-RUN uv sync --frozen --no-dev \
-    && chmod +x /app/.venv/bin/sonarr-metadata-rewrite
+# Expose any ports if needed (none for this application)
+# EXPOSE 8080
 
-# Copy LinuxServer.io services and init scripts
-COPY root/ /
+# Set the entry point to the CLI command
+ENTRYPOINT ["sonarr-metadata-rewrite"]
 
-# Expose volumes for configuration and media
-VOLUME ["/config", "/tv"]
-
-# LinuxServer.io uses s6-overlay for process management and PUID/PGID handling
+# Default to help command if no arguments provided
+CMD ["--help"]
