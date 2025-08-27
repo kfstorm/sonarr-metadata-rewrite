@@ -70,3 +70,9 @@ jobs:
         valColorRange: ${{ steps.coverage-percentage.outputs.coverage }}
         maxColorRange: 100
         minColorRange: 0
+
+  docker-build:
+    uses: ./.github/workflows/docker-build-reusable.yml
+    with:
+      push: false
+      tags: sonarr-metadata-rewrite:ci-test
