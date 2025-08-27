@@ -21,7 +21,7 @@ COPY dist/*.whl /tmp/
 RUN uv pip install /tmp/*.whl --no-deps
 
 # Runtime stage
-FROM python:3.10-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
