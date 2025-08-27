@@ -104,6 +104,7 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
         "root_tag": root.tag,
         "title": "",
         "plot": "",
+        "overview": "",
         "tmdb_id": None,
         "tvdb_id": None,
     }
@@ -113,10 +114,15 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     if title_elem is not None and title_elem.text:
         metadata["title"] = title_elem.text.strip()
 
-    # Extract plot/overview
+    # Extract plot
     plot_elem = root.find("plot")
     if plot_elem is not None and plot_elem.text:
         metadata["plot"] = plot_elem.text.strip()
+
+    # Extract overview (Emby format)
+    overview_elem = root.find("overview")
+    if overview_elem is not None and overview_elem.text:
+        metadata["overview"] = overview_elem.text.strip()
 
     # Extract IDs
     for uniqueid in root.findall(".//uniqueid"):
@@ -150,11 +156,19 @@ def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, A
     original = parse_nfo_content(original_path)
     translated = parse_nfo_content(translated_path)
 
+    # Check if any description field changed (plot or overview)
+    description_changed = (
+        original["plot"] != translated["plot"]
+        or original["overview"] != translated["overview"]
+    )
+
     return {
         "original": original,
         "translated": translated,
         "title_changed": original["title"] != translated["title"],
         "plot_changed": original["plot"] != translated["plot"],
+        "overview_changed": original["overview"] != translated["overview"],
+        "description_changed": description_changed,
         "ids_preserved": (
             original["tmdb_id"] == translated["tmdb_id"]
             and original["tvdb_id"] == translated["tvdb_id"]
@@ -315,7 +329,7 @@ def verify_translations(
         print(f"Comparison for {nfo_file.name}: {comparison}")
 
         # Check if translation occurred
-        if comparison["title_changed"] or comparison["plot_changed"]:
+        if comparison["title_changed"] or comparison["description_changed"]:
             successful_translations += 1
 
             # Verify we have actual translated content, not just fallback
@@ -327,8 +341,11 @@ def verify_translations(
                 "This indicates TMDB API returned empty translation data."
             )
 
-            # Check that translated description is not empty
-            assert translated_metadata["plot"], (
+            # Check that translated description is not empty (plot or overview)
+            has_description = (
+                translated_metadata["plot"] or translated_metadata["overview"]
+            )
+            assert has_description, (
                 f"Empty translated description in {nfo_file.name}. "
                 "This indicates TMDB API returned empty translation data."
             )
@@ -368,7 +385,7 @@ def is_translated(metadata: dict[str, Any]) -> bool:
         metadata: Parsed metadata dictionary
 
     Returns:
-        True if either title or plot contains Chinese characters
+        True if either title, plot, or overview contains Chinese characters
     """
     title_translated = any(
         "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
@@ -376,7 +393,10 @@ def is_translated(metadata: dict[str, Any]) -> bool:
     plot_translated = any(
         "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
     )
-    return title_translated or plot_translated
+    overview_translated = any(
+        "\u4e00" <= char <= "\u9fff" for char in metadata.get("overview", "")
+    )
+    return title_translated or plot_translated or overview_translated
 
 
 def count_translations(nfo_files: list[Path]) -> int:

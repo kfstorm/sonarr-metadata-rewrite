@@ -2,13 +2,11 @@
 
 import logging
 import shutil
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.metadata_formats import (
     MetadataFormat,
-    get_metadata_format,
     detect_metadata_format,
 )
 from sonarr_metadata_rewrite.models import (
@@ -27,32 +25,18 @@ class MetadataProcessor:
     def __init__(self, settings: Settings, translator: Translator):
         self.settings = settings
         self.translator = translator
-        # Initialize metadata format handler
-        self._metadata_format: MetadataFormat | None = None
 
     def _get_metadata_format(self, nfo_path: Path) -> MetadataFormat | None:
         """Get the appropriate metadata format handler for the file.
-        
+
         Args:
             nfo_path: Path to .nfo file
-            
+
         Returns:
             MetadataFormat instance or None if no suitable format found
         """
-        if self.settings.metadata_format == "auto":
-            # Auto-detect format
-            return detect_metadata_format(nfo_path)
-        else:
-            # Use specified format
-            try:
-                return get_metadata_format(self.settings.metadata_format)
-            except ValueError:
-                # Fall back to auto-detection if specified format is invalid
-                logger.warning(
-                    f"Invalid metadata format '{self.settings.metadata_format}', "
-                    f"falling back to auto-detection"
-                )
-                return detect_metadata_format(nfo_path)
+        # Always auto-detect format to support all formats simultaneously
+        return detect_metadata_format(nfo_path)
 
     def process_file(self, nfo_path: Path) -> ProcessResult:
         """Process a single .nfo file with complete translation workflow.
@@ -120,8 +104,8 @@ class MetadataProcessor:
                 original_content = self._get_original_content_from_backup(nfo_path)
                 if original_content:
                     original_title, original_description = original_content
-                    current_title, current_description = metadata_format.extract_content(
-                        nfo_path
+                    current_title, current_description = (
+                        metadata_format.extract_content(nfo_path)
                     )
 
                     # Only revert if current content is different from original
@@ -214,7 +198,7 @@ class MetadataProcessor:
 
     def _extract_tmdb_ids(self, nfo_path: Path) -> TmdbIds | None:
         """Extract TMDB IDs from .nfo XML file.
-        
+
         DEPRECATED: Use metadata format handler instead.
         This method is kept for backward compatibility.
 
@@ -231,7 +215,7 @@ class MetadataProcessor:
 
     def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
         """Extract original title and description from .nfo file.
-        
+
         DEPRECATED: Use metadata format handler instead.
         This method is kept for backward compatibility.
 
@@ -247,7 +231,10 @@ class MetadataProcessor:
         return "", ""
 
     def _apply_fallback_to_translation(
-        self, nfo_path: Path, translation: TranslatedContent, metadata_format: MetadataFormat
+        self,
+        nfo_path: Path,
+        translation: TranslatedContent,
+        metadata_format: MetadataFormat,
     ) -> TranslatedContent:
         """Apply fallback logic to translation with empty fields.
 

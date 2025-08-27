@@ -121,24 +121,24 @@ Metadata translation service with Click framework providing:
    - Immediate processing of .nfo file creation/modification events
    - Recursive directory watching with event filtering
 
-6. **FileScanner** (`file_scanner.py`)
+7. **FileScanner** (`file_scanner.py`)
    - Periodic directory scanning for batch processing
    - Configurable scan intervals for existing file processing
    - Thread-based background scanning with graceful shutdown
 
-7. **Configuration** (`config.py`)
+8. **Configuration** (`config.py`)
    - Pydantic Settings-based configuration management
    - Environment variable loading with .env file support
    - Comprehensive validation for all required settings
 
-8. **Data Models** (`models.py`)
+9. **Data Models** (`models.py`)
    - TmdbIds: TMDB identifier structures for series/episodes
    - TranslatedContent: Translated metadata containers
    - ProcessResult: Processing outcome tracking with success/failure states
 
-9. **Version Management** (`_version.py`)
-   - Hatch-generated version file from VCS tags
-   - Dynamic version handling with fallback for development
+10. **Version Management** (`_version.py`)
+    - Hatch-generated version file from VCS tags
+    - Dynamic version handling with fallback for development
 
 ### TMDB API Integration Design
 

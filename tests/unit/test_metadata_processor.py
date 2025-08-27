@@ -148,7 +148,7 @@ def test_process_file_nonexistent_file(
         result,
         expected_success=False,
         expected_file_modified=False,
-        expected_message_contains="Unsupported metadata format",  # This should also be "Unsupported" because file can't be read/parsed
+        expected_message_contains="Unsupported metadata format",  # Should be "Unsupported"
     )
 
 
@@ -203,8 +203,10 @@ def test_apply_fallback_to_translation_no_fallback_needed(
     # Get the metadata format for this file
     metadata_format = processor._get_metadata_format(test_path)
     assert metadata_format is not None
-    
-    result = processor._apply_fallback_to_translation(test_path, translation, metadata_format)
+
+    result = processor._apply_fallback_to_translation(
+        test_path, translation, metadata_format
+    )
 
     # Should return the same translation since both fields are present
     assert result.title == "完整标题"
@@ -226,8 +228,10 @@ def test_apply_fallback_to_translation_empty_title(
     # Get the metadata format for this file
     metadata_format = processor._get_metadata_format(test_path)
     assert metadata_format is not None
-    
-    result = processor._apply_fallback_to_translation(test_path, translation, metadata_format)
+
+    result = processor._apply_fallback_to_translation(
+        test_path, translation, metadata_format
+    )
 
     # Should use original title but keep translated description
     assert result.title == "Breaking Bad"  # Original title from test data
@@ -249,8 +253,10 @@ def test_apply_fallback_to_translation_empty_description(
     # Get the metadata format for this file
     metadata_format = processor._get_metadata_format(test_path)
     assert metadata_format is not None
-    
-    result = processor._apply_fallback_to_translation(test_path, translation, metadata_format)
+
+    result = processor._apply_fallback_to_translation(
+        test_path, translation, metadata_format
+    )
 
     # Should use translated title but fallback to original description
     assert result.title == "绝命毒师"  # Translated title
@@ -274,8 +280,10 @@ def test_apply_fallback_to_translation_both_empty(
     # Get the metadata format for this file
     metadata_format = processor._get_metadata_format(test_path)
     assert metadata_format is not None
-    
-    result = processor._apply_fallback_to_translation(test_path, translation, metadata_format)
+
+    result = processor._apply_fallback_to_translation(
+        test_path, translation, metadata_format
+    )
 
     # Should use both original title and description
     assert result.title == "Breaking Bad"  # Original title from test data

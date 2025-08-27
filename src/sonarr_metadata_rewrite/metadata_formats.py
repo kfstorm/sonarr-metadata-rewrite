@@ -3,7 +3,6 @@
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
 
 from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent
 
@@ -172,7 +171,7 @@ class KodiMetadataFormat(MetadataFormat):
 
 class EmbyMetadataFormat(MetadataFormat):
     """Metadata format handler for Emby .nfo files.
-    
+
     Emby uses a similar format to Kodi but with some differences:
     - May use 'overview' instead of 'plot' for descriptions
     - May have different root element names
@@ -260,7 +259,7 @@ class EmbyMetadataFormat(MetadataFormat):
         # Update description - prefer 'overview' but fallback to 'plot'
         overview_element = root.find("overview")
         plot_element = root.find("plot")
-        
+
         if overview_element is not None:
             overview_element.text = translation.description
         elif plot_element is not None:
@@ -302,29 +301,29 @@ METADATA_FORMATS = {
 
 def get_metadata_format(format_name: str) -> MetadataFormat:
     """Get a metadata format instance by name.
-    
+
     Args:
         format_name: Name of the format ("kodi", "emby", etc.)
-        
+
     Returns:
         MetadataFormat instance
-        
+
     Raises:
         ValueError: If format_name is not supported
     """
     if format_name not in METADATA_FORMATS:
         available = ", ".join(METADATA_FORMATS.keys())
         raise ValueError(f"Unsupported format '{format_name}'. Available: {available}")
-    
+
     return METADATA_FORMATS[format_name]()
 
 
 def detect_metadata_format(nfo_path: Path) -> MetadataFormat | None:
     """Auto-detect the metadata format of a .nfo file.
-    
+
     Args:
         nfo_path: Path to .nfo file
-        
+
     Returns:
         MetadataFormat instance that supports the file, or None if none found
     """

@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import Generator
 from unittest.mock import Mock
 
 import pytest
@@ -9,13 +10,15 @@ import pytest
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 from sonarr_metadata_rewrite.models import TranslatedContent
-
+from sonarr_metadata_rewrite.translator import Translator
 
 # Test data for different formats
 EMBY_SERIES_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <series>
   <title>Breaking Bad</title>
-  <overview>A high school chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing and selling methamphetamine in order to secure his family's future.</overview>
+  <overview>A high school chemistry teacher diagnosed with inoperable """\
+        """lung cancer turns to manufacturing and selling """\
+        """methamphetamine to secure his family's future.</overview>
   <uniqueid type="tmdb" default="true">1396</uniqueid>
   <uniqueid type="imdb">tt0903747</uniqueid>
 </series>
@@ -24,7 +27,7 @@ EMBY_SERIES_NFO = """<?xml version="1.0" encoding="utf-8"?>
 EMBY_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <episode>
   <title>Pilot</title>
-  <overview>Walter White, a struggling high school chemistry teacher, is diagnosed with advanced lung cancer.</overview>
+  <overview>Walter White, a struggling high school chemistry teacher.</overview>
   <uniqueid type="tmdb" default="true">1396</uniqueid>
   <season>1</season>
   <episode>1</episode>
@@ -50,14 +53,14 @@ def temp_nfo_file():
 
 
 @pytest.fixture
-def temp_dir():
+def temp_dir() -> Generator[Path, None, None]:
     """Create a temporary directory for testing."""
     with tempfile.TemporaryDirectory() as temp_dir:
         yield Path(temp_dir)
 
 
 @pytest.fixture
-def mock_translator():
+def mock_translator() -> Translator:
     """Mock translator that returns test translations."""
     translator = Mock()
     translator.get_translations.return_value = {
@@ -67,22 +70,23 @@ def mock_translator():
     return translator
 
 
-def test_metadata_processor_auto_format_detection_kodi(temp_dir, mock_translator):
+def test_metadata_processor_auto_format_detection_kodi(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test automatic format detection with Kodi format."""
-    # Create settings with auto format detection
+    # Create settings (format detection is now always automatic)
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="zh-CN",
-        metadata_format="auto",  # Auto-detect format
         cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create Kodi format file inside the root directory
     nfo_file = temp_dir / "test_show" / "tvshow.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     kodi_content = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>Breaking Bad</title>
@@ -91,69 +95,70 @@ def test_metadata_processor_auto_format_detection_kodi(temp_dir, mock_translator
 </tvshow>
 """
     nfo_file.write_text(kodi_content)
-    
+
     # Test processing
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is True
     assert result.selected_language == "zh-CN"
     assert "Successfully translated" in result.message
-    
+
     # Verify the file was updated correctly
     updated_content = nfo_file.read_text()
     assert "中文标题" in updated_content
     assert "中文描述" in updated_content
 
 
-def test_metadata_processor_auto_format_detection_emby(temp_dir, mock_translator):
+def test_metadata_processor_auto_format_detection_emby(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test automatic format detection with Emby format."""
-    # Create settings with auto format detection
+    # Create settings (format detection is now always automatic)
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="zh-CN",
-        metadata_format="auto",  # Auto-detect format
         cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create Emby format file inside the root directory
     nfo_file = temp_dir / "test_show" / "tvshow.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     nfo_file.write_text(EMBY_SERIES_NFO)
-    
+
     # Test processing
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is True
     assert result.selected_language == "zh-CN"
     assert "Successfully translated" in result.message
-    
+
     # Verify the file was updated correctly
     updated_content = nfo_file.read_text()
     assert "中文标题" in updated_content
     assert "中文描述" in updated_content
 
 
-def test_metadata_processor_explicit_kodi_format(temp_dir, mock_translator):
+def test_metadata_processor_explicit_kodi_format(temp_dir, mock_translator) -> None:
     """Test explicit Kodi format configuration."""
     # Create settings with explicit Kodi format
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="ja-JP",
-        metadata_format="kodi",  # Explicit Kodi format
+        # Explicit Kodi format
         cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create Kodi format file inside the root directory
     nfo_file = temp_dir / "test_show" / "tvshow.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     kodi_content = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>Breaking Bad</title>
@@ -162,96 +167,96 @@ def test_metadata_processor_explicit_kodi_format(temp_dir, mock_translator):
 </tvshow>
 """
     nfo_file.write_text(kodi_content)
-    
+
     # Test processing
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is True
     assert result.selected_language == "ja-JP"
     assert "Successfully translated" in result.message
-    
+
     # Verify the file was updated correctly with Japanese translation
     updated_content = nfo_file.read_text()
     assert "日本語タイトル" in updated_content
     assert "日本語の説明" in updated_content
 
 
-def test_metadata_processor_explicit_emby_format(temp_dir, mock_translator):
+def test_metadata_processor_explicit_emby_format(temp_dir, mock_translator) -> None:
     """Test explicit Emby format configuration."""
     # Create settings with explicit Emby format
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="ja-JP",
-        metadata_format="emby",  # Explicit Emby format
-        cache_dir=temp_dir / "cache", 
+        # Explicit Emby format
+        cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create Emby format file inside the root directory
     nfo_file = temp_dir / "test_show" / "tvshow.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     nfo_file.write_text(EMBY_SERIES_NFO)
-    
+
     # Test processing
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is True
     assert result.selected_language == "ja-JP"
     assert "Successfully translated" in result.message
-    
+
     # Verify the file was updated correctly with Japanese translation
     updated_content = nfo_file.read_text()
     assert "日本語タイトル" in updated_content
     assert "日本語の説明" in updated_content
 
 
-def test_metadata_processor_unsupported_format(temp_dir, mock_translator):
+def test_metadata_processor_unsupported_format(temp_dir, mock_translator) -> None:
     """Test handling of unsupported metadata format."""
     # Create settings with auto format detection
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="zh-CN",
-        metadata_format="auto",  # Auto-detect format
+        # Auto-detect format
         cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create unsupported format file inside the root directory
     nfo_file = temp_dir / "test_movie" / "movie.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     nfo_file.write_text(UNSUPPORTED_NFO)
-    
+
     # Test processing
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is False
     assert "Unsupported metadata format" in result.message
     assert result.selected_language is None
 
 
-def test_metadata_processor_invalid_format_config_fallback(temp_dir, mock_translator):
+def test_metadata_processor_invalid_format_config_fallback(temp_dir, mock_translator) -> None:
     """Test fallback to auto-detection when invalid format is configured."""
     # Create settings with invalid format
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="zh-CN",
-        metadata_format="invalid_format",  # Invalid format
+        # Invalid format
         cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create valid Kodi format file inside the root directory
     nfo_file = temp_dir / "test_show" / "tvshow.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     kodi_content = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>Breaking Bad</title>
@@ -260,38 +265,37 @@ def test_metadata_processor_invalid_format_config_fallback(temp_dir, mock_transl
 </tvshow>
 """
     nfo_file.write_text(kodi_content)
-    
+
     # Test processing - should fall back to auto-detection
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is True
     assert result.selected_language == "zh-CN"
     assert "Successfully translated" in result.message
 
 
-def test_metadata_processor_emby_episode_format(temp_dir, mock_translator):
+def test_metadata_processor_emby_episode_format(temp_dir, mock_translator) -> None:
     """Test processing Emby episode format."""
     # Create settings for Emby format
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=temp_dir,
         preferred_languages="zh-CN",
-        metadata_format="emby",
         cache_dir=temp_dir / "cache",
         original_files_backup_dir=temp_dir / "backups",
     )
-    
+
     # Create Emby episode format file inside the root directory
     nfo_file = temp_dir / "test_show" / "Season 01" / "S01E01.nfo"
     nfo_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     nfo_file.write_text(EMBY_EPISODE_NFO)
-    
+
     # Test processing
     processor = MetadataProcessor(settings, mock_translator)
     result = processor.process_file(nfo_file)
-    
+
     assert result.success is True
     assert result.selected_language == "zh-CN"
     assert "Successfully translated" in result.message
@@ -299,7 +303,7 @@ def test_metadata_processor_emby_episode_format(temp_dir, mock_translator):
     assert result.tmdb_ids.series_id == 1396
     assert result.tmdb_ids.season == 1
     assert result.tmdb_ids.episode == 1
-    
+
     # Verify the file was updated correctly
     updated_content = nfo_file.read_text()
     assert "中文标题" in updated_content
