@@ -69,6 +69,9 @@ if [ "$CHECK_ONLY" = true ]; then
     RUFF_ARGS="check"
     RUFF_NAME="Ruff (linting check)"
     RUFF_EMOJI="🔎"
+    MARKDOWN_ARGS="scan *.md"
+    MARKDOWN_NAME="PyMarkdownLnt (markdown linting check)"
+    MARKDOWN_EMOJI="📝"
 else
     BLACK_ARGS="."
     BLACK_NAME="Black (code formatting)"
@@ -76,6 +79,9 @@ else
     RUFF_ARGS="check --fix"
     RUFF_NAME="Ruff (linting with auto-fix)"
     RUFF_EMOJI="🔧"
+    MARKDOWN_ARGS="fix *.md"
+    MARKDOWN_NAME="PyMarkdownLnt (markdown linting with auto-fix)"
+    MARKDOWN_EMOJI="📝"
 fi
 
 # Black check/format
@@ -103,6 +109,9 @@ run_check "Tach (dependency validation)" "uv run tach check" "📦"
 
 # Tach external dependencies validation (no auto-fix available)
 run_check "Tach (external dependencies)" "uv run tach check-external" "🔗"
+
+# Markdown linting/fixing
+run_check "$MARKDOWN_NAME" "uv run pymarkdown $MARKDOWN_ARGS" "$MARKDOWN_EMOJI"
 
 echo "=================================="
 if [ "$overall_success" = true ]; then

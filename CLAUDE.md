@@ -1,16 +1,24 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
 ## Project Overview
 
-Sonarr Metadata Rewrite - A compatibility layer that monitors Sonarr-generated .nfo files and overwrites them with TMDB translations in desired languages. This addresses [Sonarr Issue #269](https://github.com/Sonarr/Sonarr/issues/269) which requests multilingual metadata support.
+Sonarr Metadata Rewrite - A compatibility layer that monitors
+Sonarr-generated .nfo files and overwrites them with TMDB translations in
+desired languages. This addresses [Sonarr Issue #269](
+https://github.com/Sonarr/Sonarr/issues/269) which requests multilingual
+metadata support.
 
-The project includes a metadata translation service with real-time file monitoring, TMDB API integration, intelligent caching, comprehensive error handling, and reprocessing avoidance capabilities.
+The project includes a metadata translation service with real-time file
+monitoring, TMDB API integration, intelligent caching, comprehensive error
+handling, and reprocessing avoidance capabilities.
 
 ## Essential Development Commands
 
 ### Setup and Environment
+
 ```bash
 # Initial setup (installs dependencies and pre-commit hooks)
 ./scripts/setup-dev.sh
@@ -23,6 +31,7 @@ echo "TMDB_API_KEY=your_api_key_here" > .env
 ```
 
 ### Code Quality and Testing
+
 ```bash
 # Run all linting checks and fixes
 ./scripts/lint.sh
@@ -41,6 +50,7 @@ echo "TMDB_API_KEY=your_api_key_here" > .env
 ```
 
 ### Development Usage
+
 ```bash
 # Run in development mode (requires .env file with TMDB_API_KEY)
 uv run sonarr-metadata-rewrite
@@ -58,17 +68,23 @@ uv run sonarr-metadata-rewrite
 ## Technical Architecture
 
 ### Current Implementation
+
 Metadata translation service with Click framework providing:
-- Entry point: `sonarr_metadata_rewrite.main:cli` command that runs a persistent service (CLI: `sonarr-metadata-rewrite`)
+
+- Entry point: `sonarr_metadata_rewrite.main:cli` command that runs a
+  persistent service (CLI: `sonarr-metadata-rewrite`)
 - Real-time file monitoring with watchdog for immediate translation
 - Periodic directory scanning for batch processing of existing files
-- TMDB API integration with intelligent caching (explicit rate limiting not yet implemented)
+- TMDB API integration with intelligent caching (explicit rate limiting not
+  yet implemented)
 - Reprocessing avoidance to prevent unnecessary file updates and API calls
 - Pydantic-based configuration with comprehensive settings validation
 - Atomic file operations with optional backup functionality
-- Project structure follows Python package standards with src/ layout and _version.py
+- Project structure follows Python package standards with src/ layout and
+  _version.py
 
 ### Core Components
+
 1. **CLI Interface** (`main.py`)
    - Click-based command that runs a persistent service
    - Comprehensive configuration validation on startup
@@ -118,22 +134,33 @@ Metadata translation service with Click framework providing:
    - Dynamic version handling with fallback for development
 
 ### TMDB API Integration Design
-- **Target Endpoints**: `/tv/{series_id}/translations` and `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`
-- **Rate Limits**: TMDB has rate limits, but no explicit rate limiting is currently implemented in the code
-- **Language Codes**: ISO 639-1 format with optional country codes (e.g., "zh-CN", "ja-JP")
-- **ID Extraction**: TMDB IDs from `<uniqueid type="tmdb">` XML tags in .nfo files
+
+- **Target Endpoints**: `/tv/{series_id}/translations` and
+  `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`
+- **Rate Limits**: TMDB has rate limits, but no explicit rate limiting is
+  currently implemented in the code
+- **Language Codes**: ISO 639-1 format with optional country codes (e.g.,
+  "zh-CN", "ja-JP")
+- **ID Extraction**: TMDB IDs from `<uniqueid type="tmdb">` XML tags in
+  .nfo files
 
 ### Development Tooling
+
 - **Package Manager**: uv with pyproject.toml dependency management
-- **Code Quality**: Black (line-length: 88), Ruff (E/W/F/I/B/C4/UP rules), MyPy (strict typing) with Pydantic plugin
-- **Architecture**: Tach module dependency enforcement with tach.toml for 9 modules (including _version)
-- **Testing**: pytest with coverage, separate unit/integration test directories with shared container infrastructure
-- **Integration Testing**: Docker-based Sonarr integration with comprehensive test scenarios
+- **Code Quality**: Black (line-length: 88), Ruff (E/W/F/I/B/C4/UP rules),
+  MyPy (strict typing) with Pydantic plugin
+- **Architecture**: Tach module dependency enforcement with tach.toml for 9
+  modules (including _version)
+- **Testing**: pytest with coverage, separate unit/integration test
+  directories with shared container infrastructure
+- **Integration Testing**: Docker-based Sonarr integration with comprehensive
+  test scenarios
 - **Dead Code**: Vulture with whitelist support
 - **Automation**: pre-commit hooks for all quality checks
 
 ### File Structure
-```
+
+```text
 src/sonarr_metadata_rewrite/
 ├── __init__.py (version definition)
 ├── _version.py (generated version file)
@@ -154,10 +181,15 @@ scripts/ (development automation)
 ```
 
 ### Key Technical Constraints
+
 - **Python**: >=3.10 with strict typing enforcement
-- **Dependencies**: Core runtime deps (Click, Pydantic, httpx, watchdog, diskcache)
-- **TMDB Rate Limits**: TMDB has rate limits, but explicit rate limiting is not yet implemented - relies on caching to reduce API calls
+- **Dependencies**: Core runtime deps (Click, Pydantic, httpx, watchdog,
+  diskcache)
+- **TMDB Rate Limits**: TMDB has rate limits, but explicit rate limiting is
+  not yet implemented - relies on caching to reduce API calls
 - **File Format**: Sonarr generates XML .nfo files with TMDB IDs
 - **Target Files**: `tvshow.nfo` (series) and episode-specific .nfo files
-- **Service Architecture**: Long-running daemon process with graceful shutdown support
-- **Reprocessing Avoidance**: Implemented to prevent unnecessary file updates and API calls
+- **Service Architecture**: Long-running daemon process with graceful
+  shutdown support
+- **Reprocessing Avoidance**: Implemented to prevent unnecessary file
+  updates and API calls
