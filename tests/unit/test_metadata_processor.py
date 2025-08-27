@@ -719,15 +719,24 @@ def test_file_ownership_preserved_during_rewrite(
         )
     }
 
-    # Track calls to os.chown to verify ownership preservation is attempted
+    # Track calls to os.chown and os.chmod to verify ownership/permissions preservation is attempted
     chown_calls = []
+    chmod_calls = []
     original_chown = os.chown
+    original_chmod = os.chmod
 
     def mock_chown(path, uid, gid):
         chown_calls.append((str(path), uid, gid))
         return original_chown(path, uid, gid)
 
-    with patch("os.chown", side_effect=mock_chown):
+    def mock_chmod(*args, **kwargs):
+        # Only track calls to .tmp files (our metadata rewrite calls)
+        if len(args) >= 1 and str(args[0]).endswith('.tmp'):
+            chmod_calls.append(args)
+        return original_chmod(*args, **kwargs)
+
+    with patch("sonarr_metadata_rewrite.metadata_processor.os.chown", side_effect=mock_chown), \
+         patch("sonarr_metadata_rewrite.metadata_processor.os.chmod", side_effect=mock_chmod):
         result = processor.process_file(nfo_path)
 
     # Should succeed
@@ -745,10 +754,17 @@ def test_file_ownership_preserved_during_rewrite(
     assert chown_uid == original_stat.st_uid
     assert chown_gid == original_stat.st_gid
 
-    # Verify final file has correct ownership
+    # Verify that os.chmod was called with original permissions
+    assert len(chmod_calls) == 1
+    chmod_path, chmod_mode = chmod_calls[0]
+    assert str(chmod_path).endswith(".nfo.tmp")
+    assert chmod_mode == original_stat.st_mode
+
+    # Verify final file has correct ownership and permissions
     final_stat = nfo_path.stat()
     assert final_stat.st_uid == original_stat.st_uid
     assert final_stat.st_gid == original_stat.st_gid
+    assert final_stat.st_mode == original_stat.st_mode
 
 
 def test_graceful_handling_of_ownership_permission_errors(

@@ -28,7 +28,11 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Create non-root user
+# Environment variables for user/group configuration (LinuxServer.io style)
+ENV PUID=1000
+ENV PGID=1000
+
+# Create non-root user (but start as root to allow privilege dropping)
 RUN groupadd --gid 1000 app && \
     useradd --uid 1000 --gid app --shell /bin/bash --create-home app
 
@@ -38,11 +42,11 @@ COPY --from=builder --chown=app:app /app/.venv /app/.venv
 # Create directories for the application
 RUN mkdir -p /app/data && chown -R app:app /app
 
-# Switch to non-root user
-USER app
-
 # Set working directory
 WORKDIR /app
+
+# Note: Starting as root to allow PUID/PGID privilege dropping
+# The application will drop privileges based on PUID/PGID env vars
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

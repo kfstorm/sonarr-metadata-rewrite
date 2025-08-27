@@ -336,13 +336,14 @@ class MetadataProcessor:
             ET.indent(tree, space="  ", level=0)
             tree.write(temp_path, encoding="utf-8", xml_declaration=True, method="xml")
 
-            # Preserve original file ownership on temporary file
+            # Preserve original file ownership and permissions on temporary file
             try:
                 os.chown(temp_path, original_stat.st_uid, original_stat.st_gid)
+                os.chmod(temp_path, original_stat.st_mode)
             except (OSError, PermissionError) as e:
-                # Log warning but continue - ownership preservation is best-effort
+                # Log warning but continue - ownership/permissions preservation is best-effort
                 logger.warning(
-                    f"Could not preserve file ownership for {nfo_path}: {e}. "
+                    f"Could not preserve file ownership/permissions for {nfo_path}: {e}. "
                     "This may happen in restricted environments."
                 )
 
