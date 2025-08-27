@@ -36,6 +36,12 @@ jobs:
     - name: Run unit tests
       run: ./scripts/run-unit-tests.sh
 
+    - name: Build application wheel for Docker
+      run: uv build
+
+    - name: Build Docker image for integration tests
+      run: docker build -t sonarr-metadata-rewrite:test .
+
     - name: Run integration tests
       env:
         TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}

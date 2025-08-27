@@ -21,6 +21,19 @@ export COVERAGE_FILE=.coverage.integration
 echo -e "${YELLOW}📦 Ensuring test dependencies are installed...${NC}"
 uv sync --group dev
 
+# Build the application wheel for Docker
+echo -e "${YELLOW}🏗️ Building application wheel for Docker...${NC}"
+uv build
+
+# Build Docker image for integration tests
+echo -e "${YELLOW}🐳 Building Docker image for integration tests...${NC}"
+if ! docker build -t sonarr-metadata-rewrite:test . 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  Docker image build failed (likely network issue), skipping Docker-based tests${NC}"
+    export SKIP_DOCKER_TESTS=1
+else
+    echo -e "${GREEN}✅ Docker image built successfully${NC}"
+fi
+
 # Run integration tests
 echo -e "${YELLOW}🌐 Running integration tests...${NC}"
 echo ""

@@ -10,8 +10,8 @@ import pytest
 
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
-from tests.integration.fixtures.subprocess_service_manager import (
-    SubprocessServiceManager,
+from tests.integration.fixtures.docker_service_manager import (
+    DockerServiceManager,
 )
 
 # Breaking Bad TVDB ID (well-known series with good metadata)
@@ -258,10 +258,10 @@ class ServiceRunner:
         # Apply service-specific configuration
         env_overrides.update(service_config)
 
-        self.service = SubprocessServiceManager(env_overrides=env_overrides)
+        self.service = DockerServiceManager(env_overrides=env_overrides)
         self.startup_wait = startup_wait
 
-    def __enter__(self) -> SubprocessServiceManager:
+    def __enter__(self) -> DockerServiceManager:
         self.service.start()
         if self.service.is_running():
             time.sleep(self.startup_wait)
