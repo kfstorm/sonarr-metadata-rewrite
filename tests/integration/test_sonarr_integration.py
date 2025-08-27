@@ -7,9 +7,13 @@ import pytest
 
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.test_helpers import (
+    count_translations,
+    is_translated,
+    metadata_matches,
     parse_nfo_content,
     run_service_with_config,
     verify_translations,
+    wait_and_verify_translations,
 )
 
 
@@ -43,6 +47,15 @@ from tests.integration.test_helpers import (
             "full_with_refresh",
             id="series_refresh",
         ),
+        pytest.param(
+            {
+                "ENABLE_FILE_MONITOR": "true",
+                "ENABLE_FILE_SCANNER": "true",
+                "PERIODIC_SCAN_INTERVAL_SECONDS": "5",
+            },
+            "rollback_test",
+            id="rollback_mechanism",
+        ),
     ],
 )
 @pytest.mark.integration
@@ -75,23 +88,8 @@ def test_integration_workflow(
             print("Waiting for initial translation...")
             time.sleep(8)
 
-            # Store initial translated state
-            first_translations = {}
-            initial_translations = 0
-            for nfo_file in nfo_files:
-                metadata = parse_nfo_content(nfo_file)
-                first_translations[nfo_file] = metadata
-
-                # Check if content appears to be translated (Chinese chars)
-                title_translated = any(
-                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
-                )
-                plot_translated = any(
-                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
-                )
-
-                if title_translated or plot_translated:
-                    initial_translations += 1
+            # Check initial translations
+            initial_translations = count_translations(nfo_files)
 
             if initial_translations == 0:
                 print("No initial translations detected, waiting longer...")
@@ -107,19 +105,12 @@ def test_integration_workflow(
             time.sleep(20)
 
             # Verify retranslations
-            retranslations = 0
+            retranslations = count_translations(nfo_files)
+
+            # Ensure translated content is not empty
             for nfo_file in nfo_files:
                 metadata = parse_nfo_content(nfo_file)
-
-                title_translated = any(
-                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
-                )
-                plot_translated = any(
-                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
-                )
-
-                if title_translated or plot_translated:
-                    retranslations += 1
+                if is_translated(metadata):
                     assert metadata["title"], f"Empty title in {nfo_file.name}"
                     assert metadata["plot"], f"Empty plot in {nfo_file.name}"
 
@@ -127,6 +118,66 @@ def test_integration_workflow(
                 retranslations > 0
             ), "No .nfo files were retranslated after series refresh"
             print(f"Series refresh: {retranslations}/{len(nfo_files)} retranslated")
+
+    elif test_behavior == "rollback_test":
+        # Rollback test workflow - translate, stop service, refresh, verify rollback
+        print("Starting rollback test workflow...")
+
+        # Store original metadata before any translation
+        print("Storing original metadata for rollback verification...")
+        original_metadata = {}
+        for nfo_file in nfo_files:
+            original_metadata[nfo_file] = parse_nfo_content(nfo_file)
+
+        with run_service_with_config(temp_media_root, service_config) as service:
+            assert service.is_running(), "Service should be running"
+
+            # Wait for initial translation
+            print("Waiting for initial translation...")
+            time.sleep(8)
+
+            # Verify translations occurred
+            translations = wait_and_verify_translations(nfo_files, 0, min_expected=1)
+            print(f"Initial translations: {translations}/{len(nfo_files)} translated")
+
+        # Service is now stopped - verify service shutdown
+        print("Service stopped - proceeding with rollback test...")
+
+        # Delete existing .nfo files to force Sonarr to regenerate them
+        print("Deleting existing .nfo files to force regeneration...")
+        for nfo_file in nfo_files:
+            if nfo_file.exists():
+                nfo_file.unlink()
+                print(f"Deleted: {nfo_file}")
+
+        # Trigger series refresh to regenerate original .nfo files
+        print("Triggering series refresh to restore original metadata...")
+        refresh_success = configured_sonarr_container.refresh_series(series_id)
+        assert refresh_success, "Failed to trigger series refresh for rollback"
+
+        # Wait for Sonarr to regenerate original files
+        print("Waiting for Sonarr to restore original files...")
+        time.sleep(15)
+
+        # Verify rollback - files should match original metadata
+        print("Verifying rollback to original metadata...")
+        rollback_verified = 0
+        for nfo_file in nfo_files:
+            current_metadata = parse_nfo_content(nfo_file)
+            original = original_metadata[nfo_file]
+
+            if metadata_matches(current_metadata, original):
+                rollback_verified += 1
+                print(f"✅ Rollback verified for {nfo_file.name}")
+            else:
+                print(f"❌ Rollback failed for {nfo_file.name}")
+                print(f"   Original title: {original.get('title')}")
+                print(f"   Current title: {current_metadata.get('title')}")
+
+        assert rollback_verified > 0, "No .nfo files were successfully rolled back"
+        print(
+            f"Rollback successful: {rollback_verified}/{len(nfo_files)} files restored"
+        )
 
     else:
         # Standard workflow - start service and test
