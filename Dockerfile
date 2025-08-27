@@ -16,11 +16,9 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies into a virtual environment
 RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy the source code
-COPY src ./src
-
-# Install the project
-RUN uv sync --frozen --no-dev
+# Copy and install the pre-built wheel
+COPY dist/*.whl /tmp/
+RUN uv pip install /tmp/*.whl --no-deps
 
 # Runtime stage
 FROM python:3.10-slim-bookworm AS runtime
