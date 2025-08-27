@@ -354,7 +354,53 @@ class MetadataProcessor:
         """
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
-                return all_translations[preferred_lang]
+                translation = all_translations[preferred_lang]
+                # If translation has both title and description, use it
+                if translation.title and translation.description:
+                    return translation
+                # If translation has incomplete content, try to find a better one
+                # in the same language family before falling back
+                better_translation = self._find_better_translation_in_language_family(
+                    preferred_lang, all_translations
+                )
+                if better_translation:
+                    return better_translation
+                # If no better translation found, return original
+                # (will be handled by fallback logic)
+                return translation
+        return None
+
+    def _find_better_translation_in_language_family(
+        self, preferred_lang: str, all_translations: dict[str, TranslatedContent]
+    ) -> TranslatedContent | None:
+        """Find a better translation in the same language family.
+
+        When the preferred language has incomplete content (e.g., empty title),
+        try to find other translations with the same base language that have
+        complete content.
+
+        Args:
+            preferred_lang: The preferred language code (e.g., "zh-CN")
+            all_translations: All available translations
+
+        Returns:
+            A better translation in the same language family, or None
+        """
+        # Extract base language (e.g., "zh" from "zh-CN")
+        base_lang = preferred_lang.split("-")[0]
+
+        # Look for other translations with the same base language
+        for lang_code, translation in all_translations.items():
+            # Skip the original preferred language (we already checked it)
+            if lang_code == preferred_lang:
+                continue
+
+            # Check if this translation has the same base language
+            if lang_code.split("-")[0] == base_lang:
+                # If this translation has both title and description, it's better
+                if translation.title and translation.description:
+                    return translation
+
         return None
 
     def _get_original_content_from_backup(

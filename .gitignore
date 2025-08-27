@@ -49,3 +49,7 @@ logs/
 .env.development
 .env.test
 .env.production
+
+# Generated files from testing
+cache/
+backups/
