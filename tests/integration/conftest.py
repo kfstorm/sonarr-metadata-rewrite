@@ -15,14 +15,14 @@ from tests.integration.fixtures.sonarr_client import SonarrClient
 TEST_API_KEY = "testkey12345678901234567890"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def temp_media_root() -> Generator[Path, None, None]:
-    """Create temporary media directory for integration tests."""
+    """Create session-wide temporary media directory for Sonarr container and tests."""
     with tempfile.TemporaryDirectory(prefix="sonarr_media_") as temp_dir:
         yield Path(temp_dir)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def temp_config_dir() -> Generator[Path, None, None]:
     """Create temporary config directory for Sonarr container."""
     with tempfile.TemporaryDirectory(prefix="sonarr_config_") as temp_dir:
@@ -51,14 +51,14 @@ def temp_config_dir() -> Generator[Path, None, None]:
         yield temp_path
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def container_manager() -> Generator[ContainerManager, None, None]:
     """Create container manager with automatic cleanup."""
     with ContainerManager() as manager:
         yield manager
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def sonarr_container(
     container_manager: ContainerManager,
     temp_media_root: Path,
@@ -111,3 +111,14 @@ def sonarr_container(
         yield client
     finally:
         client.close()
+
+
+@pytest.fixture(scope="session")
+def configured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
+    """Configure Sonarr metadata settings once per session."""
+    print("Configuring Sonarr metadata settings for session...")
+    metadata_config_success = sonarr_container.configure_metadata_settings()
+    if not metadata_config_success:
+        raise RuntimeError("Failed to configure metadata settings")
+    print("Metadata settings configured successfully")
+    return sonarr_container

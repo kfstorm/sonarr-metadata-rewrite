@@ -17,6 +17,9 @@ The project includes a fully functional metadata translation service with real-t
 
 # Install project in development mode after dependencies change
 uv sync --group dev
+
+# Create .env file with required API key for development and testing
+echo "TMDB_API_KEY=your_api_key_here" > .env
 ```
 
 ### Code Quality and Testing

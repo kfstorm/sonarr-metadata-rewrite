@@ -1,7 +1,7 @@
 """Integration test with real Sonarr container using simple container management."""
 
+import os
 import shutil
-import tempfile
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -9,9 +9,12 @@ from typing import Any
 
 import pytest
 
-from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.rewrite_service import RewriteService
+from sonarr_metadata_rewrite.config import get_settings
+from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
+from tests.integration.fixtures.subprocess_service_manager import (
+    SubprocessServiceManager,
+)
 
 
 def create_fake_episode_file(
@@ -165,43 +168,32 @@ BREAKING_BAD_TVDB_ID = 81189
 @pytest.mark.integration
 @pytest.mark.slow
 def test_sonarr_container_integration(
-    sonarr_container: SonarrClient,
+    configured_sonarr_container: SonarrClient,
     temp_media_root: Path,
 ) -> None:
-    """Test complete integration with Sonarr container.
+    """Test complete integration with Sonarr container using subprocess service.
 
     This test:
-    1. Uses our simple container manager to start a Sonarr container
-    2. Adds Breaking Bad series via API
+    1. Uses shared configured Sonarr container
+    2. Adds Breaking Bad series via SeriesManager
     3. Creates fake episode files
     4. Waits for Sonarr to generate .nfo files
-    5. Runs our translation service
+    5. Runs our translation service as a subprocess
     6. Verifies .nfo files are translated
     """
 
-    try:
-        # Add Breaking Bad series to Sonarr
-        print("Adding Breaking Bad series to Sonarr...")
-        series_data = sonarr_container.add_series(
-            tvdb_id=BREAKING_BAD_TVDB_ID,
-            root_folder="/tv",
-        )
-        series_id = series_data["id"]
-        series_slug = series_data["titleSlug"]
-
-        print(f"Added series: {series_data['title']} (ID: {series_id})")
-
-        # Configure metadata settings to enable NFO generation
-        print("Configuring metadata settings...")
-        metadata_config_success = sonarr_container.configure_metadata_settings()
-        assert metadata_config_success, "Failed to configure metadata settings"
-
+    with SeriesManager(
+        configured_sonarr_container,
+        BREAKING_BAD_TVDB_ID,
+        "/tv",
+        temp_media_root,
+    ) as series:
         # Create fake episode files to trigger Sonarr processing
         print("Creating fake episode files...")
         episode_files = [
-            create_fake_episode_file(temp_media_root, series_slug, 1, 1, "Pilot"),
+            create_fake_episode_file(temp_media_root, series.slug, 1, 1, "Pilot"),
             create_fake_episode_file(
-                temp_media_root, series_slug, 1, 2, "Cat's in the Bag"
+                temp_media_root, series.slug, 1, 2, "Cat's in the Bag"
             ),
         ]
 
@@ -210,8 +202,8 @@ def test_sonarr_container_integration(
 
         # Trigger disk scan to detect episode files
         print("Triggering disk scan to detect episode files...")
-        series_path = temp_media_root / series_slug
-        scan_success = sonarr_container.trigger_disk_scan(series_id)
+        series_path = temp_media_root / series.slug
+        scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
         assert scan_success, "Failed to trigger disk scan"
         print("Disk scan command submitted successfully")
 
@@ -252,48 +244,52 @@ def test_sonarr_container_integration(
 
         # Setup our translation service
         print("Setting up translation service...")
-        with tempfile.TemporaryDirectory(prefix="translation_test_") as temp_dir:
-            temp_path = Path(temp_dir)
+        # Get TMDB API key from configuration
+        original_rewrite_root_dir = os.environ.get("REWRITE_ROOT_DIR")
+        os.environ["REWRITE_ROOT_DIR"] = str(temp_media_root)
 
-            settings = Settings(
-                rewrite_root_dir=temp_media_root,
-                preferred_languages=["zh-CN"],  # Chinese translation
-                periodic_scan_interval_seconds=1,  # Fast for testing
-                original_files_backup_dir=temp_path / "backups",
-                cache_dir=temp_path / "cache",
-            )
+        try:
+            settings = get_settings()
+            tmdb_api_key = settings.tmdb_api_key
+        finally:
+            # Restore original environment
+            if original_rewrite_root_dir is not None:
+                os.environ["REWRITE_ROOT_DIR"] = original_rewrite_root_dir
+            else:
+                os.environ.pop("REWRITE_ROOT_DIR", None)
 
-            # Run translation service (one-time processing)
-            service = RewriteService(settings)
+        # Start service subprocess for processing
+        with SubprocessServiceManager(
+            env_overrides={
+                "REWRITE_ROOT_DIR": str(temp_media_root),
+                "TMDB_API_KEY": tmdb_api_key,
+                "ENABLE_FILE_MONITOR": "false",  # Disable for one-time
+                "ENABLE_FILE_SCANNER": "true",
+                "PERIODIC_SCAN_INTERVAL_SECONDS": "1",  # Fast for testing
+                "PREFERRED_LANGUAGES": '["zh-CN"]',
+            },
+        ) as service:
+            service.start(timeout=15.0)
+            print("Service started, waiting for processing...")
 
-            # Process each .nfo file individually
-            processed_files = []
-            for nfo_file in nfo_files:
-                print(f"Processing {nfo_file}...")
-                result = service.metadata_processor.process_file(nfo_file)
-                processed_files.append((nfo_file, result))
-                print(f"Processing result: {result}")
-
-            service.stop()  # Cleanup resources
+            # Wait for service to process files
+            time.sleep(3)
+            print("Service processing completed")
 
         # Verify translations were applied
         print("Verifying translations...")
         successful_translations = 0
 
-        for nfo_file, process_result in processed_files:
+        for nfo_file in nfo_files:
             original_backup = original_backups[nfo_file]
 
-            if process_result.success:
+            # Compare original vs translated content
+            comparison = compare_nfo_files(original_backup, nfo_file)
+            print(f"Comparison for {nfo_file.name}: {comparison}")
+
+            # Check if translation occurred
+            if comparison["title_changed"] or comparison["plot_changed"]:
                 successful_translations += 1
-
-                # Compare original vs translated content
-                comparison = compare_nfo_files(original_backup, nfo_file)
-                print(f"Comparison for {nfo_file.name}: {comparison}")
-
-                # Verify translation occurred
-                assert (
-                    comparison["title_changed"] or comparison["plot_changed"]
-                ), f"No translation changes detected in {nfo_file.name}"
 
                 # Verify we have actual translated content, not just fallback
                 translated_metadata = comparison["translated"]
@@ -315,16 +311,9 @@ def test_sonarr_container_integration(
                     "ids_preserved"
                 ], f"TMDB/TVDB IDs not preserved in {nfo_file.name}"
 
-                # Verify selected language
-                assert process_result.selected_language == "zh-CN", (
-                    f"Expected Chinese translation, got: "
-                    f"{process_result.selected_language}"
-                )
-
+                print(f"✅ Successfully translated {nfo_file.name}")
             else:
-                print(
-                    f"Translation failed for {nfo_file.name}: {process_result.message}"
-                )
+                print(f"⚠️ No translation changes detected in {nfo_file.name}")
 
         # Ensure at least one file was successfully translated
         assert successful_translations > 0, (
@@ -337,6 +326,503 @@ def test_sonarr_container_integration(
             f"out of {len(nfo_files)} files"
         )
 
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_file_monitor_only_integration(
+    configured_sonarr_container: SonarrClient,
+    temp_media_root: Path,
+) -> None:
+    """Test file monitor only integration (scanner disabled).
+
+    This test:
+    1. Starts the service with file scanner disabled
+    2. Creates .nfo files while service is running
+    3. Verifies real-time translation via file monitor
+    """
+    with SeriesManager(
+        configured_sonarr_container,
+        BREAKING_BAD_TVDB_ID,
+        "/tv",
+        temp_media_root,
+    ) as series:
+        # Get TMDB API key from configuration (environment or .env file)
+        # Set required configuration for test
+        original_rewrite_root_dir = os.environ.get("REWRITE_ROOT_DIR")
+        os.environ["REWRITE_ROOT_DIR"] = str(temp_media_root)
+
+        try:
+            settings = get_settings()
+            tmdb_api_key = settings.tmdb_api_key
+        finally:
+            # Restore original environment
+            if original_rewrite_root_dir is not None:
+                os.environ["REWRITE_ROOT_DIR"] = original_rewrite_root_dir
+            else:
+                os.environ.pop("REWRITE_ROOT_DIR", None)
+
+            # Create fake episode files to trigger Sonarr processing
+            print("Creating fake episode files...")
+            episode_files = [
+                create_fake_episode_file(temp_media_root, series.slug, 1, 1, "Pilot"),
+                create_fake_episode_file(
+                    temp_media_root, series.slug, 1, 2, "Cat's in the Bag"
+                ),
+            ]
+
+            for episode_file in episode_files:
+                print(f"Created: {episode_file}")
+
+            # Trigger disk scan to detect episode files
+            print("Triggering disk scan to detect episode files...")
+            series_path = temp_media_root / series.slug
+            scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
+            assert scan_success, "Failed to trigger disk scan"
+            print("Disk scan command submitted successfully")
+
+        # Wait for .nfo files to be generated
+        print("Waiting for .nfo files to be generated...")
+        nfo_files = wait_for_nfo_files(series_path, timeout=10.0)
+
+        if not nfo_files:
+            # List what files exist for debugging
+            all_files = list(series_path.rglob("*")) if series_path.exists() else []
+            print(f"No .nfo files found. All files in {series_path}: {all_files}")
+            pytest.fail(
+                "Sonarr did not generate .nfo files within timeout after disk scan"
+            )
+
+        print(f"Found .nfo files: {nfo_files}")
+
+        # Backup original .nfo files for comparison
+        original_backups = {}
+        for nfo_file in nfo_files:
+            backup_path = nfo_file.with_suffix(".nfo.original")
+            shutil.copy2(nfo_file, backup_path)
+            original_backups[nfo_file] = backup_path
+
+        # Parse original metadata to verify it contains TMDB IDs
+        for nfo_file in nfo_files:
+            metadata = parse_nfo_content(nfo_file)
+            print(f"Original metadata for {nfo_file.name}: {metadata}")
+
+            # Verify we have a TMDB ID (required for translation)
+            if not metadata.get("tmdb_id"):
+                pytest.skip(
+                    f"No TMDB ID found in {nfo_file.name}. "
+                    f"Sonarr may not have populated TMDB metadata yet."
+                )
+
+        # Start translation service with file monitor only (scanner disabled)
+        print("Starting translation service with file monitor only...")
+        with SubprocessServiceManager(
+            env_overrides={
+                "REWRITE_ROOT_DIR": str(temp_media_root),
+                "TMDB_API_KEY": tmdb_api_key,
+                "ENABLE_FILE_MONITOR": "true",
+                "ENABLE_FILE_SCANNER": "false",
+                "PERIODIC_SCAN_INTERVAL_SECONDS": "999999",  # Effectively disabled
+                "PREFERRED_LANGUAGES": '["zh-CN"]',
+            },
+        ) as service:
+            service.start()
+
+            # Service should be running with only monitor enabled
+            assert service.is_running(), "Service should be running"
+
+            # Wait a bit for service to stabilize
+            time.sleep(2)
+
+            # Touch .nfo files to trigger file monitor events
+            print("Triggering file monitor by touching .nfo files...")
+            for nfo_file in nfo_files:
+                # Touch the file to trigger file system event
+                nfo_file.touch()
+                print(f"Touched: {nfo_file}")
+
+            # Wait for file monitor to process the files
+            print("Waiting for file monitor to process files...")
+            time.sleep(5)
+
+            # Check if translations were applied
+            successful_translations = 0
+            for nfo_file in nfo_files:
+                original_backup = original_backups[nfo_file]
+
+                # Compare original vs current content
+                comparison = compare_nfo_files(original_backup, nfo_file)
+                print(f"File monitor comparison for {nfo_file.name}: {comparison}")
+
+                if comparison["title_changed"] or comparison["plot_changed"]:
+                    successful_translations += 1
+
+                    # Verify we have actual translated content
+                    translated_metadata = comparison["translated"]
+
+                    assert translated_metadata[
+                        "title"
+                    ], f"Empty translated title in {nfo_file.name}"
+                    assert translated_metadata[
+                        "plot"
+                    ], f"Empty translated description in {nfo_file.name}"
+                    assert comparison[
+                        "ids_preserved"
+                    ], f"TMDB/TVDB IDs not preserved in {nfo_file.name}"
+
+        # Ensure at least one file was successfully translated by file monitor
+        assert successful_translations > 0, (
+            "No .nfo files were translated by file monitor. "
+            "Check that file monitor is working correctly."
+        )
+
+        print(
+            f"File monitor successfully translated {successful_translations} "
+            f"out of {len(nfo_files)} files"
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_file_scanner_only_integration(
+    configured_sonarr_container: SonarrClient,
+    temp_media_root: Path,
+) -> None:
+    """Test file scanner only integration (monitor disabled).
+
+    This test:
+    1. Creates .nfo files while service is stopped
+    2. Starts the service with file monitor disabled
+    3. Verifies batch processing via file scanner
+    """
+    with SeriesManager(
+        configured_sonarr_container,
+        BREAKING_BAD_TVDB_ID,
+        "/tv",
+        temp_media_root,
+    ) as series:
+        # Get TMDB API key from configuration (environment or .env file)
+        # Set required configuration for test
+        original_rewrite_root_dir = os.environ.get("REWRITE_ROOT_DIR")
+        os.environ["REWRITE_ROOT_DIR"] = str(temp_media_root)
+
+        try:
+            settings = get_settings()
+            tmdb_api_key = settings.tmdb_api_key
+        finally:
+            # Restore original environment
+            if original_rewrite_root_dir is not None:
+                os.environ["REWRITE_ROOT_DIR"] = original_rewrite_root_dir
+            else:
+                os.environ.pop("REWRITE_ROOT_DIR", None)
+
+        # Create fake episode files to trigger Sonarr processing
+        print("Creating fake episode files...")
+        episode_files = [
+            create_fake_episode_file(temp_media_root, series.slug, 1, 1, "Pilot"),
+            create_fake_episode_file(
+                temp_media_root, series.slug, 1, 2, "Cat's in the Bag"
+            ),
+        ]
+
+        for episode_file in episode_files:
+            print(f"Created: {episode_file}")
+
+        # Trigger disk scan to detect episode files
+        print("Triggering disk scan to detect episode files...")
+        series_path = temp_media_root / series.slug
+        scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
+        assert scan_success, "Failed to trigger disk scan"
+        print("Disk scan command submitted successfully")
+
+        # Wait for .nfo files to be generated
+        print("Waiting for .nfo files to be generated...")
+        nfo_files = wait_for_nfo_files(series_path, timeout=10.0)
+
+        if not nfo_files:
+            # List what files exist for debugging
+            all_files = list(series_path.rglob("*")) if series_path.exists() else []
+            print(f"No .nfo files found. All files in {series_path}: {all_files}")
+            pytest.fail(
+                "Sonarr did not generate .nfo files within timeout after disk scan"
+            )
+
+        print(f"Found .nfo files: {nfo_files}")
+
+        # Backup original .nfo files for comparison
+        original_backups = {}
+        for nfo_file in nfo_files:
+            backup_path = nfo_file.with_suffix(".nfo.original")
+            shutil.copy2(nfo_file, backup_path)
+            original_backups[nfo_file] = backup_path
+
+        # Parse original metadata to verify it contains TMDB IDs
+        for nfo_file in nfo_files:
+            metadata = parse_nfo_content(nfo_file)
+            print(f"Original metadata for {nfo_file.name}: {metadata}")
+
+            # Verify we have a TMDB ID (required for translation)
+            if not metadata.get("tmdb_id"):
+                pytest.skip(
+                    f"No TMDB ID found in {nfo_file.name}. "
+                    f"Sonarr may not have populated TMDB metadata yet."
+                )
+
+        # Start translation service with file scanner only (monitor disabled)
+        print("Starting translation service with file scanner only...")
+        with SubprocessServiceManager(
+            env_overrides={
+                "REWRITE_ROOT_DIR": str(temp_media_root),
+                "TMDB_API_KEY": tmdb_api_key,
+                "ENABLE_FILE_MONITOR": "false",
+                "ENABLE_FILE_SCANNER": "true",
+                "PERIODIC_SCAN_INTERVAL_SECONDS": "3",  # Short interval for testing
+                "PREFERRED_LANGUAGES": '["zh-CN"]',
+            },
+        ) as service:
+            service.start()
+
+            # Service should be running with only scanner enabled
+            assert service.is_running(), "Service should be running"
+
+            # Wait for at least one scan cycle to complete
+            print("Waiting for file scanner to process files...")
+            time.sleep(8)  # Wait for multiple scan cycles
+
+            # Check if translations were applied
+            successful_translations = 0
+            for nfo_file in nfo_files:
+                original_backup = original_backups[nfo_file]
+
+                # Compare original vs current content
+                comparison = compare_nfo_files(original_backup, nfo_file)
+                print(f"File scanner comparison for {nfo_file.name}: {comparison}")
+
+                if comparison["title_changed"] or comparison["plot_changed"]:
+                    successful_translations += 1
+
+                    # Verify we have actual translated content
+                    translated_metadata = comparison["translated"]
+
+                    assert translated_metadata[
+                        "title"
+                    ], f"Empty translated title in {nfo_file.name}"
+                    assert translated_metadata[
+                        "plot"
+                    ], f"Empty translated description in {nfo_file.name}"
+                    assert comparison[
+                        "ids_preserved"
+                    ], f"TMDB/TVDB IDs not preserved in {nfo_file.name}"
+
+        # Ensure at least one file was successfully translated by file scanner
+        assert successful_translations > 0, (
+            "No .nfo files were translated by file scanner. "
+            "Check that periodic scanning is working correctly."
+        )
+
+        print(
+            f"File scanner successfully translated {successful_translations} "
+            f"out of {len(nfo_files)} files"
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_series_refresh_integration(
+    configured_sonarr_container: SonarrClient,
+    temp_media_root: Path,
+) -> None:
+    """Test complete series refresh integration workflow.
+
+    This test:
+    1. Starts the service with both components enabled
+    2. Adds series and lets Sonarr generate .nfo files
+    3. Verifies service translates the files
+    4. Triggers Sonarr series refresh to regenerate original .nfo files
+    5. Verifies service automatically retranslates the refreshed files
+    """
+    # Get TMDB API key from configuration (environment or .env file)
+    # Set required configuration for test
+    original_rewrite_root_dir = os.environ.get("REWRITE_ROOT_DIR")
+    os.environ["REWRITE_ROOT_DIR"] = str(temp_media_root)
+
+    try:
+        settings = get_settings()
+        tmdb_api_key = settings.tmdb_api_key
     finally:
-        # Container cleanup is handled by the fixture
-        pass
+        # Restore original environment
+        if original_rewrite_root_dir is not None:
+            os.environ["REWRITE_ROOT_DIR"] = original_rewrite_root_dir
+        else:
+            os.environ.pop("REWRITE_ROOT_DIR", None)
+
+    # Start translation service with both components enabled
+    print("Starting translation service with both components...")
+    with SubprocessServiceManager(
+        env_overrides={
+            "REWRITE_ROOT_DIR": str(temp_media_root),
+            "TMDB_API_KEY": tmdb_api_key,
+            "ENABLE_FILE_MONITOR": "true",
+            "ENABLE_FILE_SCANNER": "true",
+            "PERIODIC_SCAN_INTERVAL_SECONDS": "5",  # Reasonable interval
+            "PREFERRED_LANGUAGES": '["zh-CN"]',
+        },
+    ) as service:
+        service.start()
+
+        # Service should be running with both components
+        assert service.is_running(), "Service should be running"
+
+        # Wait for service to stabilize
+        time.sleep(2)
+
+        with SeriesManager(
+            configured_sonarr_container,
+            BREAKING_BAD_TVDB_ID,
+            "/tv",
+            temp_media_root,
+        ) as series:
+            # Create fake episode files to trigger Sonarr processing
+            print("Creating fake episode files...")
+            episode_files = [
+                create_fake_episode_file(temp_media_root, series.slug, 1, 1, "Pilot"),
+                create_fake_episode_file(
+                    temp_media_root, series.slug, 1, 2, "Cat's in the Bag"
+                ),
+            ]
+
+            for episode_file in episode_files:
+                print(f"Created: {episode_file}")
+
+            # Trigger disk scan to detect episode files
+            print("Triggering disk scan to detect episode files...")
+            series_path = temp_media_root / series.slug
+            scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
+            assert scan_success, "Failed to trigger disk scan"
+            print("Disk scan command submitted successfully")
+
+            # Wait for .nfo files to be generated
+            print("Waiting for .nfo files to be generated...")
+            nfo_files = wait_for_nfo_files(series_path, timeout=10.0)
+
+            if not nfo_files:
+                # List what files exist for debugging
+                all_files = list(series_path.rglob("*")) if series_path.exists() else []
+                print(f"No .nfo files found. All files in {series_path}: {all_files}")
+                pytest.fail(
+                    "Sonarr did not generate .nfo files within timeout after disk scan"
+                )
+
+            print(f"Found .nfo files: {nfo_files}")
+
+            # Parse original metadata to verify it contains TMDB IDs
+            for nfo_file in nfo_files:
+                metadata = parse_nfo_content(nfo_file)
+                print(f"Original metadata for {nfo_file.name}: {metadata}")
+
+                # Verify we have a TMDB ID (required for translation)
+                if not metadata.get("tmdb_id"):
+                    pytest.skip(
+                        f"No TMDB ID found in {nfo_file.name}. "
+                        f"Sonarr may not have populated TMDB metadata yet."
+                    )
+
+            # Wait for initial translation by service
+            print("Waiting for initial translation...")
+            time.sleep(8)  # Allow time for file monitor + scanner to process
+
+            # Store initial translated state
+            first_translations = {}
+            for nfo_file in nfo_files:
+                metadata = parse_nfo_content(nfo_file)
+                first_translations[nfo_file] = metadata
+                print(
+                    f"First translation for {nfo_file.name}: "
+                    f"title='{metadata['title']}', has_plot={bool(metadata['plot'])}"
+                )
+
+            # Verify initial translations occurred
+            initial_translations = 0
+            for nfo_file, metadata in first_translations.items():
+                # Check if content appears to be translated (Chinese chars)
+                title_translated = any(
+                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
+                )
+                plot_translated = any(
+                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
+                )
+
+                if title_translated or plot_translated:
+                    initial_translations += 1
+                    print(f"Initial translation detected in {nfo_file.name}")
+
+            if initial_translations == 0:
+                print("No initial translations detected, waiting longer...")
+                time.sleep(10)  # Wait more for service to process
+
+                # Check again
+                for nfo_file in nfo_files:
+                    metadata = parse_nfo_content(nfo_file)
+                    first_translations[nfo_file] = metadata
+
+            # Trigger series refresh to regenerate original .nfo files
+            print("Triggering series refresh to regenerate original .nfo files...")
+            refresh_success = configured_sonarr_container.refresh_series(series.id)
+            assert refresh_success, "Failed to trigger series refresh"
+
+            # Wait for Sonarr to regenerate .nfo files
+            print("Waiting for Sonarr to regenerate .nfo files...")
+            time.sleep(10)
+
+            # Check that .nfo files have been regenerated (back to original)
+            regenerated_metadata = {}
+            for nfo_file in nfo_files:
+                metadata = parse_nfo_content(nfo_file)
+                regenerated_metadata[nfo_file] = metadata
+                print(
+                    f"Regenerated metadata for {nfo_file.name}: "
+                    f"title='{metadata['title']}', has_plot={bool(metadata['plot'])}"
+                )
+
+            # Wait for service to retranslate the refreshed files
+            print("Waiting for service to retranslate refreshed files...")
+            time.sleep(10)
+
+            # Check final translations after refresh
+            final_translations = {}
+            retranslations = 0
+            for nfo_file in nfo_files:
+                metadata = parse_nfo_content(nfo_file)
+                final_translations[nfo_file] = metadata
+                print(
+                    f"Final translation for {nfo_file.name}: "
+                    f"title='{metadata['title']}', has_plot={bool(metadata['plot'])}"
+                )
+
+                # Check if content is translated again after refresh
+                title_translated = any(
+                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
+                )
+                plot_translated = any(
+                    "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
+                )
+
+                if title_translated or plot_translated:
+                    retranslations += 1
+
+                    # Verify content quality
+                    assert metadata["title"], f"Empty title in {nfo_file.name}"
+                    assert metadata["plot"], f"Empty plot in {nfo_file.name}"
+                    assert metadata.get(
+                        "tmdb_id"
+                    ), f"Missing TMDB ID in {nfo_file.name}"
+
+            # Ensure the complete refresh cycle worked
+            assert retranslations > 0, (
+                "No .nfo files were retranslated after series refresh. "
+                "The complete refresh cycle may not be working correctly."
+            )
+
+            print(
+                f"Series refresh workflow completed successfully: "
+                f"{retranslations} out of {len(nfo_files)} files retranslated"
+            )

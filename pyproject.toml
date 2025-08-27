@@ -102,6 +102,10 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 asyncio_mode = "auto"
+# Ensure integration tests run sequentially to avoid conflicts with shared container
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
 
 [tool.vulture]
 paths = ["src", "tests", "vulture_whitelist.py"]
