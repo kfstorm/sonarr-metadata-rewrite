@@ -70,7 +70,7 @@ class SubprocessServiceManager:
         env.update(self.env_overrides)
 
         # Start the service subprocess
-        cmd = ["uv", "run", "sonarr-metadata"]
+        cmd = ["uv", "run", "sonarr-metadata-rewrite"]
         print(f"Starting service subprocess: {' '.join(cmd)}")
         print(f"Environment overrides: {self.env_overrides}")
 
