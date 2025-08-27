@@ -137,4 +137,5 @@ dev = [
     "pytest-cov>=6.2.1",
     "coverage>=7.10.2",
     "diff-cover>=9.0.0",
+    "pymarkdownlnt>=0.9.0",
 ]

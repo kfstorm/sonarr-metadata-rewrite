@@ -1,4 +1,4 @@
-"""Sonarr Metadata Translation Layer.
+"""Sonarr Metadata Rewrite.
 
 A compatibility layer that monitors Sonarr-generated .nfo files and overwrites
 them with TMDB translations in desired languages.
