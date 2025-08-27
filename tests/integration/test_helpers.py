@@ -177,20 +177,20 @@ def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, A
 
 
 def setup_series_with_nfos(
-    configured_sonarr_container: SonarrClient,
+    sonarr_container: SonarrClient,
     temp_media_root: Path,
 ) -> tuple[SeriesManager, list[Path], dict[Path, Path]]:
     """Set up series with .nfo files and return backup mapping.
 
     Args:
-        configured_sonarr_container: Configured Sonarr client
+        sonarr_container: Sonarr client (may or may not have metadata providers enabled)
         temp_media_root: Temporary media root directory
 
     Returns:
         Tuple of (SeriesManager, nfo_files, original_backups)
     """
     series = SeriesManager(
-        configured_sonarr_container,
+        sonarr_container,
         BREAKING_BAD_TVDB_ID,
         "/tv",
         temp_media_root,
@@ -212,7 +212,7 @@ def setup_series_with_nfos(
     # Trigger disk scan to detect episode files
     print("Triggering disk scan to detect episode files...")
     series_path = temp_media_root / series.slug
-    scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
+    scan_success = sonarr_container.trigger_disk_scan(series.id)
     if not scan_success:
         series.__exit__(None, None, None)
         raise RuntimeError("Failed to trigger disk scan")

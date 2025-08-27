@@ -1,8 +1,8 @@
 """Unit tests for metadata processor with different formats."""
 
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import Mock
 
 import pytest
@@ -13,16 +13,18 @@ from sonarr_metadata_rewrite.models import TranslatedContent
 from sonarr_metadata_rewrite.translator import Translator
 
 # Test data for different formats
-EMBY_SERIES_NFO = """<?xml version="1.0" encoding="utf-8"?>
+EMBY_SERIES_NFO = (
+    """<?xml version="1.0" encoding="utf-8"?>
 <series>
   <title>Breaking Bad</title>
-  <overview>A high school chemistry teacher diagnosed with inoperable """\
-        """lung cancer turns to manufacturing and selling """\
-        """methamphetamine to secure his family's future.</overview>
+  <overview>A high school chemistry teacher diagnosed with inoperable """
+    """lung cancer turns to manufacturing and selling """
+    """methamphetamine to secure his family's future.</overview>
   <uniqueid type="tmdb" default="true">1396</uniqueid>
   <uniqueid type="imdb">tt0903747</uniqueid>
 </series>
 """
+)
 
 EMBY_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <episode>
@@ -43,7 +45,7 @@ UNSUPPORTED_NFO = """<?xml version="1.0" encoding="utf-8"?>
 
 
 @pytest.fixture
-def temp_nfo_file():
+def temp_nfo_file() -> Generator[Path, None, None]:
     """Create a temporary .nfo file for testing."""
     with tempfile.NamedTemporaryFile(suffix=".nfo", delete=False) as f:
         temp_path = Path(f.name)
@@ -143,7 +145,9 @@ def test_metadata_processor_auto_format_detection_emby(
     assert "中文描述" in updated_content
 
 
-def test_metadata_processor_explicit_kodi_format(temp_dir, mock_translator) -> None:
+def test_metadata_processor_explicit_kodi_format(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test explicit Kodi format configuration."""
     # Create settings with explicit Kodi format
     settings = Settings(
@@ -182,7 +186,9 @@ def test_metadata_processor_explicit_kodi_format(temp_dir, mock_translator) -> N
     assert "日本語の説明" in updated_content
 
 
-def test_metadata_processor_explicit_emby_format(temp_dir, mock_translator) -> None:
+def test_metadata_processor_explicit_emby_format(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test explicit Emby format configuration."""
     # Create settings with explicit Emby format
     settings = Settings(
@@ -214,7 +220,9 @@ def test_metadata_processor_explicit_emby_format(temp_dir, mock_translator) -> N
     assert "日本語の説明" in updated_content
 
 
-def test_metadata_processor_unsupported_format(temp_dir, mock_translator) -> None:
+def test_metadata_processor_unsupported_format(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test handling of unsupported metadata format."""
     # Create settings with auto format detection
     settings = Settings(
@@ -241,7 +249,9 @@ def test_metadata_processor_unsupported_format(temp_dir, mock_translator) -> Non
     assert result.selected_language is None
 
 
-def test_metadata_processor_invalid_format_config_fallback(temp_dir, mock_translator) -> None:
+def test_metadata_processor_invalid_format_config_fallback(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test fallback to auto-detection when invalid format is configured."""
     # Create settings with invalid format
     settings = Settings(
@@ -275,7 +285,9 @@ def test_metadata_processor_invalid_format_config_fallback(temp_dir, mock_transl
     assert "Successfully translated" in result.message
 
 
-def test_metadata_processor_emby_episode_format(temp_dir, mock_translator) -> None:
+def test_metadata_processor_emby_episode_format(
+    temp_dir: Path, mock_translator: Translator
+) -> None:
     """Test processing Emby episode format."""
     # Create settings for Emby format
     settings = Settings(

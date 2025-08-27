@@ -115,28 +115,38 @@ def sonarr_container(
 
 
 @pytest.fixture(scope="session")
-def configured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
-    """Configure Sonarr metadata settings once per session."""
-    print("Configuring Sonarr metadata settings for session...")
+def unconfigured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
+    """Sonarr container with no metadata providers enabled by default."""
+    print("Configuring Sonarr to disable all metadata providers by default...")
     metadata_config_success = sonarr_container.configure_metadata_settings()
     if not metadata_config_success:
         raise RuntimeError("Failed to configure metadata settings")
-    print("Metadata settings configured successfully")
+    print("All metadata providers disabled by default")
     return sonarr_container
 
 
 @pytest.fixture
+def metadata_provider_names(unconfigured_sonarr_container: SonarrClient) -> list[str]:
+    """Get list of available metadata provider names from Sonarr API."""
+    providers = unconfigured_sonarr_container.get_metadata_providers()
+    return [provider["name"] for provider in providers]
+
+
+@pytest.fixture
 def prepared_series_with_nfos(
-    configured_sonarr_container: SonarrClient,
+    unconfigured_sonarr_container: SonarrClient,
     temp_media_root: Path,
 ) -> Generator[tuple[Path, list[Path], dict[Path, Path], int], None, None]:
     """Prepare series with .nfo files and return backup mapping.
+
+    Note: This fixture does not enable any metadata providers.
+    Tests must explicitly enable the provider they want to test.
 
     Returns:
         Tuple of (series_path, nfo_files, original_backups, series_id)
     """
     series, nfo_files, original_backups = setup_series_with_nfos(
-        configured_sonarr_container, temp_media_root
+        unconfigured_sonarr_container, temp_media_root
     )
 
     try:

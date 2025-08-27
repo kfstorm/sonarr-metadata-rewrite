@@ -148,7 +148,8 @@ def test_process_file_nonexistent_file(
         result,
         expected_success=False,
         expected_file_modified=False,
-        expected_message_contains="Unsupported metadata format",  # Should be "Unsupported"
+        # Should be "Unsupported"
+        expected_message_contains="Unsupported metadata format",
     )
 
 

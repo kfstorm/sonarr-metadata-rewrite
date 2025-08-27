@@ -16,16 +16,18 @@ from sonarr_metadata_rewrite.metadata_formats import (
 from sonarr_metadata_rewrite.models import TranslatedContent
 
 # Test data for different formats
-KODI_TVSHOW_NFO = """<?xml version="1.0" encoding="utf-8"?>
+KODI_TVSHOW_NFO = (
+    """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>Breaking Bad</title>
-  <plot>A high school chemistry teacher diagnosed with inoperable """\
-        """lung cancer turns to manufacturing and selling """\
-        """methamphetamine to secure his family's future.</plot>
+  <plot>A high school chemistry teacher diagnosed with inoperable """
+    """lung cancer turns to manufacturing and selling """
+    """methamphetamine to secure his family's future.</plot>
   <uniqueid type="tmdb" default="true">1396</uniqueid>
   <uniqueid type="imdb">tt0903747</uniqueid>
 </tvshow>
 """
+)
 
 KODI_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <episodedetails>
@@ -37,16 +39,18 @@ KODI_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 </episodedetails>
 """
 
-EMBY_TVSHOW_NFO = """<?xml version="1.0" encoding="utf-8"?>
+EMBY_TVSHOW_NFO = (
+    """<?xml version="1.0" encoding="utf-8"?>
 <series>
   <title>Breaking Bad</title>
-  <overview>A high school chemistry teacher diagnosed with inoperable """\
-        """lung cancer turns to manufacturing and selling """\
-        """methamphetamine to secure his family's future.</overview>
+  <overview>A high school chemistry teacher diagnosed with inoperable """
+    """lung cancer turns to manufacturing and selling """
+    """methamphetamine to secure his family's future.</overview>
   <uniqueid type="tmdb" default="true">1396</uniqueid>
   <uniqueid type="imdb">tt0903747</uniqueid>
 </series>
 """
+)
 
 EMBY_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <episode>
@@ -77,7 +81,7 @@ def temp_nfo_file() -> Generator[Path, None, None]:
         temp_path.unlink()
 
 
-def test_kodi_format_extract_tmdb_ids_tvshow(temp_nfo_file) -> None:
+def test_kodi_format_extract_tmdb_ids_tvshow(temp_nfo_file: Path) -> None:
     """Test TMDB ID extraction from Kodi tvshow format."""
     temp_nfo_file.write_text(KODI_TVSHOW_NFO)
 
@@ -90,7 +94,7 @@ def test_kodi_format_extract_tmdb_ids_tvshow(temp_nfo_file) -> None:
     assert tmdb_ids.episode is None
 
 
-def test_kodi_format_extract_tmdb_ids_episode(temp_nfo_file) -> None:
+def test_kodi_format_extract_tmdb_ids_episode(temp_nfo_file: Path) -> None:
     """Test TMDB ID extraction from Kodi episode format."""
     temp_nfo_file.write_text(KODI_EPISODE_NFO)
 
@@ -103,7 +107,7 @@ def test_kodi_format_extract_tmdb_ids_episode(temp_nfo_file) -> None:
     assert tmdb_ids.episode == 1
 
 
-def test_kodi_format_extract_content(temp_nfo_file) -> None:
+def test_kodi_format_extract_content(temp_nfo_file: Path) -> None:
     """Test content extraction from Kodi format."""
     temp_nfo_file.write_text(KODI_TVSHOW_NFO)
 
@@ -114,7 +118,7 @@ def test_kodi_format_extract_content(temp_nfo_file) -> None:
     assert "high school chemistry teacher" in description
 
 
-def test_kodi_format_write_translated_metadata(temp_nfo_file) -> None:
+def test_kodi_format_write_translated_metadata(temp_nfo_file: Path) -> None:
     """Test writing translated metadata to Kodi format."""
     temp_nfo_file.write_text(KODI_TVSHOW_NFO)
 
@@ -131,7 +135,7 @@ def test_kodi_format_write_translated_metadata(temp_nfo_file) -> None:
     assert description == "测试描述"
 
 
-def test_kodi_format_supports_file(temp_nfo_file) -> None:
+def test_kodi_format_supports_file(temp_nfo_file: Path) -> None:
     """Test Kodi format detection."""
     format_handler = KodiMetadataFormat()
 
@@ -148,7 +152,7 @@ def test_kodi_format_supports_file(temp_nfo_file) -> None:
     assert format_handler.supports_file(temp_nfo_file) is False
 
 
-def test_emby_format_extract_tmdb_ids_series(temp_nfo_file) -> None:
+def test_emby_format_extract_tmdb_ids_series(temp_nfo_file: Path) -> None:
     """Test TMDB ID extraction from Emby series format."""
     temp_nfo_file.write_text(EMBY_TVSHOW_NFO)
 
@@ -161,7 +165,7 @@ def test_emby_format_extract_tmdb_ids_series(temp_nfo_file) -> None:
     assert tmdb_ids.episode is None
 
 
-def test_emby_format_extract_tmdb_ids_episode(temp_nfo_file) -> None:
+def test_emby_format_extract_tmdb_ids_episode(temp_nfo_file: Path) -> None:
     """Test TMDB ID extraction from Emby episode format."""
     temp_nfo_file.write_text(EMBY_EPISODE_NFO)
 
@@ -174,7 +178,7 @@ def test_emby_format_extract_tmdb_ids_episode(temp_nfo_file) -> None:
     assert tmdb_ids.episode == 1
 
 
-def test_emby_format_extract_content_overview(temp_nfo_file) -> None:
+def test_emby_format_extract_content_overview(temp_nfo_file: Path) -> None:
     """Test content extraction from Emby format with overview."""
     temp_nfo_file.write_text(EMBY_TVSHOW_NFO)
 
@@ -185,7 +189,7 @@ def test_emby_format_extract_content_overview(temp_nfo_file) -> None:
     assert "high school chemistry teacher" in description
 
 
-def test_emby_format_extract_content_mixed(temp_nfo_file) -> None:
+def test_emby_format_extract_content_mixed(temp_nfo_file: Path) -> None:
     """Test content extraction from mixed format (tvshow + overview)."""
     temp_nfo_file.write_text(EMBY_MIXED_NFO)
 
@@ -196,7 +200,7 @@ def test_emby_format_extract_content_mixed(temp_nfo_file) -> None:
     assert description == "This has overview instead of plot"
 
 
-def test_emby_format_write_translated_metadata_overview(temp_nfo_file) -> None:
+def test_emby_format_write_translated_metadata_overview(temp_nfo_file: Path) -> None:
     """Test writing translated metadata to Emby format with overview."""
     temp_nfo_file.write_text(EMBY_TVSHOW_NFO)
 
@@ -213,7 +217,9 @@ def test_emby_format_write_translated_metadata_overview(temp_nfo_file) -> None:
     assert description == "测试描述"
 
 
-def test_emby_format_write_translated_metadata_plot_fallback(temp_nfo_file) -> None:
+def test_emby_format_write_translated_metadata_plot_fallback(
+    temp_nfo_file: Path,
+) -> None:
     """Test writing translated metadata to Emby format with plot fallback."""
     # Create an Emby-style file with plot instead of overview
     nfo_content = """<?xml version="1.0" encoding="utf-8"?>
@@ -238,7 +244,7 @@ def test_emby_format_write_translated_metadata_plot_fallback(temp_nfo_file) -> N
     assert description == "测试描述"
 
 
-def test_emby_format_supports_file(temp_nfo_file) -> None:
+def test_emby_format_supports_file(temp_nfo_file: Path) -> None:
     """Test Emby format detection."""
     format_handler = EmbyMetadataFormat()
 
@@ -267,7 +273,7 @@ def test_get_metadata_format() -> None:
         get_metadata_format("invalid")
 
 
-def test_detect_metadata_format(temp_nfo_file) -> None:
+def test_detect_metadata_format(temp_nfo_file: Path) -> None:
     """Test automatic metadata format detection."""
     # Test Kodi format detection
     temp_nfo_file.write_text(KODI_TVSHOW_NFO)
