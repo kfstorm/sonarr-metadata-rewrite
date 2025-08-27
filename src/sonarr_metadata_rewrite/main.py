@@ -1,7 +1,6 @@
 """Main CLI entry point for sonarr-metadata-rewrite."""
 
 import logging
-import os
 import signal
 import sys
 import time
@@ -41,30 +40,6 @@ def cli() -> None:
     click.echo(f"✅ TMDB API key loaded (ending in ...{settings.tmdb_api_key[-4:]})")
     click.echo(f"📁 Monitoring directory: {settings.rewrite_root_dir}")
     click.echo(f"🌍 Preferred languages: {settings.preferred_languages}")
-
-    # Handle PUID/PGID for container environments (LinuxServer.io style)
-    if settings.puid is not None or settings.pgid is not None:
-        current_uid = os.getuid()
-        current_gid = os.getgid()
-        
-        target_uid = settings.puid if settings.puid is not None else current_uid
-        target_gid = settings.pgid if settings.pgid is not None else current_gid
-        
-        if target_uid != current_uid or target_gid != current_gid:
-            try:
-                # Drop privileges to target user/group
-                if target_gid != current_gid:
-                    os.setgid(target_gid)
-                    click.echo(f"🔒 Changed group ID to {target_gid}")
-                
-                if target_uid != current_uid:
-                    os.setuid(target_uid)
-                    click.echo(f"🔒 Changed user ID to {target_uid}")
-                    
-            except (OSError, PermissionError) as e:
-                click.echo(f"❌ Failed to change user/group ID: {e}", err=True)
-                click.echo("💡 Make sure the service is running with sufficient privileges", err=True)
-                sys.exit(1)
 
     # Create and start service
     service = RewriteService(settings)

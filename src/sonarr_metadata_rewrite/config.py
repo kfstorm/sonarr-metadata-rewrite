@@ -54,14 +54,6 @@ class Settings(BaseSettings):
         default=True, description="Enable periodic directory scanning"
     )
 
-    # Container user/group settings (LinuxServer.io style)
-    puid: int | None = Field(
-        default=None, description="User ID to run as (container environments)"
-    )
-    pgid: int | None = Field(
-        default=None, description="Group ID to run as (container environments)"
-    )
-
     @field_validator("preferred_languages")
     @classmethod
     def parse_preferred_languages(cls, v: str) -> list[str]:
