@@ -17,6 +17,9 @@ The project includes a fully functional metadata translation service with real-t
 
 # Install project in development mode after dependencies change
 uv sync --group dev
+
+# Create .env file with required API key for development and testing
+echo "TMDB_API_KEY=your_api_key_here" > .env
 ```
 
 ### Code Quality and Testing
@@ -30,8 +33,8 @@ uv sync --group dev
 # Run unit tests with coverage
 ./scripts/run-unit-tests.sh
 
-# Run integration tests (requires TMDB_API_KEY environment variable)
-TMDB_API_KEY=your_key ./scripts/run-integration-tests.sh
+# Run integration tests
+./scripts/run-integration-tests.sh
 
 # Combine coverage from unit and integration tests
 ./scripts/combine-coverage.sh
@@ -39,14 +42,13 @@ TMDB_API_KEY=your_key ./scripts/run-integration-tests.sh
 
 ### Application Usage
 ```bash
-# Run the translation service with required environment variables
-TMDB_API_KEY=your_key REWRITE_ROOT_DIR=/path/to/media uv run sonarr-metadata-rewrite
+# Run the translation service
+uv run sonarr-metadata-rewrite
 
 # Check version
 uv run sonarr-metadata-rewrite --version
 
 # Example with all optional settings
-TMDB_API_KEY=your_key \
 REWRITE_ROOT_DIR=/home/user/media \
 PREFERRED_LANGUAGES='zh-CN,ja-JP' \
 CACHE_DURATION_HOURS=720 \

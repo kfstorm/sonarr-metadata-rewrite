@@ -46,6 +46,14 @@ class Settings(BaseSettings):
         description="Directory to backup original files (None disables backup)",
     )
 
+    # Component control
+    enable_file_monitor: bool = Field(
+        default=True, description="Enable real-time file monitoring"
+    )
+    enable_file_scanner: bool = Field(
+        default=True, description="Enable periodic directory scanning"
+    )
+
     @field_validator("preferred_languages")
     @classmethod
     def parse_preferred_languages(cls, v: str) -> list[str]:

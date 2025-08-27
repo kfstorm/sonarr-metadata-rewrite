@@ -1,6 +1,7 @@
 """Sonarr API client for integration testing."""
 
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -179,6 +180,85 @@ class SonarrClient:
         else:
             print(f"Failed to update metadata settings: {response.status_code}")
             return False
+
+    def refresh_series(self, series_id: int) -> bool:
+        """Refresh series metadata and regenerate NFO files.
+
+        Args:
+            series_id: Sonarr series ID
+
+        Returns:
+            True if refresh command was accepted
+        """
+        command_data = {
+            "name": "RefreshSeries",
+            "seriesId": series_id,
+        }
+
+        response = self._make_request("POST", "/api/v3/command", json=command_data)
+        return response.status_code in (200, 201)
+
+    def remove_series(
+        self,
+        series_id: int,
+        media_root: Path,
+        series_slug: str,
+        delete_files: bool = True,
+        timeout: float = 30.0,
+    ) -> bool:
+        """Remove series and verify cleanup.
+
+        Args:
+            series_id: Sonarr series ID
+            media_root: Root media directory path
+            series_slug: Series directory slug (e.g., "breaking-bad")
+            delete_files: Whether to delete media files
+            timeout: Maximum time to wait for deletion
+
+        Returns:
+            True if series was removed and directory is gone
+
+        Raises:
+            RuntimeError: If series directory still exists after deletion
+        """
+        # Delete the series via API
+        params = {"deleteFiles": str(delete_files).lower()}
+        response = self._make_request(
+            "DELETE", f"/api/v3/series/{series_id}", params=params
+        )
+
+        if not response.is_success:
+            print(f"Failed to delete series {series_id}: HTTP {response.status_code}")
+            return False
+
+        print(f"Series {series_id} deletion command sent successfully")
+
+        # Wait for series directory to be removed from filesystem
+        series_dir = media_root / series_slug
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            if not series_dir.exists():
+                print(f"Series directory {series_dir} successfully removed")
+                return True
+
+            time.sleep(1)
+            elapsed = time.time() - start_time
+            if elapsed % 5 == 0:  # Log every 5 seconds
+                print(
+                    f"Still waiting for series directory removal... "
+                    f"({elapsed:.1f}s elapsed)"
+                )
+
+        # Directory still exists after timeout
+        if series_dir.exists():
+            remaining_files = list(series_dir.rglob("*"))
+            raise RuntimeError(
+                f"Series directory {series_dir} still exists after {timeout}s. "
+                f"Remaining files: {remaining_files}"
+            )
+
+        return True
 
     def close(self) -> None:
         """Close the HTTP client."""

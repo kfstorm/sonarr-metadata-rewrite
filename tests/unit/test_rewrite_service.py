@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.models import TranslatedContent
 from sonarr_metadata_rewrite.rewrite_service import RewriteService
 
 
@@ -86,8 +87,6 @@ def test_service_integration_successful_processing(
     with patch.object(
         rewrite_service.metadata_processor.translator, "get_translations"
     ) as mock_get_translations:
-        from sonarr_metadata_rewrite.models import TranslatedContent
-
         mock_get_translations.return_value = {
             "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN")
         }

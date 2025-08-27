@@ -31,22 +31,30 @@ class RewriteService:
         logger.info(f"Monitoring directory: {self.settings.rewrite_root_dir}")
         logger.info(f"Preferred languages: {self.settings.preferred_languages}")
 
-        # Start real-time file monitoring
-        self.file_monitor.start(self._process_file)
-        logger.info("File monitor started")
+        # Start real-time file monitoring if enabled
+        if self.settings.enable_file_monitor:
+            self.file_monitor.start(self._process_file)
+            logger.info("File monitor started")
+        else:
+            logger.info("File monitor disabled")
 
-        # Start periodic scanning
-        self.file_scanner.start(self._process_file)
-        interval = self.settings.periodic_scan_interval_seconds
-        logger.info(f"Periodic scanner started (interval: {interval}s)")
+        # Start periodic scanning if enabled
+        if self.settings.enable_file_scanner:
+            self.file_scanner.start(self._process_file)
+            interval = self.settings.periodic_scan_interval_seconds
+            logger.info(f"Periodic scanner started (interval: {interval}s)")
+        else:
+            logger.info("Periodic scanner disabled")
 
     def stop(self) -> None:
         """Stop the service and cleanup all resources."""
         logger.info("Stopping Sonarr Metadata Rewrite Service")
 
-        # Stop monitoring and scanning
-        self.file_monitor.stop()
-        self.file_scanner.stop()
+        # Stop monitoring and scanning (only if they were started)
+        if self.settings.enable_file_monitor:
+            self.file_monitor.stop()
+        if self.settings.enable_file_scanner:
+            self.file_scanner.stop()
 
         # Close translator HTTP client and cache
         self.translator.close()
@@ -56,7 +64,13 @@ class RewriteService:
 
     def is_running(self) -> bool:
         """Check if service is currently running."""
-        return self.file_monitor.is_running() or self.file_scanner.is_running()
+        monitor_running = (
+            self.settings.enable_file_monitor and self.file_monitor.is_running()
+        )
+        scanner_running = (
+            self.settings.enable_file_scanner and self.file_scanner.is_running()
+        )
+        return monitor_running or scanner_running
 
     def _process_file(self, nfo_path: Path) -> None:
         """Process a single .nfo file (private callback method).
