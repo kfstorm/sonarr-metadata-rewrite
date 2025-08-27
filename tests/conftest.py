@@ -107,7 +107,7 @@ def test_settings(test_data_dir: Path) -> Settings:
     return Settings(
         tmdb_api_key="test_key_12345",
         rewrite_root_dir=test_data_dir,
-        preferred_languages=["zh-CN"],
+        preferred_languages="zh-CN",
         periodic_scan_interval_seconds=1,  # Fast interval for testing
         original_files_backup_dir=test_data_dir / "backups",
         cache_dir=test_data_dir / "cache",
