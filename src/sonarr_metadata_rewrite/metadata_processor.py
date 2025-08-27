@@ -6,6 +6,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.metadata_formats import (
+    MetadataFormat,
+    get_metadata_format,
+    detect_metadata_format,
+)
 from sonarr_metadata_rewrite.models import (
     ProcessResult,
     TmdbIds,
@@ -22,6 +27,32 @@ class MetadataProcessor:
     def __init__(self, settings: Settings, translator: Translator):
         self.settings = settings
         self.translator = translator
+        # Initialize metadata format handler
+        self._metadata_format: MetadataFormat | None = None
+
+    def _get_metadata_format(self, nfo_path: Path) -> MetadataFormat | None:
+        """Get the appropriate metadata format handler for the file.
+        
+        Args:
+            nfo_path: Path to .nfo file
+            
+        Returns:
+            MetadataFormat instance or None if no suitable format found
+        """
+        if self.settings.metadata_format == "auto":
+            # Auto-detect format
+            return detect_metadata_format(nfo_path)
+        else:
+            # Use specified format
+            try:
+                return get_metadata_format(self.settings.metadata_format)
+            except ValueError:
+                # Fall back to auto-detection if specified format is invalid
+                logger.warning(
+                    f"Invalid metadata format '{self.settings.metadata_format}', "
+                    f"falling back to auto-detection"
+                )
+                return detect_metadata_format(nfo_path)
 
     def process_file(self, nfo_path: Path) -> ProcessResult:
         """Process a single .nfo file with complete translation workflow.
@@ -34,8 +65,19 @@ class MetadataProcessor:
         """
         tmdb_ids = None
         try:
+            # Get metadata format handler for this file
+            metadata_format = self._get_metadata_format(nfo_path)
+            if not metadata_format:
+                return ProcessResult(
+                    success=False,
+                    file_path=nfo_path,
+                    message="Unsupported metadata format",
+                    file_modified=False,
+                    selected_language=None,
+                )
+
             # Extract TMDB IDs from .nfo file
-            tmdb_ids = self._extract_tmdb_ids(nfo_path)
+            tmdb_ids = metadata_format.extract_tmdb_ids(nfo_path)
             if not tmdb_ids:
                 return ProcessResult(
                     success=False,
@@ -52,7 +94,7 @@ class MetadataProcessor:
             selected_translation = self._select_preferred_translation(all_translations)
             if selected_translation:
                 # Check if content already matches the selected translation
-                current_title, current_description = self._extract_original_content(
+                current_title, current_description = metadata_format.extract_content(
                     nfo_path
                 )
 
@@ -78,7 +120,7 @@ class MetadataProcessor:
                 original_content = self._get_original_content_from_backup(nfo_path)
                 if original_content:
                     original_title, original_description = original_content
-                    current_title, current_description = self._extract_original_content(
+                    current_title, current_description = metadata_format.extract_content(
                         nfo_path
                     )
 
@@ -140,14 +182,14 @@ class MetadataProcessor:
 
             # Apply fallback logic for empty translation fields
             selected_translation = self._apply_fallback_to_translation(
-                nfo_path, selected_translation
+                nfo_path, selected_translation, metadata_format
             )
 
             # Create backup if enabled
             backup_created = self._backup_original(nfo_path)
 
             # Write translated metadata
-            self._write_translated_metadata(nfo_path, selected_translation)
+            metadata_format.write_translated_metadata(nfo_path, selected_translation)
 
             return ProcessResult(
                 success=True,
@@ -172,6 +214,9 @@ class MetadataProcessor:
 
     def _extract_tmdb_ids(self, nfo_path: Path) -> TmdbIds | None:
         """Extract TMDB IDs from .nfo XML file.
+        
+        DEPRECATED: Use metadata format handler instead.
+        This method is kept for backward compatibility.
 
         Args:
             nfo_path: Path to .nfo file
@@ -179,47 +224,16 @@ class MetadataProcessor:
         Returns:
             TmdbIds object if found, None otherwise
         """
-        tree = ET.parse(nfo_path)
-        root = tree.getroot()
-
-        # Find TMDB uniqueid
-        tmdb_id = None
-        uniqueid_elements = root.findall('.//uniqueid[@type="tmdb"]')
-        if uniqueid_elements:
-            tmdb_id_text = uniqueid_elements[0].text
-            if tmdb_id_text and tmdb_id_text.strip():
-                tmdb_id = int(tmdb_id_text.strip())
-
-        if tmdb_id is None:
-            return None
-
-        # Determine if this is a series or episode file
-        if root.tag == "tvshow":
-            # Series file
-            return TmdbIds(series_id=tmdb_id)
-        elif root.tag == "episodedetails":
-            # Episode file - extract season and episode numbers
-            season_element = root.find("season")
-            episode_element = root.find("episode")
-
-            if season_element is not None and episode_element is not None:
-                season_text = season_element.text
-                episode_text = episode_element.text
-                if season_text is not None and episode_text is not None:
-                    season = int(season_text.strip())
-                    episode = int(episode_text.strip())
-                    return TmdbIds(series_id=tmdb_id, season=season, episode=episode)
-                else:
-                    return None
-            else:
-                # Missing season/episode information
-                return None
-        else:
-            # Unknown file type
-            return None
+        metadata_format = self._get_metadata_format(nfo_path)
+        if metadata_format:
+            return metadata_format.extract_tmdb_ids(nfo_path)
+        return None
 
     def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
         """Extract original title and description from .nfo file.
+        
+        DEPRECATED: Use metadata format handler instead.
+        This method is kept for backward compatibility.
 
         Args:
             nfo_path: Path to .nfo file
@@ -227,31 +241,20 @@ class MetadataProcessor:
         Returns:
             Tuple of (original_title, original_description)
         """
-        tree = ET.parse(nfo_path)
-        root = tree.getroot()
-
-        # Extract title
-        original_title = ""
-        title_element = root.find("title")
-        if title_element is not None and title_element.text:
-            original_title = title_element.text.strip()
-
-        # Extract plot/description
-        original_description = ""
-        plot_element = root.find("plot")
-        if plot_element is not None and plot_element.text:
-            original_description = plot_element.text.strip()
-
-        return original_title, original_description
+        metadata_format = self._get_metadata_format(nfo_path)
+        if metadata_format:
+            return metadata_format.extract_content(nfo_path)
+        return "", ""
 
     def _apply_fallback_to_translation(
-        self, nfo_path: Path, translation: TranslatedContent
+        self, nfo_path: Path, translation: TranslatedContent, metadata_format: MetadataFormat
     ) -> TranslatedContent:
         """Apply fallback logic to translation with empty fields.
 
         Args:
             nfo_path: Path to .nfo file to get original content from
             translation: Selected translation that may have empty fields
+            metadata_format: Metadata format handler for this file
 
         Returns:
             TranslatedContent with empty fields replaced by original content
@@ -261,7 +264,7 @@ class MetadataProcessor:
             return translation
 
         # Extract original content for fallback
-        original_title, original_description = self._extract_original_content(nfo_path)
+        original_title, original_description = metadata_format.extract_content(nfo_path)
 
         # Apply fallback for empty fields
         final_title = translation.title if translation.title else original_title
@@ -298,48 +301,6 @@ class MetadataProcessor:
         # Copy original file to backup location
         shutil.copy2(nfo_path, backup_path)
         return True
-
-    def _write_translated_metadata(
-        self, nfo_path: Path, translation: TranslatedContent
-    ) -> None:
-        """Write translated metadata to .nfo file.
-
-        Args:
-            nfo_path: Path to .nfo file to update
-            translation: Translated content
-
-        Raises:
-            Exception: If write operation fails
-        """
-        tree = ET.parse(nfo_path)
-        root = tree.getroot()
-
-        # Update title element
-        title_element = root.find("title")
-        if title_element is not None:
-            title_element.text = translation.title
-
-        # Update plot/description element
-        plot_element = root.find("plot")
-        if plot_element is not None:
-            plot_element.text = translation.description
-
-        # Write the updated XML back to file atomically
-        # Use a temporary file to ensure atomic writes
-        temp_path = nfo_path.with_suffix(".nfo.tmp")
-        try:
-            # Configure XML formatting
-            ET.indent(tree, space="  ", level=0)
-            tree.write(temp_path, encoding="utf-8", xml_declaration=True, method="xml")
-
-            # Atomic replacement
-            temp_path.replace(nfo_path)
-
-        except Exception:
-            # Clean up temporary file if something went wrong
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
 
     def _select_preferred_translation(
         self, all_translations: dict[str, TranslatedContent]
@@ -378,7 +339,11 @@ class MetadataProcessor:
 
         if backup_path.exists():
             try:
-                return self._extract_original_content(backup_path)
+                backup_format = self._get_metadata_format(backup_path)
+                if backup_format:
+                    return backup_format.extract_content(backup_path)
+                else:
+                    return self._extract_original_content(backup_path)
             except Exception as e:
                 logger.warning(f"Failed to read backup file {backup_path}: {e}")
                 return None

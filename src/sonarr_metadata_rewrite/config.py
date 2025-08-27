@@ -31,6 +31,12 @@ class Settings(BaseSettings):
         description="Preferred languages in priority order (comma-separated)"
     )
 
+    # Metadata format configuration
+    metadata_format: str = Field(
+        default="auto",
+        description="Metadata format to use ('auto', 'kodi', 'emby'). 'auto' detects format automatically.",
+    )
+
     # Universal caching configuration
     cache_duration_hours: int = Field(
         default=720, description="How long to cache API responses (hours)"

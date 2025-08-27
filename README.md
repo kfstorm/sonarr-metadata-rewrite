@@ -85,6 +85,12 @@ PREFERRED_LANGUAGES=zh-CN,ja-JP
 ### Optional Settings (with defaults)
 
 ```bash
+# Metadata Format Configuration
+METADATA_FORMAT=auto                   # Metadata format detection (auto, kodi, emby)
+                                      # auto: Automatically detect format from files
+                                      # kodi: Force Kodi/XBMC format 
+                                      # emby: Force Emby format
+
 # Scanning & Monitoring
 PERIODIC_SCAN_INTERVAL_SECONDS=86400  # How often to scan directory (default: daily)
 ENABLE_FILE_MONITOR=true              # Real-time file monitoring (default: true)
