@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Sonarr Metadata Translation Layer - A compatibility layer that monitors Sonarr-generated .nfo files and overwrites them with TMDB translations in desired languages. This addresses [Sonarr Issue #269](https://github.com/Sonarr/Sonarr/issues/269) which requests multilingual metadata support.
+Sonarr Metadata Rewrite - A compatibility layer that monitors Sonarr-generated .nfo files and overwrites them with TMDB translations in desired languages. This addresses [Sonarr Issue #269](https://github.com/Sonarr/Sonarr/issues/269) which requests multilingual metadata support.
 
 The project includes a fully functional metadata translation service with real-time file monitoring, TMDB API integration, caching, and comprehensive error handling.
 

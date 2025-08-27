@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @click.command()
 @click.version_option(version=__version__)
 def cli() -> None:
-    """Sonarr Metadata Translation Layer.
+    """Sonarr Metadata Rewrite.
 
     A long-running service that monitors Sonarr-generated .nfo files and
     overwrites them with TMDB translations in your desired language.
@@ -36,7 +36,7 @@ def cli() -> None:
         click.echo(f"❌ {e}", err=True)
         sys.exit(1)
 
-    click.echo("🚀 Starting Sonarr Metadata Translation Layer...")
+    click.echo("🚀 Starting Sonarr Metadata Rewrite...")
     click.echo(f"✅ TMDB API key loaded (ending in ...{settings.tmdb_api_key[-4:]})")
     click.echo(f"📁 Monitoring directory: {settings.rewrite_root_dir}")
     click.echo(f"🌍 Preferred languages: {settings.preferred_languages}")

@@ -31,7 +31,7 @@ class TestCli:
                     result = runner.invoke(cli)
 
             # Check the initial output
-            assert "🚀 Starting Sonarr Metadata Translation Layer..." in result.output
+            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
             assert (
                 f"✅ TMDB API key loaded (ending in ...{test_key[-4:]})"
                 in result.output
@@ -72,7 +72,7 @@ class TestCli:
         result = runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
-        assert "Sonarr Metadata Translation Layer" in result.output
+        assert "Sonarr Metadata Rewrite" in result.output
         assert (
             "A long-running service that monitors Sonarr-generated .nfo files"
             in result.output

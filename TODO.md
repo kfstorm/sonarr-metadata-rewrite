@@ -1,4 +1,4 @@
-# Sonarr Metadata Translation Layer - Features
+# Sonarr Metadata Rewrite - Features
 
 ## Project Overview
 Create a compatibility layer that monitors Sonarr-generated .nfo files and overwrites them with TMDB translations in desired languages, addressing [Sonarr Issue #269](https://github.com/Sonarr/Sonarr/issues/269).
