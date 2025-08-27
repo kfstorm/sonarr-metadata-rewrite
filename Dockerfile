@@ -53,6 +53,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Set the entry point to the CLI command
 ENTRYPOINT ["sonarr-metadata-rewrite"]
-
-# Default to help command if no arguments provided
-CMD ["--help"]
