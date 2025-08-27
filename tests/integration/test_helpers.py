@@ -1,6 +1,5 @@
 """Helper functions for integration tests."""
 
-import os
 import shutil
 import time
 import xml.etree.ElementTree as ET
@@ -9,7 +8,6 @@ from typing import Any
 
 import pytest
 
-from sonarr_metadata_rewrite.config import get_settings
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.fixtures.subprocess_service_manager import (
@@ -242,43 +240,18 @@ def setup_series_with_nfos(
     return series, nfo_files, original_backups
 
 
-def get_tmdb_api_key(temp_media_root: Path) -> str:
-    """Get TMDB API key with proper environment handling.
-
-    Args:
-        temp_media_root: Temporary media root directory
-
-    Returns:
-        TMDB API key
-    """
-    original_rewrite_root_dir = os.environ.get("REWRITE_ROOT_DIR")
-    os.environ["REWRITE_ROOT_DIR"] = str(temp_media_root)
-
-    try:
-        settings = get_settings()
-        return settings.tmdb_api_key
-    finally:
-        # Restore original environment
-        if original_rewrite_root_dir is not None:
-            os.environ["REWRITE_ROOT_DIR"] = original_rewrite_root_dir
-        else:
-            os.environ.pop("REWRITE_ROOT_DIR", None)
-
-
 class ServiceRunner:
     """Context manager for running service with given configuration."""
 
     def __init__(
         self,
         temp_media_root: Path,
-        tmdb_api_key: str,
         service_config: dict[str, str],
         startup_wait: float = 2.0,
     ):
         # Base configuration
         env_overrides = {
             "REWRITE_ROOT_DIR": str(temp_media_root),
-            "TMDB_API_KEY": tmdb_api_key,
             "PREFERRED_LANGUAGES": "zh-CN",
         }
 
@@ -300,7 +273,6 @@ class ServiceRunner:
 
 def run_service_with_config(
     temp_media_root: Path,
-    tmdb_api_key: str,
     service_config: dict[str, str],
     startup_wait: float = 2.0,
 ) -> ServiceRunner:
@@ -308,14 +280,13 @@ def run_service_with_config(
 
     Args:
         temp_media_root: Temporary media root directory
-        tmdb_api_key: TMDB API key
         service_config: Service configuration overrides
         startup_wait: Time to wait after service starts
 
     Returns:
         Service runner (context manager)
     """
-    return ServiceRunner(temp_media_root, tmdb_api_key, service_config, startup_wait)
+    return ServiceRunner(temp_media_root, service_config, startup_wait)
 
 
 def verify_translations(

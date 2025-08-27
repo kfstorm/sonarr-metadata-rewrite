@@ -81,7 +81,6 @@ class SubprocessServiceManager:
                 stderr=subprocess.STDOUT,
                 text=True,
                 env=env,
-                cwd=Path.cwd(),
                 bufsize=1,
                 universal_newlines=True,
             )

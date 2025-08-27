@@ -7,7 +7,6 @@ import pytest
 
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.test_helpers import (
-    get_tmdb_api_key,
     parse_nfo_content,
     run_service_with_config,
     verify_translations,
@@ -65,14 +64,11 @@ def test_integration_workflow(
         test_behavior: Test behavior type
     """
     series_path, nfo_files, original_backups, series_id = prepared_series_with_nfos
-    tmdb_api_key = get_tmdb_api_key(temp_media_root)
 
     if test_behavior == "full_with_refresh":
         # Full workflow with series refresh - start service first
         print("Starting translation service with both components...")
-        with run_service_with_config(
-            temp_media_root, tmdb_api_key, service_config
-        ) as service:
+        with run_service_with_config(temp_media_root, service_config) as service:
             assert service.is_running(), "Service should be running"
 
             # Wait for initial translation
@@ -135,9 +131,7 @@ def test_integration_workflow(
     else:
         # Standard workflow - start service and test
         print(f"Starting service with {test_behavior} configuration...")
-        with run_service_with_config(
-            temp_media_root, tmdb_api_key, service_config
-        ) as service:
+        with run_service_with_config(temp_media_root, service_config) as service:
             assert service.is_running(), "Service should be running"
 
             if test_behavior == "touch_files":
