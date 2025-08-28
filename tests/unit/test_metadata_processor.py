@@ -497,8 +497,8 @@ def parse_nfo_content(nfo_path: Path) -> tuple[str, str]:
     root = tree.getroot()
     title_elem = root.find("title")
     plot_elem = root.find("plot")
-    title = title_elem.text if title_elem is not None else ""
-    plot = plot_elem.text if plot_elem is not None else ""
+    title = (title_elem.text or "") if title_elem is not None else ""
+    plot = (plot_elem.text or "") if plot_elem is not None else ""
     return title, plot
 
 
