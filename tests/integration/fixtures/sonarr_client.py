@@ -1,5 +1,6 @@
 """Sonarr API client for integration testing."""
 
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -175,23 +176,27 @@ class SonarrClient:
         print(f"Found Kodi metadata config: {kodi_config['name']}")
 
         # Debug: Print current Kodi configuration
-        print(f"Current Kodi config before update: {kodi_config}")
+        print(f"Current Kodi config before update: {json.dumps(kodi_config, indent=2)}")
         
-        # Enable all metadata types for Kodi (be more comprehensive)
-        kodi_config.update(
-            {
-                "enable": True,
-                "seriesMetadata": True,
-                "episodeMetadata": True,
-                "episodeMetadataUrl": True,
-                "episodeImages": True,
-                "seriesImages": True,
-                "seasonImages": True,
-                "seriesMetadataUrl": True,
-            }
-        )
+        # Enable the provider itself
+        kodi_config["enable"] = True
         
-        print(f"Updated Kodi config: {kodi_config}")
+        # Update the individual field values in the fields array
+        for field in kodi_config.get("fields", []):
+            field_name = field.get("name")
+            if field_name in [
+                "seriesMetadata",
+                "episodeMetadata", 
+                "episodeMetadataUrl",
+                "episodeImages",
+                "seriesImages", 
+                "seasonImages",
+                "seriesMetadataUrl"
+            ]:
+                field["value"] = True
+                print(f"  Setting {field_name} = True")
+        
+        print(f"Updated Kodi config: {json.dumps(kodi_config, indent=2)}")
 
         # Update the configuration
         response = self._make_request(
@@ -200,9 +205,20 @@ class SonarrClient:
 
         if response.is_success:
             print("Successfully enabled Kodi metadata generation")
+            
+            # Verify the configuration was applied
+            verify_response = self._make_request("GET", "/api/v3/metadata")
+            if verify_response.is_success:
+                metadata_configs = verify_response.json()
+                for config in metadata_configs:
+                    if config.get("id") == kodi_config["id"]:
+                        print(f"Verified Kodi config after update: {json.dumps(config, indent=2)}")
+                        break
+            
             return True
         else:
             print(f"Failed to update metadata settings: {response.status_code}")
+            print(f"Response body: {response.text}")
             return False
 
     def refresh_series(self, series_id: int) -> bool:
