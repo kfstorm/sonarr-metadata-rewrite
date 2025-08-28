@@ -11,7 +11,7 @@ from diskcache import Cache  # type: ignore[import-untyped]
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import TmdbIds
 from sonarr_metadata_rewrite.translator import Translator
-from tests.conftest import (
+from tests.unit.conftest import (
     create_http_error_mock,
     create_http_status_error_mock,
     create_mock_response,
