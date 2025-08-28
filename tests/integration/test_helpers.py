@@ -264,9 +264,21 @@ def setup_series_with_nfos(
         print("Manual import needed as disk scan didn't import all files...")
         # Manual import the episode files to ensure Sonarr recognizes them
         print("Manually importing episode files into Sonarr...")
-        episode_file_paths = [str(f) for f in episode_files]
+
+        # Convert host paths to container paths for manual import
+        # Host: /tmp/sonarr_media_xyz/series/season/file.mkv
+        # Container: /tv/series/season/file.mkv
+        container_paths = []
+        for episode_file in episode_files:
+            # Get path relative to temp_media_root
+            relative_path = episode_file.relative_to(temp_media_root)
+            # Convert to container path
+            container_path = f"/tv/{relative_path}"
+            container_paths.append(container_path)
+            print(f"Converting {episode_file} -> {container_path}")
+
         import_success = configured_sonarr_container.manual_import(
-            series.id, episode_file_paths
+            series.id, container_paths
         )
         if not import_success:
             series.__exit__(None, None, None)
