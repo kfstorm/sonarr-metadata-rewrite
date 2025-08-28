@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
+    ExternalIds,
     ProcessResult,
     TmdbIds,
     TranslatedContent,
@@ -191,7 +192,14 @@ class MetadataProcessor:
                 tmdb_id = int(tmdb_id_text.strip())
 
         if tmdb_id is None:
-            return None
+            # Try to find TMDB ID using external IDs
+            external_ids = self._extract_external_ids(root)
+            if external_ids and (external_ids.tvdb_id or external_ids.imdb_id):
+                tmdb_id = self.translator.find_tmdb_id_by_external_id(external_ids)
+                if tmdb_id is None:
+                    return None
+            else:
+                return None
 
         # Determine if this is a series or episode file
         if root.tag == "tvshow":
@@ -217,6 +225,41 @@ class MetadataProcessor:
         else:
             # Unknown file type
             return None
+
+    def _extract_external_ids(self, root: ET.Element) -> ExternalIds:
+        """Extract external IDs from .nfo XML root element.
+
+        Args:
+            root: XML root element from .nfo file
+
+        Returns:
+            ExternalIds object with available external IDs
+        """
+        external_ids = ExternalIds()
+
+        # Check for TVDB ID in uniqueid elements
+        tvdb_elements = root.findall('.//uniqueid[@type="tvdb"]')
+        if tvdb_elements:
+            tvdb_id_text = tvdb_elements[0].text
+            if tvdb_id_text and tvdb_id_text.strip().isdigit():
+                external_ids.tvdb_id = int(tvdb_id_text.strip())
+
+        # Also check for TVDB ID in the <id> element (as shown in the example)
+        if external_ids.tvdb_id is None:
+            id_element = root.find("id")
+            if id_element is not None and id_element.text:
+                id_text = id_element.text.strip()
+                if id_text.isdigit():
+                    external_ids.tvdb_id = int(id_text)
+
+        # Check for IMDB ID in uniqueid elements
+        imdb_elements = root.findall('.//uniqueid[@type="imdb"]')
+        if imdb_elements:
+            imdb_id_text = imdb_elements[0].text
+            if imdb_id_text and imdb_id_text.strip():
+                external_ids.imdb_id = imdb_id_text.strip()
+
+        return external_ids
 
     def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
         """Extract original title and description from .nfo file.

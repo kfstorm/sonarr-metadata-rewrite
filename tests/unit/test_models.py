@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from sonarr_metadata_rewrite.models import (
+    ExternalIds,
     ProcessResult,
     TmdbIds,
     TranslatedContent,
@@ -33,6 +34,29 @@ def test_translated_content() -> None:
     assert content.title == "示例剧集"
     assert content.description == "这是一个示例描述"
     assert content.language == "zh-CN"
+
+
+def test_external_ids() -> None:
+    """Test ExternalIds creation."""
+    # Test with both IDs
+    external_ids = ExternalIds(tvdb_id=123456, imdb_id="tt1234567")
+    assert external_ids.tvdb_id == 123456
+    assert external_ids.imdb_id == "tt1234567"
+
+    # Test with only TVDB ID
+    tvdb_only = ExternalIds(tvdb_id=789012)
+    assert tvdb_only.tvdb_id == 789012
+    assert tvdb_only.imdb_id is None
+
+    # Test with only IMDB ID
+    imdb_only = ExternalIds(imdb_id="tt7890123")
+    assert imdb_only.tvdb_id is None
+    assert imdb_only.imdb_id == "tt7890123"
+
+    # Test with no IDs (defaults)
+    empty = ExternalIds()
+    assert empty.tvdb_id is None
+    assert empty.imdb_id is None
 
 
 def test_process_result() -> None:

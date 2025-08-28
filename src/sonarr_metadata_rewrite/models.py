@@ -21,6 +21,14 @@ class TmdbIds:
 
 
 @dataclass
+class ExternalIds:
+    """External identifiers that can be used to find TMDB IDs."""
+
+    tvdb_id: int | None = None
+    imdb_id: str | None = None
+
+
+@dataclass
 class TranslatedContent:
     """Translated content for TV series or episodes."""
 

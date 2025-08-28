@@ -9,7 +9,7 @@ import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds
+from sonarr_metadata_rewrite.models import ExternalIds, TmdbIds
 from sonarr_metadata_rewrite.translator import Translator
 
 
@@ -316,3 +316,175 @@ def test_close_method(test_settings: Settings) -> None:
     assert isinstance(translator.cache, Cache)
     translator.close()
     # Client should be closed after calling close()
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_tvdb_success(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test successful TMDB ID lookup using TVDB ID."""
+    # Mock successful TMDB find API response for TVDB
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "tv_results": [{"id": 86965, "name": "如果国宝会说话"}],
+        "movie_results": [],
+        "person_results": [],
+    }
+    mock_get.return_value = mock_response
+
+    external_ids = ExternalIds(tvdb_id=364698)
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+
+    assert tmdb_id == 86965
+    mock_get.assert_called_once_with("/find/364698?external_source=tvdb_id")
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_imdb_success(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test successful TMDB ID lookup using IMDB ID."""
+    # Mock successful TMDB find API response for IMDB
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "tv_results": [{"id": 12345, "name": "Test Series"}],
+        "movie_results": [],
+        "person_results": [],
+    }
+    mock_get.return_value = mock_response
+
+    external_ids = ExternalIds(imdb_id="tt1234567")
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+
+    assert tmdb_id == 12345
+    mock_get.assert_called_once_with("/find/tt1234567?external_source=imdb_id")
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_tvdb_preferred(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that TVDB ID is tried first when both TVDB and IMDB IDs are available."""
+    # Mock successful TMDB find API response for TVDB
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "tv_results": [{"id": 99999, "name": "TVDB Result"}],
+        "movie_results": [],
+        "person_results": [],
+    }
+    mock_get.return_value = mock_response
+
+    external_ids = ExternalIds(tvdb_id=123456, imdb_id="tt7890123")
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+
+    assert tmdb_id == 99999
+    # Should only call TVDB endpoint since it succeeded
+    mock_get.assert_called_once_with("/find/123456?external_source=tvdb_id")
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_tvdb_fallback_to_imdb(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test fallback to IMDB when TVDB returns no results."""
+    # Mock responses: TVDB returns empty, IMDB returns result
+    tvdb_response = Mock()
+    tvdb_response.raise_for_status.return_value = None
+    tvdb_response.json.return_value = {
+        "tv_results": [],  # No results for TVDB
+        "movie_results": [],
+        "person_results": [],
+    }
+
+    imdb_response = Mock()
+    imdb_response.raise_for_status.return_value = None
+    imdb_response.json.return_value = {
+        "tv_results": [{"id": 88888, "name": "IMDB Result"}],
+        "movie_results": [],
+        "person_results": [],
+    }
+
+    # Return different responses for different calls
+    mock_get.side_effect = [tvdb_response, imdb_response]
+
+    external_ids = ExternalIds(tvdb_id=123456, imdb_id="tt7890123")
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+
+    assert tmdb_id == 88888
+    assert mock_get.call_count == 2
+    mock_get.assert_any_call("/find/123456?external_source=tvdb_id")
+    mock_get.assert_any_call("/find/tt7890123?external_source=imdb_id")
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_no_results(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test when no TMDB ID is found for any external ID."""
+    # Mock response with no TV results
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "tv_results": [],  # No results
+        "movie_results": [],
+        "person_results": [],
+    }
+    mock_get.return_value = mock_response
+
+    external_ids = ExternalIds(tvdb_id=999999, imdb_id="tt9999999")
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+
+    assert tmdb_id is None
+    assert mock_get.call_count == 2  # Should try both TVDB and IMDB
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_api_error(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test handling of API errors during external ID lookup."""
+    # Mock API error
+    mock_get.side_effect = httpx.HTTPError("API error")
+
+    external_ids = ExternalIds(tvdb_id=123456)
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+
+    assert tmdb_id is None
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_by_external_id_caching(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that external ID lookups are cached."""
+    # Mock successful response
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "tv_results": [{"id": 77777, "name": "Cached Result"}],
+        "movie_results": [],
+        "person_results": [],
+    }
+    mock_get.return_value = mock_response
+
+    external_ids = ExternalIds(tvdb_id=555555)
+
+    # First call
+    tmdb_id1 = translator.find_tmdb_id_by_external_id(external_ids)
+    assert tmdb_id1 == 77777
+    assert mock_get.call_count == 1
+
+    # Second call should use cache
+    tmdb_id2 = translator.find_tmdb_id_by_external_id(external_ids)
+    assert tmdb_id2 == 77777
+    assert mock_get.call_count == 1  # No additional API call
+
+
+def test_find_tmdb_id_by_external_id_no_external_ids(translator: Translator) -> None:
+    """Test when no external IDs are provided."""
+    external_ids = ExternalIds()  # No IDs
+    tmdb_id = translator.find_tmdb_id_by_external_id(external_ids)
+    assert tmdb_id is None

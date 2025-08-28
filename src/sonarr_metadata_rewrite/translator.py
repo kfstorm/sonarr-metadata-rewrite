@@ -6,7 +6,7 @@ import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent
+from sonarr_metadata_rewrite.models import ExternalIds, TmdbIds, TranslatedContent
 
 
 class Translator:
@@ -86,6 +86,79 @@ class Translator:
             )
 
         return translations
+
+    def find_tmdb_id_by_external_id(self, external_ids: ExternalIds) -> int | None:
+        """Find TMDB ID using external identifiers via TMDB find API.
+
+        Args:
+            external_ids: External identifiers (TVDB, IMDB, etc.)
+
+        Returns:
+            TMDB series ID if found, None otherwise
+        """
+        # Try TVDB ID first
+        if external_ids.tvdb_id:
+            cache_key = f"find:tvdb:{external_ids.tvdb_id}"
+
+            # Check cache first
+            if cache_key in self.cache:
+                return self.cache[cache_key]
+
+            try:
+                endpoint = f"/find/{external_ids.tvdb_id}?external_source=tvdb_id"
+                response = self.client.get(endpoint)
+                response.raise_for_status()
+                api_data = response.json()
+
+                # Extract TMDB series ID from response
+                tv_results = api_data.get("tv_results", [])
+                if tv_results:
+                    tmdb_id = tv_results[0].get("id")
+                    if tmdb_id:
+                        # Cache the result
+                        self.cache.set(
+                            cache_key, tmdb_id, expire=self.cache_expire_seconds
+                        )
+                        return tmdb_id
+
+                # Cache negative result to avoid repeated API calls
+                self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
+            except Exception:
+                # If API call fails, don't cache and return None
+                pass
+
+        # Try IMDB ID if TVDB didn't work
+        if external_ids.imdb_id:
+            cache_key = f"find:imdb:{external_ids.imdb_id}"
+
+            # Check cache first
+            if cache_key in self.cache:
+                return self.cache[cache_key]
+
+            try:
+                endpoint = f"/find/{external_ids.imdb_id}?external_source=imdb_id"
+                response = self.client.get(endpoint)
+                response.raise_for_status()
+                api_data = response.json()
+
+                # Extract TMDB series ID from response
+                tv_results = api_data.get("tv_results", [])
+                if tv_results:
+                    tmdb_id = tv_results[0].get("id")
+                    if tmdb_id:
+                        # Cache the result
+                        self.cache.set(
+                            cache_key, tmdb_id, expire=self.cache_expire_seconds
+                        )
+                        return tmdb_id
+
+                # Cache negative result to avoid repeated API calls
+                self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
+            except Exception:
+                # If API call fails, don't cache and return None
+                pass
+
+        return None
 
     def close(self) -> None:
         """Close the HTTP client."""

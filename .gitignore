@@ -49,3 +49,8 @@ logs/
 .env.development
 .env.test
 .env.production
+
+# Test artifacts and temporary files
+backups/
+cache/
+test_*.nfo
