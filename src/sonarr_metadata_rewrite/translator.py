@@ -87,6 +87,63 @@ class Translator:
 
         return translations
 
+    def get_original_details(self, tmdb_ids: TmdbIds) -> tuple[str, str] | None:
+        """Get original language and title for TV series or episode.
+
+        Args:
+            tmdb_ids: TMDB identifiers containing series_id and optional season/episode
+
+        Returns:
+            Tuple of (original_language, original_title) if found, None otherwise
+        """
+        cache_key = f"original_details:{tmdb_ids}"
+
+        # Check cache first
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        try:
+            # For episodes, we need both episode name and series original language
+            if tmdb_ids.season is not None and tmdb_ids.episode is not None:
+                # Get episode details for the name
+                episode_endpoint = (
+                    f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}"
+                    f"/episode/{tmdb_ids.episode}"
+                )
+                episode_response = self.client.get(episode_endpoint)
+                episode_response.raise_for_status()
+                episode_data = episode_response.json()
+
+                # Get series details for the original language
+                series_endpoint = f"/tv/{tmdb_ids.series_id}"
+                series_response = self.client.get(series_endpoint)
+                series_response.raise_for_status()
+                series_data = series_response.json()
+
+                original_language = series_data.get("original_language", "")
+                original_title = episode_data.get("name", "")
+            else:
+                # Series details endpoint
+                endpoint = f"/tv/{tmdb_ids.series_id}"
+                response = self.client.get(endpoint)
+                response.raise_for_status()
+                api_data = response.json()
+
+                original_language = api_data.get("original_language", "")
+                original_title = api_data.get("original_name", "")
+
+            if original_language and original_title:
+                result = (original_language, original_title.strip())
+                # Store in cache with expiration
+                self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
+                return result
+
+        except Exception:
+            # If API call fails, return None (will fall back to existing logic)
+            pass
+
+        return None
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()
