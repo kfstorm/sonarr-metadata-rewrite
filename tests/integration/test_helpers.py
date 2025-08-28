@@ -224,7 +224,7 @@ def setup_series_with_nfos(
         shutil.copy2(nfo_file, backup_path)
         original_backups[nfo_file] = backup_path
 
-    # Parse original metadata to verify we can process the files
+    # Parse original metadata to verify it contains TMDB IDs
     for nfo_file in nfo_files:
         metadata = parse_nfo_content(nfo_file)
         print(f"Original metadata for {nfo_file.name}: {metadata}")
