@@ -208,7 +208,7 @@ def test_integration_workflow(
 
 
 # Chinese series TVDB ID for "大明王朝1566"
-MING_DYNASTY_TVDB_ID = 285896
+MING_DYNASTY_TVDB_ID = 300635
 
 
 @pytest.mark.integration
