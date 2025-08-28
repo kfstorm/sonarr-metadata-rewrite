@@ -11,6 +11,12 @@ from diskcache import Cache  # type: ignore[import-untyped]
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import TmdbIds
 from sonarr_metadata_rewrite.translator import Translator
+from tests.conftest import (
+    create_http_error_mock,
+    create_http_status_error_mock,
+    create_mock_response,
+    create_rate_limit_error_mock,
+)
 
 
 @pytest.fixture
@@ -133,10 +139,7 @@ def test_get_translations_series_success(
 ) -> None:
     """Test successful series translations retrieval."""
     # Mock successful HTTP response
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = mock_series_response
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(mock_series_response)
 
     tmdb_ids = TmdbIds(series_id=12345)
     translations = translator.get_translations(tmdb_ids)
@@ -176,10 +179,7 @@ def test_get_translations_episode_success(
 ) -> None:
     """Test successful episode translations retrieval."""
     # Mock successful HTTP response
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = mock_episode_response
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(mock_episode_response)
 
     tmdb_ids = TmdbIds(series_id=12345, season=1, episode=2)
     translations = translator.get_translations(tmdb_ids)
@@ -202,7 +202,7 @@ def test_get_translations_episode_success(
 def test_get_translations_http_error(mock_get: Mock, translator: Translator) -> None:
     """Test HTTP error handling."""
     # Mock HTTP error
-    mock_get.side_effect = httpx.HTTPError("API error")
+    mock_get.side_effect = create_http_error_mock("API error")
 
     tmdb_ids = TmdbIds(series_id=12345)
 
@@ -235,10 +235,7 @@ def test_get_translations_empty_response(
 ) -> None:
     """Test handling of empty translations response."""
     # Mock response with no translations
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {"id": 12345, "translations": []}
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response({"id": 12345, "translations": []})
 
     tmdb_ids = TmdbIds(series_id=12345)
     translations = translator.get_translations(tmdb_ids)
@@ -254,24 +251,23 @@ def test_get_translations_filters_empty_data(
 ) -> None:
     """Test filtering of translations with empty title and description."""
     # Mock response with empty data
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {
-        "id": 12345,
-        "translations": [
-            {
-                "iso_639_1": "zh",
-                "iso_3166_1": "CN",
-                "data": {"name": "", "overview": ""},
-            },
-            {
-                "iso_639_1": "en",
-                "iso_3166_1": "US",
-                "data": {"name": "Valid Title", "overview": ""},
-            },
-        ],
-    }
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(
+        {
+            "id": 12345,
+            "translations": [
+                {
+                    "iso_639_1": "zh",
+                    "iso_3166_1": "CN",
+                    "data": {"name": "", "overview": ""},
+                },
+                {
+                    "iso_639_1": "en",
+                    "iso_3166_1": "US",
+                    "data": {"name": "Valid Title", "overview": ""},
+                },
+            ],
+        }
+    )
 
     tmdb_ids = TmdbIds(series_id=12345)
     translations = translator.get_translations(tmdb_ids)
@@ -308,10 +304,7 @@ def test_caching_integration(
 ) -> None:
     """Test that caching works with API calls."""
     # Mock successful HTTP response
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = mock_series_response
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(mock_series_response)
 
     tmdb_ids = TmdbIds(series_id=12345)
 
@@ -350,10 +343,7 @@ def test_get_original_details_series_success(
 ) -> None:
     """Test successful series original details retrieval."""
     # Mock successful HTTP response
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = mock_series_details_response
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(mock_series_details_response)
 
     tmdb_ids = TmdbIds(series_id=68034)
     result = translator.get_original_details(tmdb_ids)
@@ -380,13 +370,10 @@ def test_get_original_details_episode_success(
     # Mock both episode and series responses (episode needs series for
     # original_language)
     def mock_side_effect(endpoint: str) -> Mock:
-        mock_response = Mock()
-        mock_response.raise_for_status.return_value = None
         if "season" in endpoint and "episode" in endpoint:
-            mock_response.json.return_value = mock_episode_details_response
+            return create_mock_response(mock_episode_details_response)
         else:
-            mock_response.json.return_value = mock_series_details_response
-        return mock_response
+            return create_mock_response(mock_series_details_response)
 
     mock_get.side_effect = mock_side_effect
 
@@ -411,7 +398,7 @@ def test_get_original_details_http_error(
 ) -> None:
     """Test HTTP error handling in get_original_details."""
     # Mock HTTP error
-    mock_get.side_effect = httpx.HTTPError("API error")
+    mock_get.side_effect = create_http_error_mock("API error")
 
     tmdb_ids = TmdbIds(series_id=12345)
     result = translator.get_original_details(tmdb_ids)
@@ -426,14 +413,13 @@ def test_get_original_details_missing_data(
 ) -> None:
     """Test handling of response with missing original language or title."""
     # Mock response with missing data
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {
-        "id": 12345,
-        "name": "Some Title",
-        # Missing original_language and original_name
-    }
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(
+        {
+            "id": 12345,
+            "name": "Some Title",
+            # Missing original_language and original_name
+        }
+    )
 
     tmdb_ids = TmdbIds(series_id=12345)
     result = translator.get_original_details(tmdb_ids)
@@ -448,10 +434,7 @@ def test_get_original_details_caching(
 ) -> None:
     """Test that original details are cached properly."""
     # Mock successful HTTP response
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = mock_series_details_response
-    mock_get.return_value = mock_response
+    mock_get.return_value = create_mock_response(mock_series_details_response)
 
     tmdb_ids = TmdbIds(series_id=68034)
 
@@ -477,15 +460,8 @@ def test_rate_limit_retry_success(
 ) -> None:
     """Test successful retry after rate limit error."""
     # First call returns 429, second call succeeds
-    rate_limit_response = Mock()
-    rate_limit_response.status_code = 429
-    rate_limit_error = httpx.HTTPStatusError(
-        "Too Many Requests", request=Mock(), response=rate_limit_response
-    )
-
-    success_response = Mock()
-    success_response.raise_for_status.return_value = None
-    success_response.json.return_value = mock_series_response
+    rate_limit_error = create_rate_limit_error_mock()
+    success_response = create_mock_response(mock_series_response)
 
     mock_get.side_effect = [rate_limit_error, success_response]
 
@@ -510,12 +486,7 @@ def test_rate_limit_max_retries_exceeded(
 ) -> None:
     """Test that rate limit retries are exhausted and error is raised."""
     # All calls return 429
-    rate_limit_response = Mock()
-    rate_limit_response.status_code = 429
-    rate_limit_error = httpx.HTTPStatusError(
-        "Too Many Requests", request=Mock(), response=rate_limit_response
-    )
-    mock_get.side_effect = rate_limit_error
+    mock_get.side_effect = create_rate_limit_error_mock()
 
     tmdb_ids = TmdbIds(series_id=12345)
 
@@ -541,12 +512,7 @@ def test_non_rate_limit_http_error_no_retry(
 ) -> None:
     """Test that non-rate-limit HTTP errors are not retried."""
     # Return 500 error (not rate limit)
-    server_error_response = Mock()
-    server_error_response.status_code = 500
-    server_error = httpx.HTTPStatusError(
-        "Internal Server Error", request=Mock(), response=server_error_response
-    )
-    mock_get.side_effect = server_error
+    mock_get.side_effect = create_http_status_error_mock(500, "Internal Server Error")
 
     tmdb_ids = TmdbIds(series_id=12345)
 
@@ -572,12 +538,7 @@ def test_rate_limit_exponential_backoff_max_delay(
         translator = Translator(test_settings, cache)
 
         # All calls return 429
-        rate_limit_response = Mock()
-        rate_limit_response.status_code = 429
-        rate_limit_error = httpx.HTTPStatusError(
-            "Too Many Requests", request=Mock(), response=rate_limit_response
-        )
-        mock_get.side_effect = rate_limit_error
+        mock_get.side_effect = create_rate_limit_error_mock()
 
         tmdb_ids = TmdbIds(series_id=12345)
 
@@ -599,12 +560,7 @@ def test_rate_limit_preserves_cache_on_failure(
 ) -> None:
     """Test that rate limit failures don't corrupt cache."""
     # Rate limit error for all attempts
-    rate_limit_response = Mock()
-    rate_limit_response.status_code = 429
-    rate_limit_error = httpx.HTTPStatusError(
-        "Too Many Requests", request=Mock(), response=rate_limit_response
-    )
-    mock_get.side_effect = rate_limit_error
+    mock_get.side_effect = create_rate_limit_error_mock()
 
     tmdb_ids = TmdbIds(series_id=12345)
     cache_key = f"translations:{tmdb_ids}"
