@@ -88,7 +88,7 @@ PREFERRED_LANGUAGES=zh-CN,ja-JP
 # Metadata Format Configuration
 METADATA_FORMAT=auto                   # Metadata format detection (auto, kodi, emby)
                                       # auto: Automatically detect format from files
-                                      # kodi: Force Kodi/XBMC format 
+                                      # kodi: Force Kodi/XBMC format
                                       # emby: Force Emby format
 
 # Scanning & Monitoring
