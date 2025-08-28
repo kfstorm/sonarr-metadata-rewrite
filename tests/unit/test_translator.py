@@ -790,4 +790,3 @@ def test_rate_limit_preserves_cache_on_failure(
 
     # Cache should still be empty (no partial data stored)
     assert cache_key not in translator.cache
->>>>>>> main-temp

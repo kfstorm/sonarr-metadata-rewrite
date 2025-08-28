@@ -255,7 +255,9 @@ def test_chinese_series_translation(
 
         # Wait for .nfo files to be generated
         print("Waiting for .nfo files to be generated...")
-        nfo_files = wait_for_nfo_files(series_path, timeout=15.0)
+        episode_count = len(episode_files)
+        expected_nfo_count = episode_count + 1  # episodes + series
+        nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=15.0)
 
         if not nfo_files:
             # List what files exist for debugging
@@ -358,3 +360,87 @@ def test_chinese_series_translation(
                 f"Successfully translated {translated_count} out of "
                 f"{len(nfo_files)} files with Chinese content"
             )
+
+
+def test_external_id_lookup_chinese_series(integration_environment):
+    """Test external ID lookup with real Chinese series '如果国宝会说话' (TVDB ID: 364698).
+    
+    This test verifies that the external ID lookup functionality works correctly
+    by processing a series .nfo file that contains only TVDB ID (no TMDB ID).
+    """
+    temp_media_root, sonarr_client, service_config = integration_environment
+
+    with SeriesManager(
+        sonarr_client=sonarr_client,
+        tvdb_id=364698,  # "如果国宝会说话"
+        root_folder="/tv",
+        temp_media_root=temp_media_root,
+    ) as series:
+        print(f"Added series: {series.series_title}")
+
+        # Wait for Sonarr to create the directory structure and potentially .nfo files
+        wait_for_nfo_files(series.local_path, expected_count=1, timeout=30)
+
+        # Get the tvshow.nfo file path
+        tvshow_nfo = series.local_path / "tvshow.nfo"
+        assert tvshow_nfo.exists(), f"tvshow.nfo not found at {tvshow_nfo}"
+
+        # Read original content
+        original_content = parse_nfo_content(tvshow_nfo)
+        print(f"Original title: {original_content.get('title')}")
+        print(f"Original TMDB ID: {original_content.get('tmdb_id')}")
+
+        # Create a test .nfo file with only TVDB ID (no TMDB ID) to simulate external ID lookup
+        test_nfo_content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<tvshow>
+    <title>如果国宝会说话</title>
+    <uniqueid type="tvdb" default="true">364698</uniqueid>
+    <plot>A documentary series about Chinese cultural treasures and artifacts.</plot>
+    <genre>Documentary</genre>
+    <runtime>15</runtime>
+    <status>Continuing</status>
+</tvshow>"""
+
+        # Write the test content (without TMDB ID)
+        tvshow_nfo.write_text(test_nfo_content, encoding="utf-8")
+        print("Created test .nfo file with only TVDB ID")
+
+        # Configure service for external ID processing
+        test_config = service_config.copy()
+        test_config.update({
+            "ENABLE_FILE_MONITOR": "true",
+            "ENABLE_FILE_SCANNER": "false",
+            "PERIODIC_SCAN_INTERVAL_SECONDS": "999999",
+        })
+
+        with run_service_with_config(test_config, temp_media_root):
+            print("Service started, triggering file monitor...")
+            
+            # Touch the file to trigger file monitor
+            tvshow_nfo.touch()
+            print(f"Touched: {tvshow_nfo}")
+
+            # Wait for processing
+            time.sleep(10)
+
+            # Verify external ID lookup and translation occurred
+            processed_content = parse_nfo_content(tvshow_nfo)
+            print(f"Processed title: {processed_content.get('title')}")
+            print(f"Processed TMDB ID: {processed_content.get('tmdb_id')}")
+
+            # Verify that external ID lookup worked
+            assert processed_content.get('tmdb_id'), (
+                "TMDB ID should be populated via external ID lookup"
+            )
+
+            # Verify the file was processed (title should be different or content enhanced)
+            # Since this is a Chinese series, it might get translated if Chinese is in preferred languages
+            processed_title = processed_content.get('title', '')
+            processed_plot = processed_content.get('plot', '')
+            
+            assert processed_title, "Processed title should not be empty"
+            assert processed_plot, "Processed plot should not be empty"
+            
+            print(f"✅ External ID lookup successful for Chinese series")
+            print(f"✅ Final title: {processed_title}")
+            print(f"✅ TMDB ID discovered: {processed_content.get('tmdb_id')}")

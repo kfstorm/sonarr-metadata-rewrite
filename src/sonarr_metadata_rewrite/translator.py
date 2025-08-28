@@ -132,63 +132,67 @@ class Translator:
         Returns:
             TMDB series ID if found, None otherwise
         """
-        # Try TVDB ID first
+        # Try TVDB ID first (prioritized)
         if external_ids.tvdb_id:
-            cache_key = f"find:tvdb:{external_ids.tvdb_id}"
-
-            # Check cache first
-            if cache_key in self.cache:
-                return self.cache[cache_key]
-
-            try:
-                endpoint = f"/find/{external_ids.tvdb_id}?external_source=tvdb_id"
-                api_data = self._fetch_with_retry(endpoint)
-
-                # Extract TMDB series ID from response
-                tv_results = api_data.get("tv_results", [])
-                if tv_results:
-                    tmdb_id = tv_results[0].get("id")
-                    if tmdb_id:
-                        # Cache the result
-                        self.cache.set(
-                            cache_key, tmdb_id, expire=self.cache_expire_seconds
-                        )
-                        return tmdb_id
-
-                # Cache negative result to avoid repeated API calls
-                self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
-            except Exception:
-                # If API call fails, don't cache and return None
-                pass
+            tmdb_id = self._lookup_by_external_id(
+                external_id=external_ids.tvdb_id,
+                external_source="tvdb_id",
+                source_type="tvdb"
+            )
+            if tmdb_id:
+                return tmdb_id
 
         # Try IMDB ID if TVDB didn't work
         if external_ids.imdb_id:
-            cache_key = f"find:imdb:{external_ids.imdb_id}"
+            tmdb_id = self._lookup_by_external_id(
+                external_id=external_ids.imdb_id,
+                external_source="imdb_id",
+                source_type="imdb"
+            )
+            if tmdb_id:
+                return tmdb_id
 
-            # Check cache first
-            if cache_key in self.cache:
-                return self.cache[cache_key]
+        return None
 
-            try:
-                endpoint = f"/find/{external_ids.imdb_id}?external_source=imdb_id"
-                api_data = self._fetch_with_retry(endpoint)
+    def _lookup_by_external_id(
+        self, external_id: str | int, external_source: str, source_type: str
+    ) -> int | None:
+        """Helper method to lookup TMDB ID by external identifier.
 
-                # Extract TMDB series ID from response
-                tv_results = api_data.get("tv_results", [])
-                if tv_results:
-                    tmdb_id = tv_results[0].get("id")
-                    if tmdb_id:
-                        # Cache the result
-                        self.cache.set(
-                            cache_key, tmdb_id, expire=self.cache_expire_seconds
-                        )
-                        return tmdb_id
+        Args:
+            external_id: The external ID value
+            external_source: The TMDB API source parameter (e.g., "tvdb_id", "imdb_id")
+            source_type: The cache key source type (e.g., "tvdb", "imdb")
 
-                # Cache negative result to avoid repeated API calls
-                self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
-            except Exception:
-                # If API call fails, don't cache and return None
-                pass
+        Returns:
+            TMDB series ID if found, None otherwise
+        """
+        cache_key = f"find:{source_type}:{external_id}"
+
+        # Check cache first
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        try:
+            endpoint = f"/find/{external_id}?external_source={external_source}"
+            api_data = self._fetch_with_retry(endpoint)
+
+            # Extract TMDB series ID from response
+            tv_results = api_data.get("tv_results", [])
+            if tv_results:
+                tmdb_id = tv_results[0].get("id")
+                if tmdb_id:
+                    # Cache the result
+                    self.cache.set(
+                        cache_key, tmdb_id, expire=self.cache_expire_seconds
+                    )
+                    return tmdb_id
+
+            # Cache negative result to avoid repeated API calls
+            self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
+        except Exception:
+            # If API call fails, don't cache and return None
+            pass
 
         return None
 

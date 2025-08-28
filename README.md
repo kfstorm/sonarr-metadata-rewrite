@@ -104,6 +104,10 @@ TMDB_MAX_RETRY_DELAY=60.0             # Max retry delay (default: 60.0)
 # Backup
 ORIGINAL_FILES_BACKUP_DIR=./backups   # Backup original files (default: ./backups)
                                       # Set to empty string to disable backups
+
+# Service Mode
+SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'
+                                      # (default: rewrite)
 ```
 
 **Language codes** are ISO 639-1 format:
@@ -228,22 +232,63 @@ about it.
 
 ## Going back to English
 
-If you want to restore Sonarr's original English metadata:
+If you want to restore Sonarr's original English metadata, you can use the
+built-in rollback functionality to automatically restore all original files
+from backups.
 
-**Important: Stop the container first!** Otherwise it'll just translate
-everything again.
+### Automated Rollback (Recommended)
+
+Set the service to rollback mode, which will restore all original files from backups:
+
+**Docker:**
+
+```bash
+docker run --rm \
+  --user $(id -u):$(id -g) \
+  -e SERVICE_MODE=rollback \
+  -e TMDB_API_KEY=your_api_key_here \
+  -e REWRITE_ROOT_DIR=/media \
+  -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
+  -v /path/to/your/tv/shows:/media \
+  -v sonarr-metadata-backups:/app/backups \
+  kfstorm/sonarr-metadata-rewrite:latest
+```
+
+**Docker Compose:**
+
+```yaml
+# Temporarily change your docker-compose.yml
+environment:
+  - SERVICE_MODE=rollback
+  # ... other environment variables
+```
+
+The rollback service will:
+- Restore all original .nfo files from the backup directory
+- Skip any shows/episodes that have been deleted
+- Log the restoration progress
+- Hang after completion (preventing restart loops)
+
+**Important:** The service will hang after rollback completion to prevent
+restart loops. Stop it manually when done:
 
 ```bash
 docker stop sonarr-metadata-rewrite
 ```
 
-### Steps to restore English metadata
+### Manual Restore (Alternative)
 
-1. Delete the translated .nfo files from your TV show directories
-2. Go to Sonarr > Series > Update All
-3. Sonarr will regenerate the original English .nfo files
+If you prefer to restore manually or don't have backups:
 
-NOTE: Restoring backups are not implemented yet.
+1. **Stop the container first** to prevent re-translation:
+
+   ```bash
+   docker stop sonarr-metadata-rewrite
+   ```
+
+2. Delete the translated .nfo files from your TV show directories
+3. Go to Sonarr > Series > Update All
+4. Sonarr will regenerate the original English .nfo files
 
 ## Development
 
