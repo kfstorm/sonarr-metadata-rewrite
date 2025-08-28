@@ -6,6 +6,7 @@ _.model_config
 
 # Pydantic validators are used by the framework
 _.parse_preferred_languages
+_.validate_service_mode
 _.cls
 
 # Signal handler parameters are required by the interface
