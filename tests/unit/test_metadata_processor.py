@@ -764,6 +764,7 @@ def test_original_language_fallback_selects_original_title(
         rewrite_root_dir=test_data_dir,
         preferred_languages="zh-CN,ja-JP",  # zh-CN is preferred
         cache_dir=test_data_dir / "cache",
+        original_files_backup_dir=None,  # Disable backups for this test
     )
     mock_translator = Mock(spec=Translator)
     processor = MetadataProcessor(settings, mock_translator)
@@ -824,6 +825,7 @@ def test_original_language_fallback_does_not_apply_for_different_family(
         rewrite_root_dir=test_data_dir,
         preferred_languages="zh-CN,ja-JP",
         cache_dir=test_data_dir / "cache",
+        original_files_backup_dir=None,  # Disable backups for this test
     )
     mock_translator = Mock(spec=Translator)
     processor = MetadataProcessor(settings, mock_translator)
