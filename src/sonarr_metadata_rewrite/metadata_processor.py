@@ -195,6 +195,7 @@ class MetadataProcessor:
         if root.tag == "tvshow":
             # Series file
             if tmdb_id is None:
+<<<<<<< HEAD
                 # Try to find TMDB ID using external IDs
                 external_ids = self._extract_external_ids(root)
                 if external_ids and (external_ids.tvdb_id or external_ids.imdb_id):
@@ -203,6 +204,9 @@ class MetadataProcessor:
                         return None
                 else:
                     return None
+=======
+                return None
+>>>>>>> 7da425d15b5924ced21191626590a54dfbd0587f
             return TmdbIds(series_id=tmdb_id)
         elif root.tag == "episodedetails":
             # Episode file - extract season and episode numbers first
