@@ -491,6 +491,17 @@ def create_custom_nfo(path: Path, title: str, plot: str, tmdb_id: int = 1396) ->
     path.write_text(content)
 
 
+def parse_nfo_content(nfo_path: Path) -> tuple[str, str]:
+    """Helper to parse title and plot from .nfo file."""
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+    title = title_elem.text if title_elem is not None else ""
+    plot = plot_elem.text if plot_elem is not None else ""
+    return title, plot
+
+
 def test_content_matches_preferred_translation_skips_processing(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
@@ -567,12 +578,9 @@ def test_preference_changed_better_translation_available_reprocesses(
     )
 
     # Verify file was actually updated with Chinese content
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-    assert title_elem is not None and title_elem.text == "中文标题"
-    assert plot_elem is not None and plot_elem.text == "中文剧情描述"
+    title, plot = parse_nfo_content(nfo_path)
+    assert title == "中文标题"
+    assert plot == "中文剧情描述"
 
 
 def test_preference_change_no_translation_reverts_to_original_with_backup(
@@ -617,12 +625,9 @@ def test_preference_change_no_translation_reverts_to_original_with_backup(
     )
 
     # Verify file was reverted to original English content
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-    assert title_elem is not None and title_elem.text == "Original Title"
-    assert plot_elem is not None and plot_elem.text == "Original plot"
+    title, plot = parse_nfo_content(nfo_path)
+    assert title == "Original Title"
+    assert plot == "Original plot"
 
 
 def test_multiple_rapid_processing_only_first_modifies(
@@ -716,12 +721,9 @@ def test_backup_not_overwritten_on_subsequent_processing(
     backup_path = test_data_dir / "backups" / "tvshow.nfo"
     assert backup_path.exists(), "Backup file should exist"
 
-    tree = ET.parse(backup_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-    assert title_elem is not None and title_elem.text == "Original English Title"
-    assert plot_elem is not None and plot_elem.text == "Original English plot"
+    title, plot = parse_nfo_content(backup_path)
+    assert title == "Original English Title"
+    assert plot == "Original English plot"
 
     # Manually change the file to simulate external modification
     # (e.g., different translation)
@@ -737,12 +739,9 @@ def test_backup_not_overwritten_on_subsequent_processing(
     )
 
     # Verify backup still contains ORIGINAL content, not the Japanese content
-    tree = ET.parse(backup_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-    assert title_elem is not None and title_elem.text == "Original English Title"
-    assert plot_elem is not None and plot_elem.text == "Original English plot"
+    title, plot = parse_nfo_content(backup_path)
+    assert title == "Original English Title"
+    assert plot == "Original English plot"
 
     # Verify that backup was NOT overwritten with Japanese content
     backup_content = backup_path.read_text()
