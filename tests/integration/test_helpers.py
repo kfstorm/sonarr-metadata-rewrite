@@ -6,8 +6,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.fixtures.subprocess_service_manager import (
@@ -53,39 +51,6 @@ def create_fake_episode_file(
     sample_file = Path(__file__).parent / "fixtures" / "sample_episode.mkv"
     shutil.copy2(sample_file, episode_file)
     return episode_file
-
-
-def wait_for_nfo_files(series_path: Path, timeout: float = 5.0) -> list[Path]:
-    """Wait for .nfo files to be generated in series directory.
-
-    Args:
-        series_path: Path to series directory
-        timeout: Maximum time to wait in seconds
-
-    Returns:
-        List of .nfo files found
-    """
-    print(f"Waiting for .nfo files in {series_path} (timeout: {timeout}s)")
-    start_time = time.time()
-    last_check = 0.0
-
-    while time.time() - start_time < timeout:
-        elapsed = time.time() - start_time
-        if elapsed - last_check >= 2:  # Log every 2 seconds
-            print(f"Still waiting for .nfo files... ({elapsed:.1f}s elapsed)")
-            last_check = elapsed
-
-        nfo_files = list(series_path.rglob("*.nfo"))
-        if nfo_files:
-            print(f"Found .nfo files after {elapsed:.1f}s: {nfo_files}")
-            # Wait a bit more to ensure files are fully written
-            time.sleep(1)
-            return sorted(nfo_files)
-        time.sleep(1)
-
-    elapsed = time.time() - start_time
-    print(f"No .nfo files found after {elapsed:.1f}s timeout")
-    return []
 
 
 def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
@@ -188,9 +153,10 @@ def setup_series_with_nfos(
 
     Returns:
         Tuple of (SeriesManager, empty_nfo_list, empty_backup_mapping)
-        
-    Note: This function no longer generates .nfo files initially. 
-    The integration tests will enable metadata providers and generate .nfo files as needed.
+
+    Note: This function no longer generates .nfo files initially.
+    The integration tests will enable metadata providers and generate .nfo files
+    as needed.
     """
     series = SeriesManager(
         sonarr_container,
@@ -231,8 +197,9 @@ def setup_series_with_nfos(
         raise RuntimeError(f"Series directory {series_path} was not created")
 
     print(f"Series setup complete: {series_path}")
-    
-    # Return empty lists for nfo_files and backups since they'll be generated per provider
+
+    # Return empty lists for nfo_files and backups since they'll be generated
+    # per provider
     return series, [], {}
 
 

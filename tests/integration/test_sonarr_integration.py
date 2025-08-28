@@ -115,7 +115,12 @@ def test_integration_workflow(
         current_backups = {}
         for nfo_file in current_nfo_files:
             # Create a safe filename from provider name
-            safe_provider_name = provider_name.replace("/", "-").replace(" ", "_").replace("(", "").replace(")", "")
+            safe_provider_name = (
+                provider_name.replace("/", "-")
+                .replace(" ", "_")
+                .replace("(", "")
+                .replace(")", "")
+            )
             backup_path = nfo_file.with_suffix(f".nfo.{safe_provider_name}.original")
             shutil.copy2(nfo_file, backup_path)
             current_backups[nfo_file] = backup_path

@@ -139,8 +139,8 @@ def prepared_series_with_nfos(
 ) -> Generator[tuple[Path, list[Path], dict[Path, Path], int], None, None]:
     """Prepare series structure without initial .nfo files.
 
-    Note: This fixture does not enable any metadata providers and does not 
-    generate .nfo files initially. Tests must explicitly enable the provider 
+    Note: This fixture does not enable any metadata providers and does not
+    generate .nfo files initially. Tests must explicitly enable the provider
     they want to test and generate .nfo files as needed.
 
     Returns:
