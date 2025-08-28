@@ -113,8 +113,20 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     Returns:
         Dictionary with parsed metadata
     """
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
+    try:
+        tree = ET.parse(nfo_path)
+        root = tree.getroot()
+    except ET.ParseError as e:
+        print(f"Warning: Failed to parse {nfo_path}: {e}")
+        # Return a minimal metadata dict for malformed files
+        return {
+            "root_tag": "unknown",
+            "title": "",
+            "plot": "",
+            "tmdb_id": None,
+            "tvdb_id": None,
+            "parse_error": str(e),
+        }
 
     metadata: dict[str, Any] = {
         "root_tag": root.tag,
@@ -223,19 +235,45 @@ def setup_series_with_nfos(
     # Wait for disk scan to complete
     time.sleep(10)
 
-    # Manual import the episode files to ensure Sonarr recognizes them
-    print("Manually importing episode files into Sonarr...")
-    episode_file_paths = [str(f) for f in episode_files]
-    import_success = configured_sonarr_container.manual_import(
-        series.id, episode_file_paths
-    )
-    if not import_success:
-        series.__exit__(None, None, None)
-        raise RuntimeError("Failed to manually import episode files")
-    print("Manual import command submitted successfully")
+    # Check if disk scan already imported the files
+    print("Checking if disk scan automatically imported episode files...")
+    imported_files = configured_sonarr_container.get_episode_files(series.id)
+    print(f"After disk scan, found {len(imported_files)} imported episode files")
 
-    # Wait for manual import to complete
-    time.sleep(15)
+    # Only do manual import if disk scan didn't import the files
+    if len(imported_files) < len(episode_files):
+        print("Manual import needed as disk scan didn't import all files...")
+        # Manual import the episode files to ensure Sonarr recognizes them
+        print("Manually importing episode files into Sonarr...")
+        episode_file_paths = [str(f) for f in episode_files]
+        import_success = configured_sonarr_container.manual_import(
+            series.id, episode_file_paths
+        )
+        if not import_success:
+            series.__exit__(None, None, None)
+            raise RuntimeError("Failed to manually import episode files")
+        print("Manual import command submitted successfully")
+
+        # Wait for manual import to complete
+        time.sleep(15)
+
+        # Verify that episode files were imported by checking Sonarr's episode files API
+        print("Verifying episode files were imported...")
+        imported_files = configured_sonarr_container.get_episode_files(series.id)
+        if len(imported_files) < len(episode_files):
+            print(f"Warning: Expected {len(episode_files)} imported files, got {len(imported_files)}")
+            print("Waiting longer for import to complete...")
+            time.sleep(10)
+            imported_files = configured_sonarr_container.get_episode_files(series.id)
+            
+        if len(imported_files) < len(episode_files):
+            series.__exit__(None, None, None)
+            raise RuntimeError(
+                f"Manual import verification failed: expected {len(episode_files)} "
+                f"episode files, but only {len(imported_files)} were imported into Sonarr"
+            )
+    
+    print(f"✅ Successfully have {len(imported_files)} episode files in Sonarr")
 
     # Also trigger metadata refresh to ensure .nfo files are generated for episodes
     print("Triggering metadata refresh to ensure episode .nfo files are generated...")

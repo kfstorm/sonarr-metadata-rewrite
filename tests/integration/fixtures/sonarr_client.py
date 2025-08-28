@@ -142,15 +142,17 @@ class SonarrClient:
         return response.status_code in (200, 201)
 
     def manual_import(self, series_id: int, files: list[str]) -> bool:
-        """Manually import episode files into Sonarr.
+        """Manually import episode files into Sonarr using proper manual import API.
 
         Args:
             series_id: Sonarr series ID
             files: List of file paths to import
 
         Returns:
-            True if manual import command was accepted
+            True if manual import was successful
         """
+        print(f"Starting manual import for series {series_id} with files: {files}")
+        
         # First, get the series to obtain quality profile and language profile
         response = self._make_request("GET", f"/api/v3/series/{series_id}")
         if not response.is_success:
@@ -160,32 +162,97 @@ class SonarrClient:
         series_data = response.json()
         quality_profile_id = series_data.get("qualityProfileId", 1)
         language_profile_id = series_data.get("languageProfileId", 1)
+        series_path = series_data.get("path", "")
+        
+        print(f"Series data: qualityProfileId={quality_profile_id}, languageProfileId={language_profile_id}, path={series_path}")
 
-        # Prepare import data for each file
-        import_items = []
+        # For each file, check which directory to scan
+        scanned_folders = set()
+        all_import_items = []
+        
         for file_path in files:
-            import_items.append(
-                {
-                    "path": file_path,
-                    "seriesId": series_id,
-                    "qualityProfileId": quality_profile_id,
-                    "languageProfileId": language_profile_id,
+            file_obj = Path(file_path)
+            folder_to_scan = str(file_obj.parent)
+            
+            if folder_to_scan not in scanned_folders:
+                print(f"Scanning folder for manual import: {folder_to_scan}")
+                
+                # Step 1: Scan the folder to get potential import decisions
+                params = {
+                    "folder": folder_to_scan,
+                    "filterExistingFiles": "true",
+                    "replaceExistingFiles": "false",
                 }
-            )
+                
+                response = self._make_request("GET", "/api/v3/manualimport", params=params)
+                if not response.is_success:
+                    print(f"Failed to scan folder for manual import: {response.status_code}")
+                    print(f"Response: {response.text}")
+                    continue
 
-        command_data = {
-            "name": "ManualImport",
-            "importDecisions": import_items,
-        }
+                potential_imports = response.json()
+                print(f"Found {len(potential_imports)} potential imports in {folder_to_scan}")
+                
+                # Step 2: Filter for the files we want to import from this folder
+                for item in potential_imports:
+                    item_path = item.get("path", "")
+                    item_name = Path(item_path).name
+                    
+                    # Check if this item matches any of our target files
+                    if any(Path(f).name == item_name for f in files):
+                        print(f"Found matching import item: {item_path}")
+                        
+                        # Check for rejections that would prevent import
+                        rejections = item.get("rejections", [])
+                        permanent_rejections = [r for r in rejections if r.get("type") == "permanent"]
+                        
+                        if permanent_rejections:
+                            print(f"Item has permanent rejections: {permanent_rejections}")
+                            # Skip items with permanent rejections that we can't handle
+                            continue
+                        
+                        all_import_items.append(item)
+                
+                scanned_folders.add(folder_to_scan)
 
-        response = self._make_request("POST", "/api/v3/command", json=command_data)
-        if response.status_code in (200, 201):
-            print(f"Manual import command submitted for {len(files)} files")
+        if not all_import_items:
+            print("No matching files found in scan results or all had permanent rejections")
+            return False
+
+        # Step 3: Use the direct manual import API endpoint (POST)
+        print(f"Executing manual import via POST API with {len(all_import_items)} items")
+        response = self._make_request("POST", "/api/v3/manualimport", json=all_import_items)
+        if response.status_code in (200, 201, 202):
+            print(f"Manual import executed successfully")
             return True
         else:
-            print(f"Failed to submit manual import: {response.status_code}")
+            print(f"Failed to execute manual import: {response.status_code}")
             print(f"Response: {response.text}")
             return False
+
+    def get_episode_files(self, series_id: int) -> list[dict[str, Any]]:
+        """Get episode files for a series to verify imports.
+
+        Args:
+            series_id: Sonarr series ID
+
+        Returns:
+            List of episode file data from Sonarr API
+        """
+        params = {"seriesId": series_id}
+        response = self._make_request("GET", "/api/v3/episodefile", params=params)
+        if response.is_success:
+            episode_files = response.json()
+            print(f"Found {len(episode_files)} episode files for series {series_id}")
+            for episode_file in episode_files:
+                path = episode_file.get("path", "")
+                relative_path = episode_file.get("relativePath", "")
+                print(f"  - {relative_path} ({path})")
+            return episode_files
+        else:
+            print(f"Failed to get episode files: {response.status_code}")
+            print(f"Response: {response.text}")
+            return []
 
     def configure_metadata_settings(self) -> bool:
         """Configure Sonarr to enable NFO metadata generation.
