@@ -97,7 +97,7 @@ def test_integration_workflow(
 
             # Trigger series refresh to regenerate original .nfo files
             print("Triggering series refresh to regenerate original .nfo files...")
-            refresh_success = configured_sonarr_container.refresh_metadata(series_id)
+            refresh_success = configured_sonarr_container.refresh_series(series_id)
             assert refresh_success, "Failed to trigger series refresh"
 
             # Wait for Sonarr to regenerate and service to retranslate
@@ -152,7 +152,7 @@ def test_integration_workflow(
 
         # Trigger series refresh to regenerate original .nfo files
         print("Triggering series refresh to restore original metadata...")
-        refresh_success = configured_sonarr_container.refresh_metadata(series_id)
+        refresh_success = configured_sonarr_container.refresh_series(series_id)
         assert refresh_success, "Failed to trigger series refresh for rollback"
 
         # Wait for Sonarr to regenerate original files

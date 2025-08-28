@@ -57,6 +57,37 @@ def create_fake_episode_file(
     return episode_file
 
 
+def wait_with_retry(
+    check_func, timeout: float = 10.0, interval: float = 0.5, log_interval: float = 1.0
+) -> bool:
+    """Common wait and retry logic for tests.
+    
+    Args:
+        check_func: Function that returns True when condition is met
+        timeout: Maximum time to wait in seconds
+        interval: Time between checks in seconds
+        log_interval: Time between log messages in seconds
+        
+    Returns:
+        True if condition was met within timeout, False otherwise
+    """
+    start_time = time.time()
+    last_log = 0.0
+    
+    while time.time() - start_time < timeout:
+        if check_func():
+            return True
+            
+        elapsed = time.time() - start_time
+        if elapsed - last_log >= log_interval:
+            print(f"Still waiting... ({elapsed:.1f}s elapsed)")
+            last_log = elapsed
+            
+        time.sleep(interval)
+    
+    return False
+
+
 def wait_for_nfo_files(
     series_path: Path, expected_count: int, timeout: float = 5.0
 ) -> list[Path]:
@@ -77,30 +108,24 @@ def wait_for_nfo_files(
         f"Waiting for {expected_count} .nfo files in {series_path} "
         f"(timeout: {timeout}s)"
     )
-    start_time = time.time()
-    last_check = 0.0
-
-    while time.time() - start_time < timeout:
-        elapsed = time.time() - start_time
-        if elapsed - last_check >= 2:  # Log every 2 seconds
-            print(f"Still waiting for .nfo files... ({elapsed:.1f}s elapsed)")
-            last_check = elapsed
-
+    
+    def check_nfo_files():
         nfo_files = list(series_path.rglob("*.nfo"))
         if len(nfo_files) >= expected_count:
-            print(
-                f"Found {len(nfo_files)} .nfo files after {elapsed:.1f}s: {nfo_files}"
-            )
-            # Wait a bit more to ensure files are fully written
-            time.sleep(1)
-            return sorted(nfo_files)
-        time.sleep(1)
-
-    elapsed = time.time() - start_time
+            print(f"Found {len(nfo_files)} .nfo files: {nfo_files}")
+            return True
+        return False
+    
+    if wait_with_retry(check_nfo_files, timeout=timeout, interval=0.5, log_interval=1.0):
+        # Wait a bit more to ensure files are fully written
+        time.sleep(0.5)
+        return sorted(list(series_path.rglob("*.nfo")))
+    
+    # Failed to find enough files
     nfo_files = list(series_path.rglob("*.nfo"))
     raise RuntimeError(
         f"Expected {expected_count} .nfo files, but only found {len(nfo_files)} "
-        f"after {elapsed:.1f}s timeout. Files found: {nfo_files}"
+        f"after {timeout:.1f}s timeout. Files found: {nfo_files}"
     )
 
 
@@ -113,20 +138,8 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     Returns:
         Dictionary with parsed metadata
     """
-    try:
-        tree = ET.parse(nfo_path)
-        root = tree.getroot()
-    except ET.ParseError as e:
-        print(f"Warning: Failed to parse {nfo_path}: {e}")
-        # Return a minimal metadata dict for malformed files
-        return {
-            "root_tag": "unknown",
-            "title": "",
-            "plot": "",
-            "tmdb_id": None,
-            "tvdb_id": None,
-            "parse_error": str(e),
-        }
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
 
     metadata: dict[str, Any] = {
         "root_tag": root.tag,
@@ -254,78 +267,38 @@ def setup_series_with_nfos(
             raise RuntimeError("Failed to manually import episode files")
         print("Manual import command submitted successfully")
 
-        # Wait for manual import to complete
-        time.sleep(15)
-
         # Verify that episode files were imported by checking Sonarr's episode files API
         print("Verifying episode files were imported...")
-        imported_files = configured_sonarr_container.get_episode_files(series.id)
-        if len(imported_files) < len(episode_files):
-            print(f"Warning: Expected {len(episode_files)} imported files, got {len(imported_files)}")
-            print("Waiting longer for import to complete...")
-            time.sleep(10)
+        
+        def check_import_complete():
             imported_files = configured_sonarr_container.get_episode_files(series.id)
-            
-        if len(imported_files) < len(episode_files):
+            return len(imported_files) >= len(episode_files)
+        
+        if not wait_with_retry(check_import_complete, timeout=15.0, interval=1.0, log_interval=2.0):
+            imported_files = configured_sonarr_container.get_episode_files(series.id)
             series.__exit__(None, None, None)
             raise RuntimeError(
                 f"Manual import verification failed: expected {len(episode_files)} "
                 f"episode files, but only {len(imported_files)} were imported into Sonarr"
             )
     
+    imported_files = configured_sonarr_container.get_episode_files(series.id)
     print(f"✅ Successfully have {len(imported_files)} episode files in Sonarr")
 
     # Also trigger metadata refresh to ensure .nfo files are generated for episodes
     print("Triggering metadata refresh to ensure episode .nfo files are generated...")
-    metadata_success = configured_sonarr_container.refresh_metadata(series.id)
+    metadata_success = configured_sonarr_container.refresh_series(series.id)
     if not metadata_success:
         series.__exit__(None, None, None)
         raise RuntimeError("Failed to trigger metadata refresh")
     print("Metadata refresh command submitted successfully")
-
-    # Wait for metadata refresh to complete
-    time.sleep(15)
 
     # Wait for .nfo files to be generated (allow more time for episode files)
     print("Waiting for .nfo files to be generated...")
     episode_count = len(episode_files)
     expected_nfo_count = episode_count + 1  # episodes + series
 
-    try:
-        nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
-    except RuntimeError as e:
-        # If initial attempt fails, try multiple refresh attempts
-        print(f"Initial .nfo generation failed: {e}")
-        print("Trying multiple refresh attempts...")
-
-        for attempt in range(3):
-            print(f"Refresh attempt {attempt + 1}/3...")
-            configured_sonarr_container.refresh_metadata(series.id)
-            time.sleep(20)
-
-            try:
-                nfo_files = wait_for_nfo_files(
-                    series_path, expected_nfo_count, timeout=30.0
-                )
-                break  # Success, exit retry loop
-            except RuntimeError:
-                if attempt == 2:  # Last attempt failed
-                    # Before failing, list what files exist for debugging
-                    all_files = (
-                        list(series_path.rglob("*")) if series_path.exists() else []
-                    )
-                    print(f"All files in series directory: {len(all_files)} files")
-                    for f in sorted(all_files):
-                        print(f"  - {f}")
-
-                    series.__exit__(None, None, None)
-                    raise RuntimeError(
-                        f"Expected {expected_nfo_count} .nfo files "
-                        f"({episode_count} episodes + 1 series) "
-                        "after multiple attempts. "
-                        "Sonarr metadata configuration may not be working correctly."
-                    ) from None
-                continue
+    nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
 
     print(f"Found .nfo files: {nfo_files}")
 
