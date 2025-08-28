@@ -1,12 +1,12 @@
 """Periodic directory scanning for .nfo files."""
 
-import itertools
 import logging
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
 
 logger = logging.getLogger(__name__)
 
@@ -74,16 +74,14 @@ class FileScanner:
         logger.debug(f"Starting scan of directory: {root_dir}")
 
         try:
-            # Scan for .nfo files recursively (case-insensitive)
-            nfo_patterns = itertools.chain(
-                root_dir.rglob("*.nfo"), root_dir.rglob("*.NFO")
-            )
-            for nfo_path in nfo_patterns:
+            # Scan for .nfo/.NFO files recursively (case-insensitive)
+            nfo_files = find_nfo_files(root_dir)
+            for nfo_path in nfo_files:
                 if self.stop_event is not None and self.stop_event.is_set():
                     break
 
                 try:
-                    if nfo_path.is_file() and self.callback:
+                    if self.callback:
                         logger.debug(f"Processing file: {nfo_path}")
                         self.callback(nfo_path)
                 except (OSError, PermissionError) as e:

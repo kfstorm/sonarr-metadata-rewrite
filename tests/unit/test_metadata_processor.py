@@ -807,6 +807,122 @@ def test_process_file_external_id_lookup_success(
     mock_translator.get_translations.assert_called_once()
 
 
+def test_original_language_fallback_selects_original_title(
+    test_data_dir: Path,
+) -> None:
+    """Test that when preferred language has empty title and original language matches,
+    system uses original title."""
+    # Create processor with zh-CN as preferred language
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN,ja-JP",  # zh-CN is preferred
+        cache_dir=test_data_dir / "cache",
+        original_files_backup_dir=None,  # Disable backups for this test
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo file with English content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "Ming Dynasty in 1566", "English description", 68034)
+
+    # Mock translator with zh-CN having empty title
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="",  # Empty title - this is the problem!
+            description="本剧讲述的是嘉靖与海瑞的故事。",
+            language="zh-CN",
+        ),
+        "en-US": TranslatedContent(
+            title="Ming Dynasty in 1566",
+            description="A series based on the events.",
+            language="en-US",
+        ),
+    }
+
+    # Mock the original details API call to return Chinese original language
+    mock_translator.get_original_details.return_value = ("zh", "大明王朝1566")
+
+    result = processor.process_file(nfo_path)
+
+    # Should successfully use original Chinese title since language families match
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",  # Should still report zh-CN as selected
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify the file content shows original Chinese title
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert title_elem is not None and title_elem.text == "大明王朝1566"
+    assert (
+        plot_elem is not None
+        and plot_elem.text is not None
+        and "本剧讲述" in plot_elem.text
+    )
+
+
+def test_original_language_fallback_does_not_apply_for_different_family(
+    test_data_dir: Path,
+) -> None:
+    """Test that when original language family doesn't match preferred,
+    system uses standard fallback."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN,ja-JP",
+        cache_dir=test_data_dir / "cache",
+        original_files_backup_dir=None,  # Disable backups for this test
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo file with English content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "Breaking Bad", "English description")
+
+    # Mock translator with zh-CN having empty title
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="",  # Empty title
+            description="中文描述",
+            language="zh-CN",
+        ),
+    }
+
+    # Mock original details to return English original language (different family)
+    mock_translator.get_original_details.return_value = ("en", "Breaking Bad")
+
+    result = processor.process_file(nfo_path)
+
+    # Should use standard fallback (original English title from .nfo file)
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify the file content shows fallback to original .nfo title
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert (
+        title_elem is not None and title_elem.text == "Breaking Bad"
+    )  # Original from .nfo
+    assert plot_elem is not None and plot_elem.text == "中文描述"  # Chinese description
+
+
 def test_extract_external_ids_tvdb_and_imdb() -> None:
     """Test extraction of both TVDB and IMDB IDs from .nfo XML."""
     from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
@@ -944,3 +1060,38 @@ def test_extract_external_ids_no_ids() -> None:
 
     assert external_ids.tvdb_id is None
     assert external_ids.imdb_id is None
+
+
+def test_extract_external_ids_tvdb_and_imdb() -> None:
+    """Test extraction of both TVDB and IMDB IDs from .nfo XML."""
+    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
+
+    # Create test XML with both TVDB and IMDB IDs
+    xml_content = """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+    <title>Test Series</title>
+    <uniqueid type="tvdb" default="true">123456</uniqueid>
+    <uniqueid type="imdb">tt7890123</uniqueid>
+</tvshow>"""
+
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(xml_content)
+
+    # Use any settings and translator for this test
+    from unittest.mock import Mock
+
+    from sonarr_metadata_rewrite.config import Settings
+
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=Path("/tmp"),
+        preferred_languages="en",
+        cache_dir=Path("/tmp/cache"),
+    )
+    processor = MetadataProcessor(settings, Mock())
+
+    external_ids = processor._extract_external_ids(root)
+
+    assert external_ids.tvdb_id == 123456
+    assert external_ids.imdb_id == "tt7890123"

@@ -18,6 +18,7 @@ def test_settings_with_required_fields(test_data_dir: Path) -> None:
     assert settings.rewrite_root_dir == test_data_dir
     assert settings.preferred_languages == ["zh-CN"]
     assert settings.periodic_scan_interval_seconds == 86400  # default
+    assert settings.service_mode == "rewrite"  # default
 
 
 def test_settings_with_all_fields(test_data_dir: Path) -> None:
@@ -113,4 +114,52 @@ def test_preferred_languages_required_field() -> None:
         Settings(
             tmdb_api_key="test_key",
             rewrite_root_dir=Path("/tmp"),
+        )
+
+
+def test_service_mode_default(test_data_dir: Path) -> None:
+    """Test service_mode defaults to 'rewrite'."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+    )
+    assert settings.service_mode == "rewrite"
+
+
+def test_service_mode_rewrite(test_data_dir: Path) -> None:
+    """Test service_mode can be set to 'rewrite'."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+        service_mode="rewrite",
+    )
+    assert settings.service_mode == "rewrite"
+
+
+def test_service_mode_rollback(test_data_dir: Path) -> None:
+    """Test service_mode can be set to 'rollback'."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+        service_mode="rollback",
+    )
+    assert settings.service_mode == "rollback"
+
+
+def test_service_mode_invalid_value_fails() -> None:
+    """Test service_mode with invalid value fails validation."""
+    from pathlib import Path
+
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(
+            tmdb_api_key="test_key",
+            rewrite_root_dir=Path("/tmp"),
+            preferred_languages="zh-CN",
+            service_mode="invalid",
         )
