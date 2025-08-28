@@ -255,7 +255,9 @@ def test_chinese_series_translation(
 
         # Wait for .nfo files to be generated
         print("Waiting for .nfo files to be generated...")
-        nfo_files = wait_for_nfo_files(series_path, timeout=15.0)
+        episode_count = len(episode_files)
+        expected_nfo_count = episode_count + 1  # episodes + series
+        nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=15.0)
 
         if not nfo_files:
             # List what files exist for debugging

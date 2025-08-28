@@ -85,12 +85,29 @@ SAMPLE_INVALID_NFO = """<?xml version="1.0" encoding="utf-8"?>
 </tvshow>
 """
 
+SAMPLE_EPISODE_NO_TMDB_ID_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>The Journey</title>
+  <season>1</season>
+  <episode>1</episode>
+  <aired>2013-02-11</aired>
+  <plot>Emperor penguins cross a treacherous frozen sea to reach their
+  breeding grounds.</plot>
+  <uniqueid type="tvdb" default="true">4499792</uniqueid>
+  <uniqueid type="sonarr">1548</uniqueid>
+  <watched>false</watched>
+  <runtime>58</runtime>
+  <director>John Downer</director>
+</episodedetails>
+"""
+
 # Map of sample names to content
 SAMPLE_DATA = {
     "tvshow.nfo": SAMPLE_TVSHOW_NFO,
     "episode.nfo": SAMPLE_EPISODE_NFO,
     "no_tmdb_id.nfo": SAMPLE_NO_TMDB_ID_NFO,
     "invalid.nfo": SAMPLE_INVALID_NFO,
+    "episode_no_tmdb_id.nfo": SAMPLE_EPISODE_NO_TMDB_ID_NFO,
 }
 
 

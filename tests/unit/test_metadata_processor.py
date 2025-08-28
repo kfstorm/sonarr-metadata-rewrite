@@ -118,6 +118,63 @@ def test_process_file_no_tmdb_id(
     )
 
 
+def test_process_file_episode_no_tmdb_id_with_parent_tvshow(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test processing episode file without TMDB ID but with parent tvshow.nfo."""
+    # Create a directory structure like: Series/Season 1/episode.nfo and
+    # Series/tvshow.nfo
+    series_dir = test_data_dir / "Test Series"
+    season_dir = series_dir / "Season 1"
+    season_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create tvshow.nfo in the series root with TMDB ID
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+
+    # Create episode file without TMDB ID in the season directory
+    episode_path = create_test_files(
+        "episode_no_tmdb_id.nfo", season_dir / "episode.nfo"
+    )
+
+    result = processor.process_file(episode_path)
+
+    # Should find TMDB series ID from parent tvshow.nfo and successfully process
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,  # From tvshow.nfo
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+        expected_message_contains="Successfully translated",
+    )
+
+
+def test_process_file_episode_no_tmdb_id_no_parent_tvshow(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test processing episode file without TMDB ID and no parent tvshow.nfo."""
+    # Create episode file without TMDB ID and no parent tvshow.nfo
+    episode_path = create_test_files(
+        "episode_no_tmdb_id.nfo", test_data_dir / "episode.nfo"
+    )
+
+    result = processor.process_file(episode_path)
+
+    # Should fail because no TMDB ID can be found
+    assert_process_result(
+        result,
+        expected_success=False,
+        expected_file_modified=False,
+        expected_message_contains="No TMDB ID found",
+    )
+
+
 def test_process_file_invalid_xml(
     processor: MetadataProcessor,
     test_data_dir: Path,

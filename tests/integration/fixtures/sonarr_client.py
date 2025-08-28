@@ -123,6 +123,133 @@ class SonarrClient:
         response = self._make_request("POST", "/api/v3/command", json=command_data)
         return response.status_code in (200, 201)
 
+    def refresh_series(self, series_id: int) -> bool:
+        """Force metadata refresh for a series to regenerate .nfo files.
+
+        Args:
+            series_id: Sonarr series ID
+
+        Returns:
+            True if metadata refresh command was accepted
+        """
+        command_data = {
+            "name": "RefreshSeries",
+            "seriesId": series_id,
+        }
+
+        response = self._make_request("POST", "/api/v3/command", json=command_data)
+        return response.status_code in (200, 201)
+
+    def manual_import(self, series_id: int, files: list[str]) -> bool:
+        """Manually import episode files into Sonarr using proper manual import API.
+
+        Args:
+            series_id: Sonarr series ID
+            files: List of file paths to import
+
+        Returns:
+            True if manual import was successful
+        """
+        print(f"Starting manual import for series {series_id}")
+
+        # First, get the series to obtain quality profile and language profile
+        response = self._make_request("GET", f"/api/v3/series/{series_id}")
+        if not response.is_success:
+            print(f"Failed to get series {series_id}: {response.status_code}")
+            return False
+
+        response.json()  # Verify API response is valid JSON
+
+        # For each file, check which directory to scan
+        scanned_folders = set()
+        all_import_items = []
+
+        for file_path in files:
+            file_obj = Path(file_path)
+            folder_to_scan = str(file_obj.parent)
+
+            if folder_to_scan not in scanned_folders:
+                # Step 1: Scan the folder to get potential import decisions
+                params = {
+                    "folder": folder_to_scan,
+                    "filterExistingFiles": "true",
+                    "replaceExistingFiles": "false",
+                }
+
+                response = self._make_request(
+                    "GET", "/api/v3/manualimport", params=params
+                )
+                if not response.is_success:
+                    print(
+                        f"Failed to scan folder for manual import: "
+                        f"{response.status_code}"
+                    )
+                    print(f"Response: {response.text}")
+                    continue
+
+                potential_imports = response.json()
+
+                # Step 2: Filter for the files we want to import from this folder
+                for item in potential_imports:
+                    item_path = item.get("path", "")
+                    item_name = Path(item_path).name
+
+                    # Check if this item matches any of our target files
+                    if any(Path(f).name == item_name for f in files):
+                        # Check for rejections that would prevent import
+                        rejections = item.get("rejections", [])
+                        permanent_rejections = [
+                            r for r in rejections if r.get("type") == "permanent"
+                        ]
+
+                        if permanent_rejections:
+                            print(
+                                f"Item has permanent rejections: {permanent_rejections}"
+                            )
+                            # Skip items with permanent rejections that we can't handle
+                            continue
+
+                        all_import_items.append(item)
+
+                scanned_folders.add(folder_to_scan)
+
+        if not all_import_items:
+            print(
+                "No matching files found in scan results or all had "
+                "permanent rejections"
+            )
+            return False
+
+        # Step 3: Use the direct manual import API endpoint (POST)
+        response = self._make_request(
+            "POST", "/api/v3/manualimport", json=all_import_items
+        )
+        if response.status_code in (200, 201, 202):
+            return True
+        else:
+            print(f"Failed to execute manual import: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+
+    def get_episode_files(self, series_id: int) -> list[dict[str, Any]]:
+        """Get episode files for a series to verify imports.
+
+        Args:
+            series_id: Sonarr series ID
+
+        Returns:
+            List of episode file data from Sonarr API
+        """
+        params = {"seriesId": series_id}
+        response = self._make_request("GET", "/api/v3/episodefile", params=params)
+        if response.is_success:
+            episode_files = response.json()
+            return episode_files
+        else:
+            print(f"Failed to get episode files: {response.status_code}")
+            print(f"Response: {response.text}")
+            return []
+
     def configure_metadata_settings(self) -> bool:
         """Configure Sonarr to enable NFO metadata generation.
 
@@ -136,13 +263,6 @@ class SonarrClient:
             return False
 
         metadata_configs = response.json()
-        print(f"Found {len(metadata_configs)} metadata configurations")
-
-        # Print all available providers for debugging
-        for config in metadata_configs:
-            name = config.get("name", "Unknown")
-            enabled = config.get("enable", False)
-            print(f"  - {name}: enabled={enabled}")
 
         # Look for Kodi/XBMC metadata provider and enable it
         kodi_config = None
@@ -155,19 +275,20 @@ class SonarrClient:
         if not kodi_config:
             raise ValueError("No Kodi/XBMC metadata provider found")
 
-        print(f"Found Kodi metadata config: {kodi_config['name']}")
+        # Enable the provider itself
+        kodi_config["enable"] = True
 
-        # Enable all metadata types for Kodi
-        kodi_config.update(
-            {
-                "enable": True,
-                "seriesMetadata": True,
-                "episodeMetadata": True,
-                "episodeImages": True,
-                "seriesImages": True,
-                "seasonImages": True,
-            }
-        )
+        # Update the individual field values in the fields array
+        for field in kodi_config.get("fields", []):
+            field_name = field.get("name")
+            if field_name in [
+                "seriesMetadata",
+                "episodeMetadata",
+                "episodeImages",
+                "seriesImages",
+                "seasonImages",
+            ]:
+                field["value"] = True
 
         # Update the configuration
         response = self._make_request(
@@ -175,28 +296,11 @@ class SonarrClient:
         )
 
         if response.is_success:
-            print("Successfully enabled Kodi metadata generation")
             return True
         else:
             print(f"Failed to update metadata settings: {response.status_code}")
+            print(f"Response body: {response.text}")
             return False
-
-    def refresh_series(self, series_id: int) -> bool:
-        """Refresh series metadata and regenerate NFO files.
-
-        Args:
-            series_id: Sonarr series ID
-
-        Returns:
-            True if refresh command was accepted
-        """
-        command_data = {
-            "name": "RefreshSeries",
-            "seriesId": series_id,
-        }
-
-        response = self._make_request("POST", "/api/v3/command", json=command_data)
-        return response.status_code in (200, 201)
 
     def remove_series(
         self,
