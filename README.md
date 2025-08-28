@@ -97,9 +97,9 @@ CACHE_DURATION_HOURS=720              # Cache translations (default: 30 days)
 CACHE_DIR=./cache                     # Cache directory (default: ./cache)
 
 # TMDB API Rate Limiting
-TMDB_MAX_RETRIES=3                    # Maximum retry attempts for rate-limited requests (default: 3)
-TMDB_INITIAL_RETRY_DELAY=1.0          # Initial delay for rate limit retries in seconds (default: 1.0)
-TMDB_MAX_RETRY_DELAY=60.0             # Maximum delay for rate limit retries in seconds (default: 60.0)
+TMDB_MAX_RETRIES=3                    # Max retry attempts (default: 3)
+TMDB_INITIAL_RETRY_DELAY=1.0          # Initial retry delay (default: 1.0)
+TMDB_MAX_RETRY_DELAY=60.0             # Max retry delay (default: 60.0)
 
 # Backup
 ORIGINAL_FILES_BACKUP_DIR=./backups   # Backup original files (default: ./backups)
@@ -315,10 +315,13 @@ sudo chown -R $(id -u):$(id -g) /path/to/your/tv/shows/
 
 ### API rate limits
 
-- TMDB has rate limits, and the service includes automatic retry logic with exponential backoff
+- TMDB has rate limits, and the service includes automatic retry logic with
+  exponential backoff
 - Most requests are cached, so they only happen once per series/episode
-- If you have a huge library, the service will automatically handle rate limits and pace itself
-- You can configure retry behavior with `TMDB_MAX_RETRIES`, `TMDB_INITIAL_RETRY_DELAY`, and `TMDB_MAX_RETRY_DELAY` settings
+- If you have a huge library, the service will automatically handle rate
+  limits and pace itself
+- You can configure retry behavior with `TMDB_MAX_RETRIES`,
+  `TMDB_INITIAL_RETRY_DELAY`, and `TMDB_MAX_RETRY_DELAY` settings
 
 ## License
 

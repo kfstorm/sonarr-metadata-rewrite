@@ -185,7 +185,7 @@ scripts/ (development automation)
 - **Python**: >=3.10 with strict typing enforcement
 - **Dependencies**: Core runtime deps (Click, Pydantic, httpx, watchdog,
   diskcache)
-- **TMDB Rate Limits**: TMDB has rate limits, and explicit rate limiting with 
+- **TMDB Rate Limits**: TMDB has rate limits, and explicit rate limiting with
   exponential backoff retry is implemented - the service automatically retries
   rate-limited requests with configurable delays
 - **File Format**: Sonarr generates XML .nfo files with TMDB IDs
