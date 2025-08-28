@@ -137,7 +137,7 @@ class Translator:
             tmdb_id = self._lookup_by_external_id(
                 external_id=external_ids.tvdb_id,
                 external_source="tvdb_id",
-                source_type="tvdb"
+                source_type="tvdb",
             )
             if tmdb_id:
                 return tmdb_id
@@ -147,7 +147,7 @@ class Translator:
             tmdb_id = self._lookup_by_external_id(
                 external_id=external_ids.imdb_id,
                 external_source="imdb_id",
-                source_type="imdb"
+                source_type="imdb",
             )
             if tmdb_id:
                 return tmdb_id
@@ -183,9 +183,7 @@ class Translator:
                 tmdb_id = tv_results[0].get("id")
                 if tmdb_id:
                     # Cache the result
-                    self.cache.set(
-                        cache_key, tmdb_id, expire=self.cache_expire_seconds
-                    )
+                    self.cache.set(cache_key, tmdb_id, expire=self.cache_expire_seconds)
                     return tmdb_id
 
             # Cache negative result to avoid repeated API calls

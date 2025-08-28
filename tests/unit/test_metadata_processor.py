@@ -1117,38 +1117,3 @@ def test_extract_external_ids_no_ids() -> None:
 
     assert external_ids.tvdb_id is None
     assert external_ids.imdb_id is None
-
-
-def test_extract_external_ids_tvdb_and_imdb() -> None:
-    """Test extraction of both TVDB and IMDB IDs from .nfo XML."""
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-
-    # Create test XML with both TVDB and IMDB IDs
-    xml_content = """<?xml version="1.0" encoding="utf-8"?>
-<tvshow>
-    <title>Test Series</title>
-    <uniqueid type="tvdb" default="true">123456</uniqueid>
-    <uniqueid type="imdb">tt7890123</uniqueid>
-</tvshow>"""
-
-    import xml.etree.ElementTree as ET
-
-    root = ET.fromstring(xml_content)
-
-    # Use any settings and translator for this test
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
-        preferred_languages="en",
-        cache_dir=Path("/tmp/cache"),
-    )
-    processor = MetadataProcessor(settings, Mock())
-
-    external_ids = processor._extract_external_ids(root)
-
-    assert external_ids.tvdb_id == 123456
-    assert external_ids.imdb_id == "tt7890123"

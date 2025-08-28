@@ -286,11 +286,15 @@ class MetadataProcessor:
                             tmdb_id_text = uniqueid_elements[0].text
                             if tmdb_id_text and tmdb_id_text.strip():
                                 return int(tmdb_id_text.strip())
-                        
+
                         # If no TMDB ID found, try external ID lookup
                         external_ids = self._extract_external_ids(root)
-                        if external_ids and (external_ids.tvdb_id or external_ids.imdb_id):
-                            tmdb_id = self.translator.find_tmdb_id_by_external_id(external_ids)
+                        if external_ids and (
+                            external_ids.tvdb_id or external_ids.imdb_id
+                        ):
+                            tmdb_id = self.translator.find_tmdb_id_by_external_id(
+                                external_ids
+                            )
                             if tmdb_id:
                                 return tmdb_id
                 except (ET.ParseError, ValueError, AttributeError):
