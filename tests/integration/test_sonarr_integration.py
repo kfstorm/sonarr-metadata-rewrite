@@ -15,7 +15,10 @@ from tests.integration.test_helpers import (
     metadata_matches,
     parse_nfo_content,
     run_service_with_config,
+    run_standard_translation_workflow,
     setup_series_with_nfos,
+    verify_chinese_translations,
+    verify_rollback_results,
     verify_translations,
     wait_and_verify_translations,
     wait_for_nfo_files,
@@ -79,6 +82,10 @@ MING_DYNASTY_TVDB_ID = 300635
             {
                 "tvdb_id": MING_DYNASTY_TVDB_ID,  # Ming Dynasty TVDB ID
                 "expected_title_text": "大明王朝",
+                "episode_configs": [
+                    {"season": 1, "episode": 1, "title": "Episode 1"},
+                    {"season": 1, "episode": 2, "title": "Episode 2"},
+                ],
             },
             id="chinese_translation",
         ),
@@ -102,72 +109,35 @@ def test_integration_workflow(
         test_behavior: Test behavior type
         series_config: Optional series-specific configuration
     """
-    # Handle Chinese translation test case
-    if test_behavior == "chinese_translation":
-        print("Testing Chinese series translation for 大明王朝1566...")
-        
-        # Set up the specific Chinese series
-        tvdb_id = series_config["tvdb_id"]
-        expected_title_text = series_config["expected_title_text"]
+    # Extract series configuration if provided
+    tvdb_id = series_config.get("tvdb_id") if series_config else None
+    episode_configs = series_config.get("episode_configs") if series_config else None
+    
+    # Set up series with .nfo files using generalized helper
+    series, nfo_files, original_backups = setup_series_with_nfos(
+        configured_sonarr_container, temp_media_root, tvdb_id, episode_configs
+    )
 
-        series = SeriesManager(
-            configured_sonarr_container,
-            tvdb_id,
-            "/tv",
-            temp_media_root,
-        )
+    try:
+        # Parse original metadata for comparison
+        original_metadata = {}
+        for nfo_file in nfo_files:
+            metadata = parse_nfo_content(nfo_file)
+            original_metadata[nfo_file] = metadata
+            print(f"Original metadata for {nfo_file.name}: {metadata}")
 
-        with series:
-            print(f"Added series: {series.title} (TVDB: {series.tvdb_id})")
-
-            # Create fake episode files to trigger Sonarr processing
-            print("Creating fake episode files...")
-            episode_files = [
-                create_fake_episode_file(temp_media_root, series.slug, 1, 1, "Episode 1"),
-                create_fake_episode_file(temp_media_root, series.slug, 1, 2, "Episode 2"),
-            ]
-
-            for episode_file in episode_files:
-                print(f"Created: {episode_file}")
-
-            # Trigger disk scan to detect episode files
-            print("Triggering disk scan to detect episode files...")
-            series_path = temp_media_root / series.slug
-            scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
-            if not scan_success:
-                pytest.fail("Failed to trigger disk scan")
-            print("Disk scan command submitted successfully")
-
-            # Wait for .nfo files to be generated
-            print("Waiting for .nfo files to be generated...")
-            episode_count = len(episode_files)
-            expected_nfo_count = episode_count + 1  # episodes + series
-            nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=15.0)
-
-            if not nfo_files:
-                # List what files exist for debugging
-                all_files = list(series_path.rglob("*")) if series_path.exists() else []
-                print(f"No .nfo files found. All files in {series_path}: {all_files}")
-                pytest.fail(
-                    "Sonarr did not generate .nfo files within timeout after disk scan"
+            # Verify we have a TMDB ID (required for translation)
+            if not metadata.get("tmdb_id"):
+                pytest.skip(
+                    f"No TMDB ID found in {nfo_file.name}. "
+                    f"Sonarr may not have populated TMDB metadata yet."
                 )
 
-            print(f"Found .nfo files: {nfo_files}")
-
-            # Parse original metadata to verify it contains TMDB IDs
-            original_metadata = {}
-            for nfo_file in nfo_files:
-                metadata = parse_nfo_content(nfo_file)
-                original_metadata[nfo_file] = metadata
-                print(f"Original metadata for {nfo_file.name}: {metadata}")
-
-                # Verify we have a TMDB ID (required for translation)
-                if not metadata.get("tmdb_id"):
-                    pytest.skip(
-                        f"No TMDB ID found in {nfo_file.name}. "
-                        f"Sonarr may not have populated TMDB metadata yet."
-                    )
-
+        # Execute test behavior specific workflows
+        if test_behavior == "chinese_translation":
+            print("Testing Chinese series translation for 大明王朝1566...")
+            expected_title_text = series_config["expected_title_text"]
+            
             # Start translation service
             print("Starting translation service with Chinese preferences...")
             with run_service_with_config(temp_media_root, service_config) as service:
@@ -182,49 +152,10 @@ def test_integration_workflow(
                 print("Waiting for file monitor to process files...")
                 time.sleep(8)  # Give more time for translation
 
-                # Verify translations occurred
-                print("Verifying Chinese translations...")
-                translated_count = 0
-
-                for nfo_file in nfo_files:
-                    current_metadata = parse_nfo_content(nfo_file)
-                    original = original_metadata[nfo_file]
-
-                    print(f"Translation check for {nfo_file.name}:")
-                    print(f"  Original title: {original.get('title')}")
-                    print(f"  Current title: {current_metadata.get('title')}")
-
-                    # Check if translation occurred
-                    if current_metadata.get("title") != original.get(
-                        "title"
-                    ) or current_metadata.get("plot") != original.get("plot"):
-
-                        translated_count += 1
-
-                        # Verify we have a non-empty Chinese title
-                        chinese_title = current_metadata.get("title", "")
-                        assert chinese_title, f"Empty translated title in {nfo_file.name}"
-
-                        # For tvshow.nfo, specifically check for the Chinese title
-                        if nfo_file.name == "tvshow.nfo":
-                            assert expected_title_text in chinese_title, (
-                                f"Chinese series title '{expected_title_text}' not found in "
-                                f"translated title: {chinese_title}"
-                            )
-                            print(f"✅ Chinese title correctly translated: {chinese_title}")
-
-                        # Verify plot has content
-                        chinese_plot = current_metadata.get("plot", "")
-                        assert chinese_plot, f"Empty translated plot in {nfo_file.name}"
-
-                        # Verify IDs are preserved
-                        assert current_metadata.get("tmdb_id") == original.get(
-                            "tmdb_id"
-                        ), f"TMDB ID not preserved in {nfo_file.name}"
-
-                        print(f"✅ Successfully translated {nfo_file.name}")
-                    else:
-                        print(f"⚠️ No translation changes detected in {nfo_file.name}")
+                # Verify Chinese translations with specific assertions
+                translated_count = verify_chinese_translations(
+                    nfo_files, original_metadata, expected_title_text
+                )
 
                 # Ensure at least one file was translated
                 assert translated_count > 0, (
@@ -237,15 +168,8 @@ def test_integration_workflow(
                     f"Successfully translated {translated_count} out of "
                     f"{len(nfo_files)} files with Chinese content"
                 )
-        return
 
-    # Standard workflow with prepared series
-    series_path, nfo_files, original_backups, series_id = setup_series_with_nfos(
-        configured_sonarr_container, temp_media_root
-    )
-
-    try:
-        if test_behavior == "full_with_refresh":
+        elif test_behavior == "full_with_refresh":
             # Full workflow with series refresh - start service first
             print("Starting translation service with both components...")
             with run_service_with_config(temp_media_root, service_config) as service:
@@ -264,7 +188,7 @@ def test_integration_workflow(
 
                 # Trigger series refresh to regenerate original .nfo files
                 print("Triggering series refresh to regenerate original .nfo files...")
-                refresh_success = configured_sonarr_container.refresh_series(series_id)
+                refresh_success = configured_sonarr_container.refresh_series(series.id)
                 assert refresh_success, "Failed to trigger series refresh"
 
                 # Wait for Sonarr to regenerate and service to retranslate
@@ -290,12 +214,6 @@ def test_integration_workflow(
             # Rollback test workflow - translate, stop service, refresh, verify rollback
             print("Starting rollback test workflow...")
 
-            # Store original metadata before any translation
-            print("Storing original metadata for rollback verification...")
-            original_metadata = {}
-            for nfo_file in nfo_files:
-                original_metadata[nfo_file] = parse_nfo_content(nfo_file)
-
             with run_service_with_config(temp_media_root, service_config) as service:
                 assert service.is_running(), "Service should be running"
 
@@ -319,7 +237,7 @@ def test_integration_workflow(
 
             # Trigger series refresh to regenerate original .nfo files
             print("Triggering series refresh to restore original metadata...")
-            refresh_success = configured_sonarr_container.refresh_series(series_id)
+            refresh_success = configured_sonarr_container.refresh_series(series.id)
             assert refresh_success, "Failed to trigger series refresh for rollback"
 
             # Wait for Sonarr to regenerate original files
@@ -327,19 +245,7 @@ def test_integration_workflow(
             time.sleep(15)
 
             # Verify rollback - files should match original metadata
-            print("Verifying rollback to original metadata...")
-            rollback_verified = 0
-            for nfo_file in nfo_files:
-                current_metadata = parse_nfo_content(nfo_file)
-                original = original_metadata[nfo_file]
-
-                if metadata_matches(current_metadata, original):
-                    rollback_verified += 1
-                    print(f"✅ Rollback verified for {nfo_file.name}")
-                else:
-                    print(f"❌ Rollback failed for {nfo_file.name}")
-                    print(f"   Original title: {original.get('title')}")
-                    print(f"   Current title: {current_metadata.get('title')}")
+            rollback_verified = verify_rollback_results(nfo_files, original_metadata)
 
             assert rollback_verified > 0, "No .nfo files were successfully rolled back"
             print(
@@ -347,33 +253,19 @@ def test_integration_workflow(
             )
 
         else:
-            # Standard workflow - start service and test
-            print(f"Starting service with {test_behavior} configuration...")
-            with run_service_with_config(temp_media_root, service_config) as service:
-                assert service.is_running(), "Service should be running"
-
-                if test_behavior == "touch_files":
-                    # Touch files to trigger file monitor events
-                    print("Triggering file monitor by touching .nfo files...")
-                    for nfo_file in nfo_files:
-                        nfo_file.touch()
-                        print(f"Touched: {nfo_file}")
-
-                    print("Waiting for file monitor to process files...")
-                    time.sleep(5)
-
-                elif test_behavior == "wait_scanning":
-                    # Wait for file scanner to process
-                    print("Waiting for file scanner to process files...")
-                    time.sleep(8)
-
-                # Verify translations were applied
-                verify_translations(nfo_files, original_backups)
+            # Standard workflow for touch_files and wait_scanning
+            run_standard_translation_workflow(temp_media_root, service_config, nfo_files, test_behavior)
+            
+            # Verify translations were applied using existing helper
+            verify_translations(nfo_files, original_backups)
+            
     finally:
         # Clean up series
         try:
-            configured_sonarr_container.remove_series(series_id)
+            configured_sonarr_container.remove_series(series.id)
         except Exception as e:
-            print(f"Warning: Failed to clean up series {series_id}: {e}")
+            print(f"Warning: Failed to clean up series {series.id}: {e}")
+        finally:
+            series.__exit__(None, None, None)
 
 

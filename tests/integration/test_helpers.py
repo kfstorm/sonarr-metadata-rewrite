@@ -213,19 +213,34 @@ def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, A
 def setup_series_with_nfos(
     configured_sonarr_container: SonarrClient,
     temp_media_root: Path,
+    tvdb_id: int | None = None,
+    episode_configs: list[dict[str, Any]] | None = None,
 ) -> tuple[SeriesManager, list[Path], dict[Path, Path]]:
     """Set up series with .nfo files and return backup mapping.
 
     Args:
         configured_sonarr_container: Configured Sonarr client
         temp_media_root: Temporary media root directory
+        tvdb_id: TVDB ID for the series (defaults to Breaking Bad)
+        episode_configs: List of episode configurations with season, episode, title
 
     Returns:
         Tuple of (SeriesManager, nfo_files, original_backups)
     """
+    # Use default TVDB ID if not provided
+    if tvdb_id is None:
+        tvdb_id = BREAKING_BAD_TVDB_ID
+    
+    # Use default episode configurations if not provided
+    if episode_configs is None:
+        episode_configs = [
+            {"season": 1, "episode": 1, "title": "Pilot"},
+            {"season": 1, "episode": 2, "title": "Cat's in the Bag"},
+        ]
+    
     series = SeriesManager(
         configured_sonarr_container,
-        BREAKING_BAD_TVDB_ID,
+        tvdb_id,
         "/tv",
         temp_media_root,
     )
@@ -233,12 +248,16 @@ def setup_series_with_nfos(
 
     # Create fake episode files to trigger Sonarr processing
     print("Creating fake episode files...")
-    episode_files = [
-        create_fake_episode_file(temp_media_root, series.slug, 1, 1, "Pilot"),
-        create_fake_episode_file(
-            temp_media_root, series.slug, 1, 2, "Cat's in the Bag"
-        ),
-    ]
+    episode_files = []
+    for config in episode_configs:
+        episode_file = create_fake_episode_file(
+            temp_media_root, 
+            series.slug, 
+            config["season"], 
+            config["episode"], 
+            config["title"]
+        )
+        episode_files.append(episode_file)
 
     for episode_file in episode_files:
         print(f"Created: {episode_file}")
@@ -550,3 +569,128 @@ def wait_and_verify_translations(
         translations >= min_expected
     ), f"Expected at least {min_expected} translations, got {translations}"
     return translations
+
+
+def verify_chinese_translations(
+    nfo_files: list[Path], 
+    original_metadata: dict[Path, dict[str, Any]],
+    expected_title_text: str
+) -> int:
+    """Verify Chinese translation results with specific assertions.
+
+    Args:
+        nfo_files: List of NFO files to check
+        original_metadata: Original metadata before translation
+        expected_title_text: Expected Chinese text in the title
+
+    Returns:
+        Number of successful translations
+    """
+    print("Verifying Chinese translations...")
+    translated_count = 0
+
+    for nfo_file in nfo_files:
+        current_metadata = parse_nfo_content(nfo_file)
+        original = original_metadata[nfo_file]
+
+        print(f"Translation check for {nfo_file.name}:")
+        print(f"  Original title: {original.get('title')}")
+        print(f"  Current title: {current_metadata.get('title')}")
+
+        # Check if translation occurred
+        if (current_metadata.get("title") != original.get("title") or 
+            current_metadata.get("plot") != original.get("plot")):
+            
+            translated_count += 1
+
+            # Verify we have a non-empty Chinese title
+            chinese_title = current_metadata.get("title", "")
+            assert chinese_title, f"Empty translated title in {nfo_file.name}"
+
+            # For tvshow.nfo, specifically check for the Chinese title
+            if nfo_file.name == "tvshow.nfo":
+                assert expected_title_text in chinese_title, (
+                    f"Chinese series title '{expected_title_text}' not found in "
+                    f"translated title: {chinese_title}"
+                )
+                print(f"✅ Chinese title correctly translated: {chinese_title}")
+
+            # Verify plot has content
+            chinese_plot = current_metadata.get("plot", "")
+            assert chinese_plot, f"Empty translated plot in {nfo_file.name}"
+
+            # Verify IDs are preserved
+            assert current_metadata.get("tmdb_id") == original.get("tmdb_id"), (
+                f"TMDB ID not preserved in {nfo_file.name}"
+            )
+
+            print(f"✅ Successfully translated {nfo_file.name}")
+        else:
+            print(f"⚠️ No translation changes detected in {nfo_file.name}")
+
+    return translated_count
+
+
+def verify_rollback_results(
+    nfo_files: list[Path],
+    original_metadata: dict[Path, dict[str, Any]]
+) -> int:
+    """Verify rollback results match original metadata.
+
+    Args:
+        nfo_files: List of NFO files to check
+        original_metadata: Original metadata before any translation
+
+    Returns:
+        Number of files successfully rolled back
+    """
+    print("Verifying rollback to original metadata...")
+    rollback_verified = 0
+    
+    for nfo_file in nfo_files:
+        current_metadata = parse_nfo_content(nfo_file)
+        original = original_metadata[nfo_file]
+
+        if metadata_matches(current_metadata, original):
+            rollback_verified += 1
+            print(f"✅ Rollback verified for {nfo_file.name}")
+        else:
+            print(f"❌ Rollback failed for {nfo_file.name}")
+            print(f"   Original title: {original.get('title')}")
+            print(f"   Current title: {current_metadata.get('title')}")
+
+    return rollback_verified
+
+
+def run_standard_translation_workflow(
+    temp_media_root: Path,
+    service_config: dict[str, str],
+    nfo_files: list[Path],
+    test_behavior: str
+) -> None:
+    """Run standard translation workflow for touch_files and wait_scanning behaviors.
+
+    Args:
+        temp_media_root: Temporary media root directory
+        service_config: Service configuration overrides
+        nfo_files: List of NFO files to process
+        test_behavior: Type of test behavior (touch_files or wait_scanning)
+    """
+    print(f"Starting service with {test_behavior} configuration...")
+    with run_service_with_config(temp_media_root, service_config) as service:
+        assert service.is_running(), "Service should be running"
+
+        if test_behavior == "touch_files":
+            # Touch files to trigger file monitor events
+            print("Triggering file monitor by touching .nfo files...")
+            for nfo_file in nfo_files:
+                nfo_file.touch()
+                print(f"Touched: {nfo_file}")
+            
+            print("Waiting for file monitor to process files...")
+            time.sleep(5)
+        
+        elif test_behavior == "wait_scanning":
+            # Wait for file scanner to process
+            print("Waiting for file scanner to process files...")
+            time.sleep(8)
