@@ -3,8 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from sonarr_metadata_rewrite.nfo_utils import (
     find_nfo_files,
     get_nfo_file_extensions,
@@ -36,7 +34,7 @@ class TestIsNfoFile:
         assert is_nfo_file(path) is False
 
     def test_nfo_in_filename_but_different_extension(self) -> None:
-        """Test that files with 'nfo' in name but different extension are not detected."""
+        """Test files with 'nfo' in name but different extension."""
         path = Path("nfo_file.txt")
         assert is_nfo_file(path) is False
 
@@ -48,18 +46,18 @@ class TestFindNfoFiles:
         """Test that both .nfo and .NFO files are found."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            
+
             # Create test files
             nfo_lowercase = temp_path / "test.nfo"
             nfo_uppercase = temp_path / "test.NFO"
             txt_file = temp_path / "test.txt"
-            
+
             nfo_lowercase.touch()
             nfo_uppercase.touch()
             txt_file.touch()
-            
+
             found_files = find_nfo_files(temp_path, recursive=False)
-            
+
             # Should find both NFO files but not the txt file
             assert len(found_files) == 2
             assert nfo_lowercase in found_files
@@ -70,22 +68,22 @@ class TestFindNfoFiles:
         """Test recursive search in subdirectories."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            
+
             # Create files in root and subdirectory
             root_nfo = temp_path / "root.nfo"
             subdir = temp_path / "subdir"
             subdir.mkdir()
             sub_nfo = subdir / "sub.NFO"
-            
+
             root_nfo.touch()
             sub_nfo.touch()
-            
+
             # Test recursive (default)
             found_files = find_nfo_files(temp_path)
             assert len(found_files) == 2
             assert root_nfo in found_files
             assert sub_nfo in found_files
-            
+
             # Test non-recursive
             found_files_non_recursive = find_nfo_files(temp_path, recursive=False)
             assert len(found_files_non_recursive) == 1
@@ -109,13 +107,13 @@ class TestFindNfoFiles:
         """Test that files are deduplicated properly."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            
+
             # Create files with different cases
             nfo_file = temp_path / "test.nfo"
             nfo_file.touch()
-            
+
             found_files = find_nfo_files(temp_path)
-            
+
             # Should find the file only once, even if filesystem is case-insensitive
             assert len(found_files) >= 1
             # All found files should be actual files

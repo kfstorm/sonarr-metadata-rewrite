@@ -1,7 +1,6 @@
 """Unit tests for rollback service."""
 
 import logging
-import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -34,12 +33,14 @@ def test_execute_rollback_no_backup_dir_configured(test_data_dir: Path) -> None:
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     with pytest.raises(ValueError, match="Backup directory is not configured"):
         service.execute_rollback()
 
 
-def test_execute_rollback_backup_dir_not_exists(test_data_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_execute_rollback_backup_dir_not_exists(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test rollback handles non-existent backup directory gracefully."""
     backup_dir = test_data_dir / "nonexistent_backups"
     settings = Settings(
@@ -50,19 +51,21 @@ def test_execute_rollback_backup_dir_not_exists(test_data_dir: Path, caplog: pyt
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     with caplog.at_level(logging.INFO):
         service.execute_rollback()  # Should not raise exception
-    
+
     assert "Backup directory does not exist" in caplog.text
     assert "rollback completed with no files to restore" in caplog.text
 
 
-def test_execute_rollback_no_backup_files(test_data_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_execute_rollback_no_backup_files(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test rollback handles empty backup directory gracefully."""
     backup_dir = test_data_dir / "empty_backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=test_data_dir,
@@ -71,35 +74,37 @@ def test_execute_rollback_no_backup_files(test_data_dir: Path, caplog: pytest.Lo
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
-    
-    assert "No .nfo backup files found" in caplog.text
+
+    assert "No .nfo/.NFO backup files found" in caplog.text
     assert "rollback completed with no files to restore" in caplog.text
 
 
-def test_execute_rollback_successful(test_data_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_execute_rollback_successful(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test successful rollback of backup files."""
     # Setup directory structure
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     original_dir = test_data_dir / "media"
     original_dir.mkdir(exist_ok=True)
-    
+
     # Create backup file
     backup_show_dir = backup_dir / "Show1"
     backup_show_dir.mkdir(exist_ok=True)
     backup_file = backup_show_dir / "tvshow.nfo"
     backup_file.write_text("Original content")
-    
+
     # Create corresponding original directory
     original_show_dir = original_dir / "Show1"
     original_show_dir.mkdir(exist_ok=True)
     original_file = original_show_dir / "tvshow.nfo"
     original_file.write_text("Translated content")
-    
+
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=original_dir,
@@ -108,10 +113,10 @@ def test_execute_rollback_successful(test_data_dir: Path, caplog: pytest.LogCapt
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
-    
+
     # Verify file was restored
     assert original_file.read_text() == "Original content"
     assert "Found 1 backup files to restore" in caplog.text
@@ -119,23 +124,25 @@ def test_execute_rollback_successful(test_data_dir: Path, caplog: pytest.LogCapt
     assert "✅ Restored: Show1/tvshow.nfo" in caplog.text
 
 
-def test_execute_rollback_missing_original_directory(test_data_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_execute_rollback_missing_original_directory(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test rollback handles missing original directories gracefully."""
     # Setup backup directory
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     original_dir = test_data_dir / "media"
     original_dir.mkdir(exist_ok=True)
-    
+
     # Create backup file for show that no longer exists
     backup_show_dir = backup_dir / "DeletedShow"
     backup_show_dir.mkdir(exist_ok=True)
     backup_file = backup_show_dir / "tvshow.nfo"
     backup_file.write_text("Original content")
-    
+
     # Note: We don't create the original show directory to simulate deleted show
-    
+
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=original_dir,
@@ -144,10 +151,10 @@ def test_execute_rollback_missing_original_directory(test_data_dir: Path, caplog
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
-    
+
     assert "Original directory no longer exists, skipping" in caplog.text
     assert "Rollback completed: 0 files restored, 1 failed" in caplog.text
 
@@ -157,22 +164,22 @@ def test_restore_single_file_success(test_data_dir: Path) -> None:
     # Setup directory structure
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     original_dir = test_data_dir / "media"
     original_dir.mkdir(exist_ok=True)
-    
+
     # Create backup file
     backup_show_dir = backup_dir / "Show1"
     backup_show_dir.mkdir(exist_ok=True)
     backup_file = backup_show_dir / "tvshow.nfo"
     backup_file.write_text("Original content")
-    
+
     # Create corresponding original directory
     original_show_dir = original_dir / "Show1"
     original_show_dir.mkdir(exist_ok=True)
     original_file = original_show_dir / "tvshow.nfo"
     original_file.write_text("Translated content")
-    
+
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=original_dir,
@@ -181,9 +188,9 @@ def test_restore_single_file_success(test_data_dir: Path) -> None:
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     result = service._restore_single_file(backup_file)
-    
+
     assert result is True
     assert original_file.read_text() == "Original content"
 
@@ -193,16 +200,16 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
     # Setup backup directory
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     original_dir = test_data_dir / "media"
     original_dir.mkdir(exist_ok=True)
-    
+
     # Create backup file for show that no longer exists
     backup_show_dir = backup_dir / "DeletedShow"
     backup_show_dir.mkdir(exist_ok=True)
     backup_file = backup_show_dir / "tvshow.nfo"
     backup_file.write_text("Original content")
-    
+
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=original_dir,
@@ -211,9 +218,9 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     result = service._restore_single_file(backup_file)
-    
+
     assert result is False
 
 
@@ -228,13 +235,13 @@ def test_hang_after_completion_keyboard_interrupt(mock_sleep: Mock) -> None:
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     # Simulate KeyboardInterrupt after first sleep
     mock_sleep.side_effect = KeyboardInterrupt()
-    
+
     # Should not raise exception
     service.hang_after_completion()
-    
+
     mock_sleep.assert_called_once_with(60)
 
 
@@ -249,10 +256,10 @@ def test_hang_after_completion_runs_indefinitely(mock_sleep: Mock) -> None:
         service_mode="rollback",
     )
     service = RollbackService(settings)
-    
+
     # Simulate multiple sleep calls before raising interrupt to stop
     mock_sleep.side_effect = [None, None, KeyboardInterrupt()]
-    
+
     service.hang_after_completion()
-    
+
     assert mock_sleep.call_count == 3

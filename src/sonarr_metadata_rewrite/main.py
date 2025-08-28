@@ -29,7 +29,7 @@ def cli() -> None:
 
     A long-running service that monitors Sonarr-generated .nfo files and
     overwrites them with TMDB translations in your desired language.
-    
+
     In rollback mode, restores original files from backups and hangs.
     """
     # Load configuration
@@ -49,7 +49,7 @@ def cli() -> None:
         # Rollback mode - restore files and hang
         click.echo("🔄 Executing rollback operation...")
         rollback_service = RollbackService(settings)
-        
+
         try:
             rollback_service.execute_rollback()
             click.echo("✅ Rollback completed successfully")

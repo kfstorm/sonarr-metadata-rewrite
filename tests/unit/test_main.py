@@ -99,8 +99,10 @@ class TestCli:
                 ) as mock_rollback_service:
                     mock_instance = mock_rollback_service.return_value
                     mock_instance.execute_rollback.return_value = None
-                    mock_instance.hang_after_completion.side_effect = KeyboardInterrupt()
-                    
+                    mock_instance.hang_after_completion.side_effect = (
+                        KeyboardInterrupt()
+                    )
+
                     result = runner.invoke(cli)
 
             # Check the output
@@ -128,13 +130,17 @@ class TestCli:
                     "sonarr_metadata_rewrite.main.RollbackService"
                 ) as mock_rollback_service:
                     mock_instance = mock_rollback_service.return_value
-                    mock_instance.execute_rollback.side_effect = ValueError("Backup directory not configured")
-                    
+                    mock_instance.execute_rollback.side_effect = ValueError(
+                        "Backup directory not configured"
+                    )
+
                     result = runner.invoke(cli)
 
             # Check the output
             assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
             assert "🔧 Service mode: rollback" in result.output
             assert "🔄 Executing rollback operation..." in result.output
-            assert "❌ Rollback failed: Backup directory not configured" in result.output
+            assert (
+                "❌ Rollback failed: Backup directory not configured" in result.output
+            )
             assert result.exit_code == 1
