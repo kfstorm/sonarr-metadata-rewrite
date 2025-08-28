@@ -40,6 +40,17 @@ class Settings(BaseSettings):
         description="Universal cache directory for all cached data",
     )
 
+    # TMDB API rate limiting
+    tmdb_max_retries: int = Field(
+        default=3, description="Maximum retry attempts for rate-limited requests"
+    )
+    tmdb_initial_retry_delay: float = Field(
+        default=1.0, description="Initial delay for rate limit retries (seconds)"
+    )
+    tmdb_max_retry_delay: float = Field(
+        default=60.0, description="Maximum delay for rate limit retries (seconds)"
+    )
+
     # Original file backup
     original_files_backup_dir: Path | None = Field(
         default=Path("./backups"),
