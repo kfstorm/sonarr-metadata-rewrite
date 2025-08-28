@@ -316,3 +316,156 @@ def test_close_method(test_settings: Settings) -> None:
     assert isinstance(translator.cache, Cache)
     translator.close()
     # Client should be closed after calling close()
+
+
+@patch("httpx.Client.get")
+@patch("time.sleep")
+def test_rate_limit_retry_success(
+    mock_sleep: Mock,
+    mock_get: Mock,
+    translator: Translator,
+    mock_series_response: dict[str, Any],
+) -> None:
+    """Test successful retry after rate limit error."""
+    # First call returns 429, second call succeeds
+    rate_limit_response = Mock()
+    rate_limit_response.status_code = 429
+    rate_limit_error = httpx.HTTPStatusError(
+        "Too Many Requests", request=Mock(), response=rate_limit_response
+    )
+
+    success_response = Mock()
+    success_response.raise_for_status.return_value = None
+    success_response.json.return_value = mock_series_response
+
+    mock_get.side_effect = [rate_limit_error, success_response]
+
+    tmdb_ids = TmdbIds(series_id=12345)
+    translations = translator.get_translations(tmdb_ids)
+
+    # Should have made 2 API calls (1 failed, 1 success)
+    assert mock_get.call_count == 2
+
+    # Should have slept once (exponential backoff)
+    mock_sleep.assert_called_once_with(1.0)  # Initial delay
+
+    # Should return translations from successful call
+    assert len(translations) == 3
+    assert "zh-CN" in translations
+
+
+@patch("httpx.Client.get")
+@patch("time.sleep")
+def test_rate_limit_max_retries_exceeded(
+    mock_sleep: Mock, mock_get: Mock, translator: Translator
+) -> None:
+    """Test that rate limit retries are exhausted and error is raised."""
+    # All calls return 429
+    rate_limit_response = Mock()
+    rate_limit_response.status_code = 429
+    rate_limit_error = httpx.HTTPStatusError(
+        "Too Many Requests", request=Mock(), response=rate_limit_response
+    )
+    mock_get.side_effect = rate_limit_error
+
+    tmdb_ids = TmdbIds(series_id=12345)
+
+    # Should raise the rate limit error after exhausting retries
+    with pytest.raises(httpx.HTTPStatusError, match="Too Many Requests"):
+        translator.get_translations(tmdb_ids)
+
+    # Should have made max_retries + 1 attempts (default is 3 + 1 = 4)
+    assert mock_get.call_count == 4
+
+    # Should have slept 3 times (between retries)
+    assert mock_sleep.call_count == 3
+
+    # Check exponential backoff delays: 1.0, 2.0, 4.0
+    expected_delays = [1.0, 2.0, 4.0]
+    actual_delays = [call.args[0] for call in mock_sleep.call_args_list]
+    assert actual_delays == expected_delays
+
+
+@patch("httpx.Client.get")
+def test_non_rate_limit_http_error_no_retry(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that non-rate-limit HTTP errors are not retried."""
+    # Return 500 error (not rate limit)
+    server_error_response = Mock()
+    server_error_response.status_code = 500
+    server_error = httpx.HTTPStatusError(
+        "Internal Server Error", request=Mock(), response=server_error_response
+    )
+    mock_get.side_effect = server_error
+
+    tmdb_ids = TmdbIds(series_id=12345)
+
+    # Should raise the error immediately without retries
+    with pytest.raises(httpx.HTTPStatusError, match="Internal Server Error"):
+        translator.get_translations(tmdb_ids)
+
+    # Should have made only 1 attempt (no retries)
+    assert mock_get.call_count == 1
+
+
+@patch("httpx.Client.get")
+@patch("time.sleep")
+def test_rate_limit_exponential_backoff_max_delay(
+    mock_sleep: Mock, mock_get: Mock, test_settings: Settings
+) -> None:
+    """Test that exponential backoff respects maximum delay."""
+    # Configure low max delay for testing
+    test_settings.tmdb_max_retry_delay = 3.0
+    test_settings.tmdb_max_retries = 4
+
+    with Cache() as cache:
+        translator = Translator(test_settings, cache)
+
+        # All calls return 429
+        rate_limit_response = Mock()
+        rate_limit_response.status_code = 429
+        rate_limit_error = httpx.HTTPStatusError(
+            "Too Many Requests", request=Mock(), response=rate_limit_response
+        )
+        mock_get.side_effect = rate_limit_error
+
+        tmdb_ids = TmdbIds(series_id=12345)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            translator.get_translations(tmdb_ids)
+
+        # Check that delays are capped at max_delay
+        # Expected: 1.0, 2.0, 3.0 (capped), 3.0 (capped)
+        expected_delays = [1.0, 2.0, 3.0, 3.0]
+        actual_delays = [call.args[0] for call in mock_sleep.call_args_list]
+        assert actual_delays == expected_delays
+
+        translator.close()
+
+
+@patch("httpx.Client.get")
+def test_rate_limit_preserves_cache_on_failure(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that rate limit failures don't corrupt cache."""
+    # Rate limit error for all attempts
+    rate_limit_response = Mock()
+    rate_limit_response.status_code = 429
+    rate_limit_error = httpx.HTTPStatusError(
+        "Too Many Requests", request=Mock(), response=rate_limit_response
+    )
+    mock_get.side_effect = rate_limit_error
+
+    tmdb_ids = TmdbIds(series_id=12345)
+    cache_key = f"translations:{tmdb_ids}"
+
+    # Ensure cache is empty initially
+    assert cache_key not in translator.cache
+
+    # Attempt to get translations (should fail)
+    with pytest.raises(httpx.HTTPStatusError):
+        translator.get_translations(tmdb_ids)
+
+    # Cache should still be empty (no partial data stored)
+    assert cache_key not in translator.cache
