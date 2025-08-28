@@ -174,17 +174,24 @@ class SonarrClient:
 
         print(f"Found Kodi metadata config: {kodi_config['name']}")
 
-        # Enable all metadata types for Kodi
+        # Debug: Print current Kodi configuration
+        print(f"Current Kodi config before update: {kodi_config}")
+        
+        # Enable all metadata types for Kodi (be more comprehensive)
         kodi_config.update(
             {
                 "enable": True,
                 "seriesMetadata": True,
                 "episodeMetadata": True,
+                "episodeMetadataUrl": True,
                 "episodeImages": True,
                 "seriesImages": True,
                 "seasonImages": True,
+                "seriesMetadataUrl": True,
             }
         )
+        
+        print(f"Updated Kodi config: {kodi_config}")
 
         # Update the configuration
         response = self._make_request(

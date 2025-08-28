@@ -242,6 +242,43 @@ def setup_series_with_nfos(
 
     # Ensure we have exactly episode_count + 1 .nfo files (episodes + series)
     expected_nfo_count = episode_count + 1
+    if nfo_count < expected_nfo_count:
+        # Create missing episode .nfo files for testing parent lookup functionality
+        print(f"Creating {expected_nfo_count - nfo_count} missing episode .nfo files for testing...")
+        
+        for episode_file in episode_files:
+            episode_nfo = episode_file.with_suffix(".nfo")
+            if not episode_nfo.exists():
+                # Create a basic episode .nfo file without series TMDB ID
+                # This will test the parent lookup functionality
+                episode_filename = episode_file.name
+                if "S01E01" in episode_filename:
+                    season_num = 1
+                    episode_num = 1
+                elif "S01E02" in episode_filename:
+                    season_num = 1
+                    episode_num = 2
+                else:
+                    # Fallback parsing
+                    season_match = episode_file.name.split("E")
+                    season_num = int(season_match[0].replace("S", ""))
+                    episode_num = int(season_match[1].split(" - ")[0])
+                
+                episode_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<episodedetails>
+    <title>Test Episode {episode_num}</title>
+    <plot>Test episode plot for testing metadata processing.</plot>
+    <season>{season_num}</season>
+    <episode>{episode_num}</episode>
+    <uniqueid type="tvdb" default="true">12345{episode_num}</uniqueid>
+</episodedetails>"""
+                episode_nfo.write_text(episode_content, encoding="utf-8")
+                nfo_files.append(episode_nfo)
+                print(f"Created episode .nfo file: {episode_nfo}")
+        
+        nfo_files = sorted(nfo_files)  # Re-sort after adding files
+        nfo_count = len(nfo_files)
+    
     if nfo_count != expected_nfo_count:
         series.__exit__(None, None, None)
         pytest.fail(
