@@ -187,20 +187,23 @@ def test_process_file_no_preferred_translation(
     assert result.selected_language is None
 
 
-def test_apply_fallback_to_translation_no_fallback_needed(
-    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
-) -> None:
-    """Test fallback logic when translation has both title and description."""
-    # Create test .nfo file with original content
-    test_path = create_test_files(
+@pytest.fixture
+def test_nfo_file(create_test_files: Callable[[str, Path], Path]) -> Path:
+    """Create a shared test .nfo file for fallback tests."""
+    return create_test_files(
         "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
     )
 
+
+def test_apply_fallback_to_translation_no_fallback_needed(
+    processor: MetadataProcessor, test_nfo_file: Path
+) -> None:
+    """Test fallback logic when translation has both title and description."""
     translation = TranslatedContent(
         title="完整标题", description="完整描述", language="zh-CN"
     )
 
-    result = processor._apply_fallback_to_translation(test_path, translation)
+    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
 
     # Should return the same translation since both fields are present
     assert result.title == "完整标题"
@@ -209,17 +212,12 @@ def test_apply_fallback_to_translation_no_fallback_needed(
 
 
 def test_apply_fallback_to_translation_empty_title(
-    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+    processor: MetadataProcessor, test_nfo_file: Path
 ) -> None:
     """Test fallback logic when translation has empty title."""
-    # Create test .nfo file with original content
-    test_path = create_test_files(
-        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
-    )
-
     translation = TranslatedContent(title="", description="翻译描述", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_path, translation)
+    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
 
     # Should use original title but keep translated description
     assert result.title == "Breaking Bad"  # Original title from test data
@@ -228,17 +226,12 @@ def test_apply_fallback_to_translation_empty_title(
 
 
 def test_apply_fallback_to_translation_empty_description(
-    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+    processor: MetadataProcessor, test_nfo_file: Path
 ) -> None:
     """Test fallback logic when translation has empty description."""
-    # Create test .nfo file with original content
-    test_path = create_test_files(
-        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
-    )
-
     translation = TranslatedContent(title="绝命毒师", description="", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_path, translation)
+    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
 
     # Should use translated title but fallback to original description
     assert result.title == "绝命毒师"  # Translated title
@@ -249,17 +242,12 @@ def test_apply_fallback_to_translation_empty_description(
 
 
 def test_apply_fallback_to_translation_both_empty(
-    processor: MetadataProcessor, create_test_files: Callable[[str, Path], Path]
+    processor: MetadataProcessor, test_nfo_file: Path
 ) -> None:
     """Test fallback logic when translation has both empty title and description."""
-    # Create test .nfo file with original content
-    test_path = create_test_files(
-        "tvshow.nfo", Path(__file__).parent / "data" / "tvshow.nfo"
-    )
-
     translation = TranslatedContent(title="", description="", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_path, translation)
+    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
 
     # Should use both original title and description
     assert result.title == "Breaking Bad"  # Original title from test data
@@ -503,6 +491,17 @@ def create_custom_nfo(path: Path, title: str, plot: str, tmdb_id: int = 1396) ->
     path.write_text(content)
 
 
+def parse_nfo_content(nfo_path: Path) -> tuple[str, str]:
+    """Helper to parse title and plot from .nfo file."""
+    tree = ET.parse(nfo_path)
+    root = tree.getroot()
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+    title = (title_elem.text or "") if title_elem is not None else ""
+    plot = (plot_elem.text or "") if plot_elem is not None else ""
+    return title, plot
+
+
 def test_content_matches_preferred_translation_skips_processing(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
@@ -579,12 +578,9 @@ def test_preference_changed_better_translation_available_reprocesses(
     )
 
     # Verify file was actually updated with Chinese content
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-    assert title_elem is not None and title_elem.text == "中文标题"
-    assert plot_elem is not None and plot_elem.text == "中文剧情描述"
+    title, plot = parse_nfo_content(nfo_path)
+    assert title == "中文标题"
+    assert plot == "中文剧情描述"
 
 
 def test_preference_change_no_translation_reverts_to_original_with_backup(
@@ -629,12 +625,9 @@ def test_preference_change_no_translation_reverts_to_original_with_backup(
     )
 
     # Verify file was reverted to original English content
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-    assert title_elem is not None and title_elem.text == "Original Title"
-    assert plot_elem is not None and plot_elem.text == "Original plot"
+    title, plot = parse_nfo_content(nfo_path)
+    assert title == "Original Title"
+    assert plot == "Original plot"
 
 
 def test_multiple_rapid_processing_only_first_modifies(
@@ -687,3 +680,74 @@ def test_multiple_rapid_processing_only_first_modifies(
         expected_success=True,
         expected_file_modified=False,
     )
+
+
+def test_backup_not_overwritten_on_subsequent_processing(
+    test_data_dir: Path,
+) -> None:
+    """Test that backup files are not overwritten on subsequent processing."""
+    # Create processor with backup enabled
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages="zh-CN",
+        original_files_backup_dir=test_data_dir / "backups",
+        cache_dir=test_data_dir / "cache",
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo with original English content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "Original English Title", "Original English plot")
+
+    # Mock translator returns Chinese translation
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="中文标题", description="中文剧情描述", language="zh-CN"
+        )
+    }
+
+    # First processing - should create backup and translate
+    result1 = processor.process_file(nfo_path)
+    assert_process_result(
+        result1,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify backup was created with original content
+    backup_path = test_data_dir / "backups" / "tvshow.nfo"
+    assert backup_path.exists(), "Backup file should exist"
+
+    title, plot = parse_nfo_content(backup_path)
+    assert title == "Original English Title"
+    assert plot == "Original English plot"
+
+    # Manually change the file to simulate external modification
+    # (e.g., different translation)
+    create_custom_nfo(nfo_path, "日本語タイトル", "日本語の説明")
+
+    # Second processing - should NOT overwrite the backup
+    result2 = processor.process_file(nfo_path)
+    assert_process_result(
+        result2,
+        expected_success=True,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify backup still contains ORIGINAL content, not the Japanese content
+    title, plot = parse_nfo_content(backup_path)
+    assert title == "Original English Title"
+    assert plot == "Original English plot"
+
+    # Verify that backup was NOT overwritten with Japanese content
+    backup_content = backup_path.read_text()
+    assert (
+        "日本語タイトル" not in backup_content
+    ), "Backup should not contain Japanese content"
+    assert (
+        "日本語の説明" not in backup_content
+    ), "Backup should not contain Japanese content"

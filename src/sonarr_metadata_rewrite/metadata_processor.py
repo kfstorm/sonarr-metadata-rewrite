@@ -292,6 +292,10 @@ class MetadataProcessor:
         relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
         backup_path = self.settings.original_files_backup_dir / relative_path
 
+        # Check if backup already exists - don't overwrite it
+        if backup_path.exists():
+            return True  # Backup already exists, so we consider this successful
+
         # Ensure backup directory exists
         backup_path.parent.mkdir(parents=True, exist_ok=True)
 
