@@ -234,7 +234,7 @@ def setup_series_with_nfos(
         series_path / "Season 01" / "S01E01 - Pilot.nfo",
         series_path / "Season 01" / "S01E02 - Cat's in the Bag.nfo",
     ]
-    
+
     for expected_nfo in expected_episode_nfos:
         if not expected_nfo.exists():
             series.__exit__(None, None, None)
@@ -242,7 +242,7 @@ def setup_series_with_nfos(
                 f"Expected episode .nfo file not found: {expected_nfo}. "
                 f"Sonarr did not generate .nfo files for all episode media files."
             )
-    
+
     print("✅ All episode media files have corresponding .nfo files")
 
     # Backup original .nfo files for comparison
