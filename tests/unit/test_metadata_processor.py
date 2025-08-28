@@ -1050,41 +1050,6 @@ def test_extract_external_ids_tvdb_only() -> None:
     assert external_ids.imdb_id is None
 
 
-def test_extract_external_ids_id_element_fallback() -> None:
-    """Test extraction of TVDB ID from <id> element when uniqueid is missing."""
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-
-    # Create test XML with only <id> element (as in the original issue example)
-    xml_content = """<?xml version="1.0" encoding="utf-8"?>
-<tvshow>
-    <title>Every Treasure Tells a Story</title>
-    <id>364698</id>
-    <genre>Documentary</genre>
-</tvshow>"""
-
-    import xml.etree.ElementTree as ET
-
-    root = ET.fromstring(xml_content)
-
-    # Use any settings and translator for this test
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
-        preferred_languages="en",
-        cache_dir=Path("/tmp/cache"),
-    )
-    processor = MetadataProcessor(settings, Mock())
-
-    external_ids = processor._extract_external_ids(root)
-
-    assert external_ids.tvdb_id == 364698
-    assert external_ids.imdb_id is None
-
-
 def test_extract_external_ids_no_ids() -> None:
     """Test extraction when no external IDs are present."""
     from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor

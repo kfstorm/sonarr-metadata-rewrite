@@ -399,7 +399,8 @@ def test_external_id_lookup_chinese_series(
         if has_tmdb_id:
             raise Exception(
                 f"TMDB ID already exists ({original_content.get('tmdb_id')}), "
-                "this test requires a TV show without TMDB ID info to test external ID lookup"
+                "this test requires a TV show without TMDB ID info to test "
+                "external ID lookup"
             )
 
         print(
@@ -428,22 +429,29 @@ def test_external_id_lookup_chinese_series(
             print(f"Processed title: {processed_content.get('title')}")
 
             # Verify the file was processed and translated to Chinese
-            # Since this is a Chinese series, title and plot should contain Chinese characters
+            # Since this is a Chinese series, title and plot should contain
+            # Chinese characters
             processed_title = processed_content.get("title", "")
             processed_plot = processed_content.get("plot", "")
 
             assert processed_title, "Processed title should not be empty"
             assert processed_plot, "Processed plot should not be empty"
 
-            # Check that title and plot contain Chinese characters to prove translation occurred
+            # Check that title and plot contain Chinese characters to prove
+            # translation occurred
             import re
-            chinese_char_pattern = r'[\u4e00-\u9fff]'
-            
+
+            chinese_char_pattern = r"[\u4e00-\u9fff]"
+
             title_has_chinese = bool(re.search(chinese_char_pattern, processed_title))
             plot_has_chinese = bool(re.search(chinese_char_pattern, processed_plot))
-            
-            assert title_has_chinese, f"Title should contain Chinese characters: {processed_title}"
-            assert plot_has_chinese, f"Plot should contain Chinese characters: {processed_plot}"
+
+            assert (
+                title_has_chinese
+            ), f"Title should contain Chinese characters: {processed_title}"
+            assert (
+                plot_has_chinese
+            ), f"Plot should contain Chinese characters: {processed_plot}"
 
             print("✅ External ID lookup and Chinese translation successful")
             print(f"✅ Final Chinese title: {processed_title}")
