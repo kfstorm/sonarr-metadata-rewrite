@@ -204,9 +204,17 @@ def setup_series_with_nfos(
         raise RuntimeError("Failed to trigger disk scan")
     print("Disk scan command submitted successfully")
 
+    # Also trigger metadata refresh to ensure .nfo files are generated for episodes
+    print("Triggering metadata refresh to ensure episode .nfo files are generated...")
+    metadata_success = configured_sonarr_container.refresh_metadata(series.id)
+    if not metadata_success:
+        series.__exit__(None, None, None)
+        raise RuntimeError("Failed to trigger metadata refresh")
+    print("Metadata refresh command submitted successfully")
+
     # Wait for .nfo files to be generated
     print("Waiting for .nfo files to be generated...")
-    nfo_files = wait_for_nfo_files(series_path, timeout=10.0)
+    nfo_files = wait_for_nfo_files(series_path, timeout=15.0)
 
     if not nfo_files:
         # List what files exist for debugging
@@ -216,6 +224,26 @@ def setup_series_with_nfos(
         pytest.fail("Sonarr did not generate .nfo files within timeout after disk scan")
 
     print(f"Found .nfo files: {nfo_files}")
+
+    # List all files to debug what Sonarr actually generated
+    all_files = list(series_path.rglob("*")) if series_path.exists() else []
+    print(f"All files in series directory: {all_files}")
+
+    # Verify that each episode file has a corresponding .nfo file
+    expected_episode_nfos = [
+        series_path / "Season 01" / "S01E01 - Pilot.nfo",
+        series_path / "Season 01" / "S01E02 - Cat's in the Bag.nfo",
+    ]
+    
+    for expected_nfo in expected_episode_nfos:
+        if not expected_nfo.exists():
+            series.__exit__(None, None, None)
+            pytest.fail(
+                f"Expected episode .nfo file not found: {expected_nfo}. "
+                f"Sonarr did not generate .nfo files for all episode media files."
+            )
+    
+    print("✅ All episode media files have corresponding .nfo files")
 
     # Backup original .nfo files for comparison
     original_backups = {}
@@ -233,7 +261,7 @@ def setup_series_with_nfos(
         # For episode files, TMDB ID can be looked up from parent
         if metadata["root_tag"] == "tvshow" and not metadata.get("tmdb_id"):
             series.__exit__(None, None, None)
-            pytest.skip(
+            pytest.fail(
                 f"No TMDB ID found in series file {nfo_file.name}. "
                 f"Sonarr may not have populated TMDB metadata yet."
             )
