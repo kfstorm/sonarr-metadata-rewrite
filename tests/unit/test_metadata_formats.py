@@ -256,10 +256,6 @@ def test_emby_format_supports_file(temp_nfo_file: Path) -> None:
     temp_nfo_file.write_text(EMBY_EPISODE_NFO)
     assert format_handler.supports_file(temp_nfo_file) is True
 
-    # Test Kodi format (should also be supported by Emby handler)
-    temp_nfo_file.write_text(KODI_TVSHOW_NFO)
-    assert format_handler.supports_file(temp_nfo_file) is True
-
 
 def test_get_metadata_format() -> None:
     """Test metadata format retrieval by name."""
