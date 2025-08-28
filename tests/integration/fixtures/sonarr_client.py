@@ -169,8 +169,6 @@ class SonarrClient:
             folder_to_scan = str(file_obj.parent)
 
             if folder_to_scan not in scanned_folders:
-                print(f"Scanning folder for manual import: {folder_to_scan}")
-
                 # Step 1: Scan the folder to get potential import decisions
                 params = {
                     "folder": folder_to_scan,
@@ -190,58 +188,28 @@ class SonarrClient:
                     continue
 
                 potential_imports = response.json()
-                print(f"Found {len(potential_imports)} potential imports in scan")
 
                 # Step 2: Filter for the files we want to import from this folder
                 for item in potential_imports:
                     item_path = item.get("path", "")
                     item_name = Path(item_path).name
-                    print(f"Scanning item: {item_name} at {item_path}")
 
                     # Check if this item matches any of our target files
                     if any(Path(f).name == item_name for f in files):
-                        print(f"Found matching file: {item_name}")
-
                         # Check for rejections that would prevent import
                         rejections = item.get("rejections", [])
-                        print(f"Rejections for {item_name}: {rejections}")
-
-                        # For integration tests, allow files with only audio track
-                        # issues since we're using minimal sample files for testing
-                        # metadata functionality. Remove audio-related rejections
-                        # entirely for test files
-                        filtered_rejections = []
-                        for r in rejections:
-                            if "audio" not in r.get("reason", "").lower():
-                                filtered_rejections.append(r)
-                            else:
-                                print(f"Removing audio rejection for test: {r}")
-
-                        item["rejections"] = filtered_rejections
-
-                        # Check for remaining permanent rejections
                         permanent_rejections = [
-                            r
-                            for r in filtered_rejections
-                            if r.get("type") == "permanent"
+                            r for r in rejections if r.get("type") == "permanent"
                         ]
 
                         if permanent_rejections:
                             print(
-                                f"Item has non-audio permanent rejections, "
-                                f"skipping: {permanent_rejections}"
+                                f"Item has permanent rejections: {permanent_rejections}"
                             )
                             # Skip items with permanent rejections that we can't handle
                             continue
 
-                        print(f"Adding item to import list: {item_name}")
-                        # Ensure the item has the correct series ID for manual import
-                        if "seriesId" not in item or item["seriesId"] == 0:
-                            item["seriesId"] = series_id
-                            print(f"Set series ID to {series_id} for item {item_name}")
                         all_import_items.append(item)
-                    else:
-                        print(f"Item {item_name} doesn't match target files")
 
                 scanned_folders.add(folder_to_scan)
 
@@ -250,39 +218,9 @@ class SonarrClient:
                 "No matching files found in scan results or all had "
                 "permanent rejections"
             )
-            print(f"Target files we're looking for: {files}")
-            print("Available files in scan results:")
-            for file_path in files:
-                file_obj = Path(file_path)
-                folder_to_scan = str(file_obj.parent)
-                print(f"  Scanning {folder_to_scan} for {file_obj.name}")
-
-                # Re-scan with full debugging
-                params = {
-                    "folder": folder_to_scan,
-                    "filterExistingFiles": "true",
-                    "replaceExistingFiles": "false",
-                }
-                response = self._make_request(
-                    "GET", "/api/v3/manualimport", params=params
-                )
-                if response.is_success:
-                    scan_results = response.json()
-                    for item in scan_results:
-                        item_path = item.get("path", "")
-                        rejections = item.get("rejections", [])
-                        print(f"    Found: {item_path} (rejections: {rejections})")
-                else:
-                    print(f"    Scan failed: {response.status_code}")
             return False
 
         # Step 3: Use the direct manual import API endpoint (POST)
-        print(f"Submitting {len(all_import_items)} items for manual import")
-        for item in all_import_items:
-            print(
-                f"Import item: path={item.get('path')}, seriesId={item.get('seriesId')}"
-            )
-
         response = self._make_request(
             "POST", "/api/v3/manualimport", json=all_import_items
         )
@@ -346,11 +284,9 @@ class SonarrClient:
             if field_name in [
                 "seriesMetadata",
                 "episodeMetadata",
-                "episodeMetadataUrl",
                 "episodeImages",
                 "seriesImages",
                 "seasonImages",
-                "seriesMetadataUrl",
             ]:
                 field["value"] = True
 

@@ -52,7 +52,8 @@ def create_fake_episode_file(
 
     # Copy valid sample MKV file to avoid FFprobe "EBML header parsing failed" errors
     # Sample generated with: ffmpeg -f lavfi -i color=black:size=64x64:duration=1 \
-    #   -c:v libx264 -preset ultrafast -y sample_episode.mkv
+    #   -f lavfi -i sine=frequency=1000:duration=1 -c:v libx264 -c:a aac \
+    #   -preset ultrafast -y sample_episode.mkv
     sample_file = Path(__file__).parent / "fixtures" / "sample_episode.mkv"
     shutil.copy2(sample_file, episode_file)
     return episode_file
