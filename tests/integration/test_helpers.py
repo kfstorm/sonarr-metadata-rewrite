@@ -137,38 +137,6 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     return metadata
 
 
-def _check_ids_preserved(original: dict[str, Any], translated: dict[str, Any]) -> bool:
-    """Check if IDs are properly preserved during translation.
-    
-    For episode files, TMDB series ID may be added during processing (via parent lookup),
-    but existing IDs (TVDB, etc.) should be preserved.
-    
-    Args:
-        original: Original metadata
-        translated: Translated metadata
-    
-    Returns:
-        True if IDs are properly preserved/handled
-    """
-    # TVDB ID should always be preserved if it existed
-    if original.get("tvdb_id") != translated.get("tvdb_id"):
-        return False
-    
-    # For TMDB ID:
-    # - If original had it, it should be preserved
-    # - If original didn't have it, translated may have it (from parent lookup for episodes)
-    original_tmdb = original.get("tmdb_id")
-    translated_tmdb = translated.get("tmdb_id")
-    
-    if original_tmdb is not None:
-        # Original had TMDB ID - must be preserved
-        return original_tmdb == translated_tmdb
-    else:
-        # Original didn't have TMDB ID - translated may have acquired it
-        # This is acceptable for episode files (parent lookup scenario)
-        return True
-
-
 def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, Any]:
     """Compare original and translated .nfo files.
 
@@ -187,7 +155,10 @@ def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, A
         "translated": translated,
         "title_changed": original["title"] != translated["title"],
         "plot_changed": original["plot"] != translated["plot"],
-        "ids_preserved": _check_ids_preserved(original, translated),
+        "ids_preserved": (
+            original["tmdb_id"] == translated["tmdb_id"]
+            and original["tvdb_id"] == translated["tvdb_id"]
+        ),
     }
 
 
@@ -253,84 +224,19 @@ def setup_series_with_nfos(
         shutil.copy2(nfo_file, backup_path)
         original_backups[nfo_file] = backup_path
 
-    # Parse original metadata and verify we can process the files
-    series_files_with_tmdb = []
-    episode_files = []
-    
+    # Parse original metadata to verify we can process the files
     for nfo_file in nfo_files:
         metadata = parse_nfo_content(nfo_file)
         print(f"Original metadata for {nfo_file.name}: {metadata}")
-        
-        if metadata["root_tag"] == "tvshow":
-            # Series file - should have TMDB ID for translation to work
-            if metadata.get("tmdb_id"):
-                series_files_with_tmdb.append(nfo_file)
-            else:
-                print(f"⚠️ Series file {nfo_file.name} lacks TMDB ID")
-        elif metadata["root_tag"] == "episodedetails":
-            # Episode file - may or may not have TMDB ID (will look up parent if needed)
-            episode_files.append(nfo_file)
-            if metadata.get("tmdb_id"):
-                print(f"✓ Episode file {nfo_file.name} has TMDB ID: {metadata['tmdb_id']}")
-            else:
-                print(f"⚠️ Episode file {nfo_file.name} lacks TMDB ID (will try parent lookup)")
-    
-    # We need at least one series file with TMDB ID OR episode files that can look up parent
-    can_process = len(series_files_with_tmdb) > 0 or len(episode_files) > 0
-    
-    if not can_process:
-        series.__exit__(None, None, None)
-        pytest.skip(
-            "No processable .nfo files found. Need either series files with TMDB IDs "
-            "or episode files that can look up parent series."
-        )
-    
-    # If Sonarr didn't generate episode files, create a mock episode file to test the episode processing
-    # This addresses the gap where integration tests weren't testing episode metadata processing
-    if len(episode_files) == 0 and len(series_files_with_tmdb) > 0:
-        print("🔧 Sonarr didn't generate episode files. Creating mock episode file to test episode processing...")
-        
-        # Create a season directory if it doesn't exist
-        season_dir = series_path / "Season 01"
-        season_dir.mkdir(exist_ok=True)
-        
-        # Create a realistic episode .nfo file that Sonarr would generate (without TMDB series ID)
-        episode_content = '''<?xml version="1.0" encoding="utf-8"?>
-<episodedetails>
-  <title>Pilot</title>
-  <season>1</season>
-  <episode>1</episode>
-  <aired>2008-01-20</aired>
-  <plot>Walter White, a struggling high school chemistry teacher, is diagnosed with advanced lung cancer. He turns to a life of crime, producing and selling methamphetamine with a former student, Jesse Pinkman, with the goal of securing his family's financial future before he dies.</plot>
-  <uniqueid type="tvdb" default="true">349232</uniqueid>
-  <uniqueid type="sonarr" default="false">1548</uniqueid>
-  <uniqueid type="imdb" default="false">tt0959621</uniqueid>
-  <watched>false</watched>
-  <runtime>58</runtime>
-  <director>Vince Gilligan</director>
-  <writer>Vince Gilligan</writer>
-  <mpaa>TV-MA</mpaa>
-  <rating>8.2</rating>
-  <votes>25487</votes>
-</episodedetails>'''
-        
-        episode_file = season_dir / "S01E01 - Pilot.nfo"
-        episode_file.write_text(episode_content)
-        
-        # Add to our lists for processing
-        nfo_files.append(episode_file)
-        
-        # Create backup for the episode file too
-        backup_path = episode_file.with_suffix(".nfo.original")
-        shutil.copy2(episode_file, backup_path)
-        original_backups[episode_file] = backup_path
-        
-        # Update our tracking
-        episode_files.append(episode_file)
-        print(f"✅ Created mock episode file: {episode_file}")
-    
-    print(f"Found processable files: {len(series_files_with_tmdb)} series with TMDB, "
-          f"{len(episode_files)} episodes (may use parent lookup)")
+
+        # For series files, TMDB ID is required directly
+        # For episode files, TMDB ID can be looked up from parent
+        if metadata["root_tag"] == "tvshow" and not metadata.get("tmdb_id"):
+            series.__exit__(None, None, None)
+            pytest.skip(
+                f"No TMDB ID found in series file {nfo_file.name}. "
+                f"Sonarr may not have populated TMDB metadata yet."
+            )
 
     return series, nfo_files, original_backups
 
