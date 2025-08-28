@@ -75,8 +75,8 @@ Metadata translation service with Click framework providing:
   persistent service (CLI: `sonarr-metadata-rewrite`)
 - Real-time file monitoring with watchdog for immediate translation
 - Periodic directory scanning for batch processing of existing files
-- TMDB API integration with intelligent caching (explicit rate limiting not
-  yet implemented)
+- TMDB API integration with intelligent caching and exponential backoff retry
+  for rate limit handling
 - Reprocessing avoidance to prevent unnecessary file updates and API calls
 - Pydantic-based configuration with comprehensive settings validation
 - Atomic file operations with optional backup functionality
@@ -105,7 +105,7 @@ Metadata translation service with Click framework providing:
 4. **Translator** (`translator.py`)
    - TMDB API client with httpx for reliable HTTP requests
    - Intelligent translation caching with diskcache for performance
-   - Relies on caching to reduce API calls (explicit rate limiting not yet implemented)
+   - Exponential backoff retry logic for rate limit handling (HTTP 429)
    - Support for both series and episode translations
    - Error handling and graceful API failure recovery
 
@@ -137,8 +137,8 @@ Metadata translation service with Click framework providing:
 
 - **Target Endpoints**: `/tv/{series_id}/translations` and
   `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`
-- **Rate Limits**: TMDB has rate limits, but no explicit rate limiting is
-  currently implemented in the code
+- **Rate Limits**: TMDB has rate limits, and explicit rate limiting with
+  exponential backoff retry is implemented to handle HTTP 429 responses
 - **Language Codes**: ISO 639-1 format with optional country codes (e.g.,
   "zh-CN", "ja-JP")
 - **ID Extraction**: TMDB IDs from `<uniqueid type="tmdb">` XML tags in
@@ -185,8 +185,9 @@ scripts/ (development automation)
 - **Python**: >=3.10 with strict typing enforcement
 - **Dependencies**: Core runtime deps (Click, Pydantic, httpx, watchdog,
   diskcache)
-- **TMDB Rate Limits**: TMDB has rate limits, but explicit rate limiting is
-  not yet implemented - relies on caching to reduce API calls
+- **TMDB Rate Limits**: TMDB has rate limits, and explicit rate limiting with 
+  exponential backoff retry is implemented - the service automatically retries
+  rate-limited requests with configurable delays
 - **File Format**: Sonarr generates XML .nfo files with TMDB IDs
 - **Target Files**: `tvshow.nfo` (series) and episode-specific .nfo files
 - **Service Architecture**: Long-running daemon process with graceful
