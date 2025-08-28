@@ -46,6 +46,11 @@ class Settings(BaseSettings):
         description="Directory to backup original files (None disables backup)",
     )
 
+    # Service mode
+    service_mode: str = Field(
+        default="rewrite", description="Service mode: 'rewrite' or 'rollback'"
+    )
+
     # Component control
     enable_file_monitor: bool = Field(
         default=True, description="Enable real-time file monitoring"
@@ -64,6 +69,14 @@ class Settings(BaseSettings):
                 raise ValueError("preferred_languages cannot be empty")
             return languages
         raise ValueError("preferred_languages must be a comma-separated string")
+
+    @field_validator("service_mode")
+    @classmethod
+    def validate_service_mode(cls, v: str) -> str:
+        """Validate service mode value."""
+        if v not in ["rewrite", "rollback"]:
+            raise ValueError("service_mode must be either 'rewrite' or 'rollback'")
+        return v
 
 
 def get_settings() -> Settings:

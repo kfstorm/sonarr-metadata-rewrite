@@ -36,6 +36,7 @@ class TestCli:
                 f"✅ TMDB API key loaded (ending in ...{test_key[-4:]})"
                 in result.output
             )
+            assert "🔧 Service mode: rewrite" in result.output
 
     def test_cli_missing_api_key(self) -> None:
         """Test CLI with missing TMDB API key."""
@@ -77,3 +78,63 @@ class TestCli:
             "A long-running service that monitors Sonarr-generated .nfo files"
             in result.output
         )
+        assert "In rollback mode, restores original files" in result.output
+
+    def test_cli_rollback_mode_success(self) -> None:
+        """Test CLI in rollback mode with successful execution."""
+        test_key = "test_api_key_1234567890abcdef"
+        runner = CliRunner()
+
+        with runner.isolated_filesystem():
+            env_vars = {
+                "TMDB_API_KEY": test_key,
+                "REWRITE_ROOT_DIR": "/tmp/test",
+                "PREFERRED_LANGUAGES": "zh-CN",
+                "SERVICE_MODE": "rollback",
+            }
+            with patch.dict(os.environ, env_vars):
+                # Mock the rollback service
+                with patch(
+                    "sonarr_metadata_rewrite.main.RollbackService"
+                ) as mock_rollback_service:
+                    mock_instance = mock_rollback_service.return_value
+                    mock_instance.execute_rollback.return_value = None
+                    mock_instance.hang_after_completion.side_effect = KeyboardInterrupt()
+                    
+                    result = runner.invoke(cli)
+
+            # Check the output
+            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
+            assert "🔧 Service mode: rollback" in result.output
+            assert "🔄 Executing rollback operation..." in result.output
+            assert "✅ Rollback completed successfully" in result.output
+            assert result.exit_code == 0
+
+    def test_cli_rollback_mode_failure(self) -> None:
+        """Test CLI in rollback mode with execution failure."""
+        test_key = "test_api_key_1234567890abcdef"
+        runner = CliRunner()
+
+        with runner.isolated_filesystem():
+            env_vars = {
+                "TMDB_API_KEY": test_key,
+                "REWRITE_ROOT_DIR": "/tmp/test",
+                "PREFERRED_LANGUAGES": "zh-CN",
+                "SERVICE_MODE": "rollback",
+            }
+            with patch.dict(os.environ, env_vars):
+                # Mock the rollback service to fail
+                with patch(
+                    "sonarr_metadata_rewrite.main.RollbackService"
+                ) as mock_rollback_service:
+                    mock_instance = mock_rollback_service.return_value
+                    mock_instance.execute_rollback.side_effect = ValueError("Backup directory not configured")
+                    
+                    result = runner.invoke(cli)
+
+            # Check the output
+            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
+            assert "🔧 Service mode: rollback" in result.output
+            assert "🔄 Executing rollback operation..." in result.output
+            assert "❌ Rollback failed: Backup directory not configured" in result.output
+            assert result.exit_code == 1
