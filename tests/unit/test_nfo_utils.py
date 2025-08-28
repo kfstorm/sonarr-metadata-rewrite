@@ -5,7 +5,6 @@ from pathlib import Path
 
 from sonarr_metadata_rewrite.nfo_utils import (
     find_nfo_files,
-    get_nfo_file_extensions,
     is_nfo_file,
 )
 
@@ -120,21 +119,3 @@ class TestFindNfoFiles:
             for file_path in found_files:
                 assert file_path.is_file()
                 assert is_nfo_file(file_path)
-
-
-class TestGetNfoFileExtensions:
-    """Test get_nfo_file_extensions function."""
-
-    def test_returns_all_extensions(self) -> None:
-        """Test that all NFO extensions are returned."""
-        extensions = get_nfo_file_extensions()
-        assert ".nfo" in extensions
-        assert ".NFO" in extensions
-        assert len(extensions) == 2
-
-    def test_extensions_are_strings(self) -> None:
-        """Test that all returned extensions are strings."""
-        extensions = get_nfo_file_extensions()
-        for ext in extensions:
-            assert isinstance(ext, str)
-            assert ext.startswith(".")

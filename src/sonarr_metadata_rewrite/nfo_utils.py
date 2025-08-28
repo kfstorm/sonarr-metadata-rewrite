@@ -42,12 +42,3 @@ def find_nfo_files(directory: Path, recursive: bool = True) -> list[Path]:
             nfo_files.append(file_path)
 
     return nfo_files
-
-
-def get_nfo_file_extensions() -> list[str]:
-    """Get all possible NFO file extensions (case variations).
-
-    Returns:
-        List of NFO file extensions: ['.nfo', '.NFO']
-    """
-    return [".nfo", ".NFO"]

@@ -30,6 +30,3 @@ _.on_modified
 # Test mock attributes that vulture may not detect
 _.return_value
 _.side_effect
-
-# Utility functions that may be used later or by external code
-_.get_nfo_file_extensions
