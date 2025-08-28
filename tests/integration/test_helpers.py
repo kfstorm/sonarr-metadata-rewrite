@@ -3,6 +3,7 @@
 import shutil
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -58,33 +59,36 @@ def create_fake_episode_file(
 
 
 def wait_with_retry(
-    check_func, timeout: float = 10.0, interval: float = 0.5, log_interval: float = 1.0
+    check_func: Callable[[], bool],
+    timeout: float = 10.0,
+    interval: float = 0.5,
+    log_interval: float = 1.0,
 ) -> bool:
     """Common wait and retry logic for tests.
-    
+
     Args:
         check_func: Function that returns True when condition is met
         timeout: Maximum time to wait in seconds
         interval: Time between checks in seconds
         log_interval: Time between log messages in seconds
-        
+
     Returns:
         True if condition was met within timeout, False otherwise
     """
     start_time = time.time()
     last_log = 0.0
-    
+
     while time.time() - start_time < timeout:
         if check_func():
             return True
-            
+
         elapsed = time.time() - start_time
         if elapsed - last_log >= log_interval:
             print(f"Still waiting... ({elapsed:.1f}s elapsed)")
             last_log = elapsed
-            
+
         time.sleep(interval)
-    
+
     return False
 
 
@@ -108,19 +112,21 @@ def wait_for_nfo_files(
         f"Waiting for {expected_count} .nfo files in {series_path} "
         f"(timeout: {timeout}s)"
     )
-    
-    def check_nfo_files():
+
+    def check_nfo_files() -> bool:
         nfo_files = list(series_path.rglob("*.nfo"))
         if len(nfo_files) >= expected_count:
             print(f"Found {len(nfo_files)} .nfo files: {nfo_files}")
             return True
         return False
-    
-    if wait_with_retry(check_nfo_files, timeout=timeout, interval=0.5, log_interval=1.0):
+
+    if wait_with_retry(
+        check_nfo_files, timeout=timeout, interval=0.5, log_interval=1.0
+    ):
         # Wait a bit more to ensure files are fully written
         time.sleep(0.5)
-        return sorted(list(series_path.rglob("*.nfo")))
-    
+        return sorted(series_path.rglob("*.nfo"))
+
     # Failed to find enough files
     nfo_files = list(series_path.rglob("*.nfo"))
     raise RuntimeError(
@@ -269,19 +275,22 @@ def setup_series_with_nfos(
 
         # Verify that episode files were imported by checking Sonarr's episode files API
         print("Verifying episode files were imported...")
-        
-        def check_import_complete():
+
+        def check_import_complete() -> bool:
             imported_files = configured_sonarr_container.get_episode_files(series.id)
             return len(imported_files) >= len(episode_files)
-        
-        if not wait_with_retry(check_import_complete, timeout=15.0, interval=1.0, log_interval=2.0):
+
+        if not wait_with_retry(
+            check_import_complete, timeout=15.0, interval=1.0, log_interval=2.0
+        ):
             imported_files = configured_sonarr_container.get_episode_files(series.id)
             series.__exit__(None, None, None)
             raise RuntimeError(
                 f"Manual import verification failed: expected {len(episode_files)} "
-                f"episode files, but only {len(imported_files)} were imported into Sonarr"
+                f"episode files, but only {len(imported_files)} were imported into "
+                f"Sonarr"
             )
-    
+
     imported_files = configured_sonarr_container.get_episode_files(series.id)
     print(f"✅ Successfully have {len(imported_files)} episode files in Sonarr")
 

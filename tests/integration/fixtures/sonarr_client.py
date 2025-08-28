@@ -1,6 +1,5 @@
 """Sonarr API client for integration testing."""
 
-import json
 import time
 from pathlib import Path
 from typing import Any
@@ -152,26 +151,23 @@ class SonarrClient:
             True if manual import was successful
         """
         print(f"Starting manual import for series {series_id}")
-        
+
         # First, get the series to obtain quality profile and language profile
         response = self._make_request("GET", f"/api/v3/series/{series_id}")
         if not response.is_success:
             print(f"Failed to get series {series_id}: {response.status_code}")
             return False
 
-        series_data = response.json()
-        quality_profile_id = series_data.get("qualityProfileId", 1)
-        language_profile_id = series_data.get("languageProfileId", 1)
-        series_path = series_data.get("path", "")
+        response.json()  # Verify API response is valid JSON
 
         # For each file, check which directory to scan
         scanned_folders = set()
         all_import_items = []
-        
+
         for file_path in files:
             file_obj = Path(file_path)
             folder_to_scan = str(file_obj.parent)
-            
+
             if folder_to_scan not in scanned_folders:
                 # Step 1: Scan the folder to get potential import decisions
                 params = {
@@ -179,41 +175,55 @@ class SonarrClient:
                     "filterExistingFiles": "true",
                     "replaceExistingFiles": "false",
                 }
-                
-                response = self._make_request("GET", "/api/v3/manualimport", params=params)
+
+                response = self._make_request(
+                    "GET", "/api/v3/manualimport", params=params
+                )
                 if not response.is_success:
-                    print(f"Failed to scan folder for manual import: {response.status_code}")
+                    print(
+                        f"Failed to scan folder for manual import: "
+                        f"{response.status_code}"
+                    )
                     print(f"Response: {response.text}")
                     continue
 
                 potential_imports = response.json()
-                
+
                 # Step 2: Filter for the files we want to import from this folder
                 for item in potential_imports:
                     item_path = item.get("path", "")
                     item_name = Path(item_path).name
-                    
+
                     # Check if this item matches any of our target files
                     if any(Path(f).name == item_name for f in files):
                         # Check for rejections that would prevent import
                         rejections = item.get("rejections", [])
-                        permanent_rejections = [r for r in rejections if r.get("type") == "permanent"]
-                        
+                        permanent_rejections = [
+                            r for r in rejections if r.get("type") == "permanent"
+                        ]
+
                         if permanent_rejections:
-                            print(f"Item has permanent rejections: {permanent_rejections}")
+                            print(
+                                f"Item has permanent rejections: {permanent_rejections}"
+                            )
                             # Skip items with permanent rejections that we can't handle
                             continue
-                        
+
                         all_import_items.append(item)
-                
+
                 scanned_folders.add(folder_to_scan)
 
         if not all_import_items:
-            print("No matching files found in scan results or all had permanent rejections")
+            print(
+                "No matching files found in scan results or all had "
+                "permanent rejections"
+            )
             return False
 
         # Step 3: Use the direct manual import API endpoint (POST)
-        response = self._make_request("POST", "/api/v3/manualimport", json=all_import_items)
+        response = self._make_request(
+            "POST", "/api/v3/manualimport", json=all_import_items
+        )
         if response.status_code in (200, 201, 202):
             return True
         else:
