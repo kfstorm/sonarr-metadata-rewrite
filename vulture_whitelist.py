@@ -29,3 +29,9 @@ _.on_modified
 # Test mock attributes that vulture may not detect
 _.return_value
 _.side_effect
+
+# Metadata format functions that may be used for future extensibility
+get_metadata_format  # May be used in future for explicit format configuration
+
+# Deprecated methods kept for backward compatibility
+_extract_tmdb_ids  # Deprecated method kept for backward compatibility

@@ -6,8 +6,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.fixtures.subprocess_service_manager import (
@@ -55,39 +53,6 @@ def create_fake_episode_file(
     return episode_file
 
 
-def wait_for_nfo_files(series_path: Path, timeout: float = 5.0) -> list[Path]:
-    """Wait for .nfo files to be generated in series directory.
-
-    Args:
-        series_path: Path to series directory
-        timeout: Maximum time to wait in seconds
-
-    Returns:
-        List of .nfo files found
-    """
-    print(f"Waiting for .nfo files in {series_path} (timeout: {timeout}s)")
-    start_time = time.time()
-    last_check = 0.0
-
-    while time.time() - start_time < timeout:
-        elapsed = time.time() - start_time
-        if elapsed - last_check >= 2:  # Log every 2 seconds
-            print(f"Still waiting for .nfo files... ({elapsed:.1f}s elapsed)")
-            last_check = elapsed
-
-        nfo_files = list(series_path.rglob("*.nfo"))
-        if nfo_files:
-            print(f"Found .nfo files after {elapsed:.1f}s: {nfo_files}")
-            # Wait a bit more to ensure files are fully written
-            time.sleep(1)
-            return sorted(nfo_files)
-        time.sleep(1)
-
-    elapsed = time.time() - start_time
-    print(f"No .nfo files found after {elapsed:.1f}s timeout")
-    return []
-
-
 def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     """Parse .nfo file and extract key metadata.
 
@@ -104,6 +69,7 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
         "root_tag": root.tag,
         "title": "",
         "plot": "",
+        "overview": "",
         "tmdb_id": None,
         "tvdb_id": None,
     }
@@ -113,10 +79,15 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     if title_elem is not None and title_elem.text:
         metadata["title"] = title_elem.text.strip()
 
-    # Extract plot/overview
+    # Extract plot
     plot_elem = root.find("plot")
     if plot_elem is not None and plot_elem.text:
         metadata["plot"] = plot_elem.text.strip()
+
+    # Extract overview (Emby format)
+    overview_elem = root.find("overview")
+    if overview_elem is not None and overview_elem.text:
+        metadata["overview"] = overview_elem.text.strip()
 
     # Extract IDs
     for uniqueid in root.findall(".//uniqueid"):
@@ -150,11 +121,19 @@ def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, A
     original = parse_nfo_content(original_path)
     translated = parse_nfo_content(translated_path)
 
+    # Check if any description field changed (plot or overview)
+    description_changed = (
+        original["plot"] != translated["plot"]
+        or original["overview"] != translated["overview"]
+    )
+
     return {
         "original": original,
         "translated": translated,
         "title_changed": original["title"] != translated["title"],
         "plot_changed": original["plot"] != translated["plot"],
+        "overview_changed": original["overview"] != translated["overview"],
+        "description_changed": description_changed,
         "ids_preserved": (
             original["tmdb_id"] == translated["tmdb_id"]
             and original["tvdb_id"] == translated["tvdb_id"]
@@ -163,20 +142,24 @@ def compare_nfo_files(original_path: Path, translated_path: Path) -> dict[str, A
 
 
 def setup_series_with_nfos(
-    configured_sonarr_container: SonarrClient,
+    sonarr_container: SonarrClient,
     temp_media_root: Path,
 ) -> tuple[SeriesManager, list[Path], dict[Path, Path]]:
-    """Set up series with .nfo files and return backup mapping.
+    """Set up series without requiring initial .nfo files.
 
     Args:
-        configured_sonarr_container: Configured Sonarr client
+        sonarr_container: Sonarr client (may or may not have metadata providers enabled)
         temp_media_root: Temporary media root directory
 
     Returns:
-        Tuple of (SeriesManager, nfo_files, original_backups)
+        Tuple of (SeriesManager, empty_nfo_list, empty_backup_mapping)
+
+    Note: This function no longer generates .nfo files initially.
+    The integration tests will enable metadata providers and generate .nfo files
+    as needed.
     """
     series = SeriesManager(
-        configured_sonarr_container,
+        sonarr_container,
         BREAKING_BAD_TVDB_ID,
         "/tv",
         temp_media_root,
@@ -198,46 +181,26 @@ def setup_series_with_nfos(
     # Trigger disk scan to detect episode files
     print("Triggering disk scan to detect episode files...")
     series_path = temp_media_root / series.slug
-    scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
+    scan_success = sonarr_container.trigger_disk_scan(series.id)
     if not scan_success:
         series.__exit__(None, None, None)
         raise RuntimeError("Failed to trigger disk scan")
     print("Disk scan command submitted successfully")
 
-    # Wait for .nfo files to be generated
-    print("Waiting for .nfo files to be generated...")
-    nfo_files = wait_for_nfo_files(series_path, timeout=10.0)
+    # Wait for Sonarr to process the media files (not .nfo files)
+    print("Waiting for Sonarr to process media files...")
+    time.sleep(5)
 
-    if not nfo_files:
-        # List what files exist for debugging
-        all_files = list(series_path.rglob("*")) if series_path.exists() else []
-        print(f"No .nfo files found. All files in {series_path}: {all_files}")
+    # Check that basic series structure exists
+    if not series_path.exists():
         series.__exit__(None, None, None)
-        pytest.fail("Sonarr did not generate .nfo files within timeout after disk scan")
+        raise RuntimeError(f"Series directory {series_path} was not created")
 
-    print(f"Found .nfo files: {nfo_files}")
+    print(f"Series setup complete: {series_path}")
 
-    # Backup original .nfo files for comparison
-    original_backups = {}
-    for nfo_file in nfo_files:
-        backup_path = nfo_file.with_suffix(".nfo.original")
-        shutil.copy2(nfo_file, backup_path)
-        original_backups[nfo_file] = backup_path
-
-    # Parse original metadata to verify it contains TMDB IDs
-    for nfo_file in nfo_files:
-        metadata = parse_nfo_content(nfo_file)
-        print(f"Original metadata for {nfo_file.name}: {metadata}")
-
-        # Verify we have a TMDB ID (required for translation)
-        if not metadata.get("tmdb_id"):
-            series.__exit__(None, None, None)
-            pytest.skip(
-                f"No TMDB ID found in {nfo_file.name}. "
-                f"Sonarr may not have populated TMDB metadata yet."
-            )
-
-    return series, nfo_files, original_backups
+    # Return empty lists for nfo_files and backups since they'll be generated
+    # per provider
+    return series, [], {}
 
 
 class ServiceRunner:
@@ -253,6 +216,7 @@ class ServiceRunner:
         env_overrides = {
             "REWRITE_ROOT_DIR": str(temp_media_root),
             "PREFERRED_LANGUAGES": "zh-CN",
+            "TMDB_API_KEY": "test_key_integration_12345",
         }
 
         # Apply service-specific configuration
@@ -315,7 +279,7 @@ def verify_translations(
         print(f"Comparison for {nfo_file.name}: {comparison}")
 
         # Check if translation occurred
-        if comparison["title_changed"] or comparison["plot_changed"]:
+        if comparison["title_changed"] or comparison["description_changed"]:
             successful_translations += 1
 
             # Verify we have actual translated content, not just fallback
@@ -327,8 +291,11 @@ def verify_translations(
                 "This indicates TMDB API returned empty translation data."
             )
 
-            # Check that translated description is not empty
-            assert translated_metadata["plot"], (
+            # Check that translated description is not empty (plot or overview)
+            has_description = (
+                translated_metadata["plot"] or translated_metadata["overview"]
+            )
+            assert has_description, (
                 f"Empty translated description in {nfo_file.name}. "
                 "This indicates TMDB API returned empty translation data."
             )
@@ -368,7 +335,7 @@ def is_translated(metadata: dict[str, Any]) -> bool:
         metadata: Parsed metadata dictionary
 
     Returns:
-        True if either title or plot contains Chinese characters
+        True if either title, plot, or overview contains Chinese characters
     """
     title_translated = any(
         "\u4e00" <= char <= "\u9fff" for char in metadata.get("title", "")
@@ -376,7 +343,10 @@ def is_translated(metadata: dict[str, Any]) -> bool:
     plot_translated = any(
         "\u4e00" <= char <= "\u9fff" for char in metadata.get("plot", "")
     )
-    return title_translated or plot_translated
+    overview_translated = any(
+        "\u4e00" <= char <= "\u9fff" for char in metadata.get("overview", "")
+    )
+    return title_translated or plot_translated or overview_translated
 
 
 def count_translations(nfo_files: list[Path]) -> int:

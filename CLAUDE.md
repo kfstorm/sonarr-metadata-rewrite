@@ -98,40 +98,47 @@ Metadata translation service with Click framework providing:
 
 3. **MetadataProcessor** (`metadata_processor.py`)
    - Complete .nfo file processing workflow
-   - TMDB ID extraction from XML files
-   - Translation selection based on language preferences
+   - Configurable metadata format support via format handlers
+   - TMDB ID extraction and translation selection based on language preferences
    - Atomic file writes with optional backup creation
 
-4. **Translator** (`translator.py`)
+4. **MetadataFormats** (`metadata_formats.py`)
+   - Abstract base class for metadata format handlers
+   - KodiMetadataFormat: Handles Kodi/XBMC format (.nfo files with title/plot elements)
+   - EmbyMetadataFormat: Handles Emby format (supports overview/plot elements)
+   - Auto-detection and explicit format configuration support
+   - Extensible architecture for adding new metadata providers
+
+5. **Translator** (`translator.py`)
    - TMDB API client with httpx for reliable HTTP requests
    - Intelligent translation caching with diskcache for performance
    - Relies on caching to reduce API calls (explicit rate limiting not yet implemented)
    - Support for both series and episode translations
    - Error handling and graceful API failure recovery
 
-5. **FileMonitor** (`file_monitor.py`)
+6. **FileMonitor** (`file_monitor.py`)
    - Real-time file system monitoring using watchdog
    - Immediate processing of .nfo file creation/modification events
    - Recursive directory watching with event filtering
 
-6. **FileScanner** (`file_scanner.py`)
+7. **FileScanner** (`file_scanner.py`)
    - Periodic directory scanning for batch processing
    - Configurable scan intervals for existing file processing
    - Thread-based background scanning with graceful shutdown
 
-7. **Configuration** (`config.py`)
+8. **Configuration** (`config.py`)
    - Pydantic Settings-based configuration management
    - Environment variable loading with .env file support
    - Comprehensive validation for all required settings
 
-8. **Data Models** (`models.py`)
+9. **Data Models** (`models.py`)
    - TmdbIds: TMDB identifier structures for series/episodes
    - TranslatedContent: Translated metadata containers
    - ProcessResult: Processing outcome tracking with success/failure states
 
-9. **Version Management** (`_version.py`)
-   - Hatch-generated version file from VCS tags
-   - Dynamic version handling with fallback for development
+10. **Version Management** (`_version.py`)
+    - Hatch-generated version file from VCS tags
+    - Dynamic version handling with fallback for development
 
 ### TMDB API Integration Design
 
@@ -169,6 +176,7 @@ src/sonarr_metadata_rewrite/
 ├── models.py (data structures)
 ├── translator.py (TMDB API client)
 ├── metadata_processor.py (file processing workflow)
+├── metadata_formats.py (metadata format handlers - NEW)
 ├── file_monitor.py (real-time monitoring)
 ├── file_scanner.py (periodic scanning)
 └── rewrite_service.py (service orchestrator)
@@ -187,7 +195,10 @@ scripts/ (development automation)
   diskcache)
 - **TMDB Rate Limits**: TMDB has rate limits, but explicit rate limiting is
   not yet implemented - relies on caching to reduce API calls
-- **File Format**: Sonarr generates XML .nfo files with TMDB IDs
+- **File Format**: Multiple metadata formats supported via pluggable handlers
+  - Kodi/XBMC: Uses `<tvshow>` and `<episodedetails>` with `<title>` and `<plot>`
+  - Emby: Uses similar XML structure but supports `<overview>` for descriptions
+  - Auto-detection: Automatically detects format from file structure
 - **Target Files**: `tvshow.nfo` (series) and episode-specific .nfo files
 - **Service Architecture**: Long-running daemon process with graceful
   shutdown support

@@ -123,63 +123,118 @@ class SonarrClient:
         response = self._make_request("POST", "/api/v3/command", json=command_data)
         return response.status_code in (200, 201)
 
-    def configure_metadata_settings(self) -> bool:
-        """Configure Sonarr to enable NFO metadata generation.
+    def get_metadata_providers(self) -> list[dict[str, Any]]:
+        """Get all available metadata providers from Sonarr API.
+
+        Returns:
+            List of metadata provider configurations
+        """
+        response = self._make_request("GET", "/api/v3/metadata")
+        response.raise_for_status()
+        return response.json()
+
+    def disable_all_metadata_providers(self) -> bool:
+        """Disable all metadata providers.
+
+        Returns:
+            True if all providers were successfully disabled
+        """
+        providers = self.get_metadata_providers()
+
+        for provider in providers:
+            if provider.get("enable", False):
+                provider["enable"] = False
+                response = self._make_request(
+                    "PUT", f"/api/v3/metadata/{provider['id']}", json=provider
+                )
+                if not response.is_success:
+                    print(
+                        f"Failed to disable provider {provider['name']}: "
+                        f"{response.status_code}"
+                    )
+                    return False
+                print(f"Disabled metadata provider: {provider['name']}")
+
+        return True
+
+    def configure_metadata_provider(self, provider_name: str) -> bool:
+        """Configure Sonarr to enable specific NFO metadata provider.
+
+        Args:
+            provider_name: Name of the metadata provider to enable
 
         Returns:
             True if configuration was successful
         """
         # Get existing metadata settings
-        response = self._make_request("GET", "/api/v3/metadata")
-        if not response.is_success:
-            print(f"Failed to get metadata settings: {response.status_code}")
-            return False
-
-        metadata_configs = response.json()
-        print(f"Found {len(metadata_configs)} metadata configurations")
+        providers = self.get_metadata_providers()
+        print(f"Found {len(providers)} metadata configurations")
 
         # Print all available providers for debugging
-        for config in metadata_configs:
+        for config in providers:
             name = config.get("name", "Unknown")
             enabled = config.get("enable", False)
             print(f"  - {name}: enabled={enabled}")
 
-        # Look for Kodi/XBMC metadata provider and enable it
-        kodi_config = None
-        for config in metadata_configs:
-            config_name = config.get("name", "").lower()
-            if any(name in config_name for name in ["kodi", "xbmc"]):
-                kodi_config = config
+        # First disable all providers
+        self.disable_all_metadata_providers()
+
+        # Find the requested provider
+        target_provider = None
+        for config in providers:
+            if config.get("name", "") == provider_name:
+                target_provider = config
                 break
 
-        if not kodi_config:
-            raise ValueError("No Kodi/XBMC metadata provider found")
+        if not target_provider:
+            available_providers = [p.get("name", "Unknown") for p in providers]
+            raise ValueError(
+                f"Metadata provider '{provider_name}' not found. "
+                f"Available providers: {available_providers}"
+            )
 
-        print(f"Found Kodi metadata config: {kodi_config['name']}")
+        print(f"Found metadata provider: {target_provider['name']}")
 
-        # Enable all metadata types for Kodi
-        kodi_config.update(
-            {
-                "enable": True,
-                "seriesMetadata": True,
-                "episodeMetadata": True,
-                "episodeImages": True,
-                "seriesImages": True,
-                "seasonImages": True,
-            }
-        )
+        # Enable all metadata types for the provider
+        # Different providers have different field structures,
+        # so we need to handle them appropriately
+        target_provider.update({"enable": True})
+
+        # Enable common metadata fields if they exist
+        for field_name in [
+            "seriesMetadata",
+            "episodeMetadata",
+            "seriesImages",
+            "seasonImages",
+            "episodeImages",
+        ]:
+            if any(
+                field.get("name") == field_name
+                for field in target_provider.get("fields", [])
+            ):
+                target_provider[field_name] = True
 
         # Update the configuration
         response = self._make_request(
-            "PUT", f"/api/v3/metadata/{kodi_config['id']}", json=kodi_config
+            "PUT", f"/api/v3/metadata/{target_provider['id']}", json=target_provider
         )
 
         if response.is_success:
-            print("Successfully enabled Kodi metadata generation")
+            print(f"Successfully enabled {provider_name} metadata generation")
             return True
         else:
             print(f"Failed to update metadata settings: {response.status_code}")
             return False
+
+    def configure_metadata_settings(self) -> bool:
+        """Configure Sonarr to disable all metadata providers.
+
+        This is the default behavior - tests will explicitly enable specific providers.
+
+        Returns:
+            True if configuration was successful
+        """
+        return self.disable_all_metadata_providers()
 
     def refresh_series(self, series_id: int) -> bool:
         """Refresh series metadata and regenerate NFO files.

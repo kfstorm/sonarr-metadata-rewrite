@@ -132,7 +132,7 @@ def test_process_file_invalid_xml(
         result,
         expected_success=False,
         expected_file_modified=False,
-        expected_message_contains="Processing error",
+        expected_message_contains="Unsupported metadata format",
     )
 
 
@@ -148,7 +148,8 @@ def test_process_file_nonexistent_file(
         result,
         expected_success=False,
         expected_file_modified=False,
-        expected_message_contains="Processing error",
+        # Should be "Unsupported"
+        expected_message_contains="Unsupported metadata format",
     )
 
 
@@ -203,7 +204,13 @@ def test_apply_fallback_to_translation_no_fallback_needed(
         title="完整标题", description="完整描述", language="zh-CN"
     )
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    # Get the metadata format for this file
+    metadata_format = processor._get_metadata_format(test_nfo_file)
+    assert metadata_format is not None
+
+    result = processor._apply_fallback_to_translation(
+        test_nfo_file, translation, metadata_format
+    )
 
     # Should return the same translation since both fields are present
     assert result.title == "完整标题"
@@ -217,7 +224,13 @@ def test_apply_fallback_to_translation_empty_title(
     """Test fallback logic when translation has empty title."""
     translation = TranslatedContent(title="", description="翻译描述", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    # Get the metadata format for this file
+    metadata_format = processor._get_metadata_format(test_nfo_file)
+    assert metadata_format is not None
+
+    result = processor._apply_fallback_to_translation(
+        test_nfo_file, translation, metadata_format
+    )
 
     # Should use original title but keep translated description
     assert result.title == "Breaking Bad"  # Original title from test data
@@ -231,7 +244,13 @@ def test_apply_fallback_to_translation_empty_description(
     """Test fallback logic when translation has empty description."""
     translation = TranslatedContent(title="绝命毒师", description="", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    # Get the metadata format for this file
+    metadata_format = processor._get_metadata_format(test_nfo_file)
+    assert metadata_format is not None
+
+    result = processor._apply_fallback_to_translation(
+        test_nfo_file, translation, metadata_format
+    )
 
     # Should use translated title but fallback to original description
     assert result.title == "绝命毒师"  # Translated title
@@ -247,7 +266,13 @@ def test_apply_fallback_to_translation_both_empty(
     """Test fallback logic when translation has both empty title and description."""
     translation = TranslatedContent(title="", description="", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    # Get the metadata format for this file
+    metadata_format = processor._get_metadata_format(test_nfo_file)
+    assert metadata_format is not None
+
+    result = processor._apply_fallback_to_translation(
+        test_nfo_file, translation, metadata_format
+    )
 
     # Should use both original title and description
     assert result.title == "Breaking Bad"  # Original title from test data
