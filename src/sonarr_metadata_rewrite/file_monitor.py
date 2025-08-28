@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from watchdog.observers.api import BaseObserver
 
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.nfo_utils import is_nfo_file
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,13 @@ class NFOFileHandler(FileSystemEventHandler):
 
     def _handle_nfo_event(self, event: FileSystemEvent) -> None:
         """Handle .nfo file events (creation or modification)."""
-        if not event.is_directory and str(event.src_path).lower().endswith(".nfo"):
+        if not event.is_directory:
             file_path = Path(str(event.src_path))
-            try:
-                self.callback(file_path)
-            except Exception as e:
-                logger.error(f"❌ Error in file monitor callback for {file_path}: {e}")
+            if is_nfo_file(file_path):
+                try:
+                    self.callback(file_path)
+                except Exception as e:
+                    logger.error(f"❌ Error in file monitor callback for {file_path}: {e}")
 
     def on_created(self, event: FileSystemEvent) -> None:
         """Handle file creation events."""

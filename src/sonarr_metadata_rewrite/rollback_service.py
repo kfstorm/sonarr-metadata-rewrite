@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +32,11 @@ class RollbackService:
 
         logger.info(f"Starting rollback from backup directory: {self.settings.original_files_backup_dir}")
         
-        # Find all .nfo files in backup directory
-        backup_files = list(self.settings.original_files_backup_dir.rglob("*.nfo"))
+        # Find all .nfo and .NFO files in backup directory (case-insensitive)
+        backup_files = find_nfo_files(self.settings.original_files_backup_dir)
         
         if not backup_files:
-            logger.info("No .nfo backup files found - rollback completed with no files to restore")
+            logger.info("No .nfo/.NFO backup files found - rollback completed with no files to restore")
             return
 
         logger.info(f"Found {len(backup_files)} backup files to restore")
