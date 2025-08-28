@@ -1,5 +1,6 @@
 """TMDB API client with translation caching."""
 
+import time
 from typing import Any
 
 import httpx
@@ -38,11 +39,9 @@ class Translator:
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        # Build endpoint and fetch from API
+        # Build endpoint and fetch from API with retry logic
         endpoint = f"/{tmdb_ids}/translations"
-        response = self.client.get(endpoint)
-        response.raise_for_status()
-        api_data = response.json()
+        api_data = self._fetch_with_retry(endpoint)
 
         # Parse translations
         translations = self._parse_api_translations(api_data)
@@ -51,6 +50,43 @@ class Translator:
         self.cache.set(cache_key, translations, expire=self.cache_expire_seconds)
 
         return translations
+
+    def _fetch_with_retry(self, endpoint: str) -> dict[str, Any]:
+        """Fetch data from TMDB API with exponential backoff retry for rate limits.
+
+        Args:
+            endpoint: API endpoint to fetch
+
+        Returns:
+            JSON response data
+
+        Raises:
+            httpx.HTTPError: If request fails after all retries
+        """
+        max_retries = self.settings.tmdb_max_retries
+        initial_delay = self.settings.tmdb_initial_retry_delay
+        max_delay = self.settings.tmdb_max_retry_delay
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.client.get(endpoint)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                # Handle rate limiting (HTTP 429)
+                if e.response.status_code == 429 and attempt < max_retries:
+                    # Calculate exponential backoff delay
+                    delay = min(initial_delay * (2**attempt), max_delay)
+                    time.sleep(delay)
+                    continue
+                # Re-raise for other HTTP errors or if max retries exceeded
+                raise
+            except (httpx.HTTPError, Exception):
+                # Re-raise all other errors immediately (no retry)
+                raise
+
+        # This should never be reached due to the logic above
+        raise RuntimeError("Unexpected code path in _fetch_with_retry")
 
     def _parse_api_translations(
         self, api_data: dict[str, Any]
@@ -86,6 +122,63 @@ class Translator:
             )
 
         return translations
+
+    def get_original_details(self, tmdb_ids: TmdbIds) -> tuple[str, str] | None:
+        """Get original language and title for TV series or episode.
+
+        Args:
+            tmdb_ids: TMDB identifiers containing series_id and optional season/episode
+
+        Returns:
+            Tuple of (original_language, original_title) if found, None otherwise
+        """
+        cache_key = f"original_details:{tmdb_ids}"
+
+        # Check cache first
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        try:
+            # For episodes, we need both episode name and series original language
+            if tmdb_ids.season is not None and tmdb_ids.episode is not None:
+                # Get episode details for the name
+                episode_endpoint = (
+                    f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}"
+                    f"/episode/{tmdb_ids.episode}"
+                )
+                episode_response = self.client.get(episode_endpoint)
+                episode_response.raise_for_status()
+                episode_data = episode_response.json()
+
+                # Get series details for the original language
+                series_endpoint = f"/tv/{tmdb_ids.series_id}"
+                series_response = self.client.get(series_endpoint)
+                series_response.raise_for_status()
+                series_data = series_response.json()
+
+                original_language = series_data.get("original_language", "")
+                original_title = episode_data.get("name", "")
+            else:
+                # Series details endpoint
+                endpoint = f"/tv/{tmdb_ids.series_id}"
+                response = self.client.get(endpoint)
+                response.raise_for_status()
+                api_data = response.json()
+
+                original_language = api_data.get("original_language", "")
+                original_title = api_data.get("original_name", "")
+
+            if original_language and original_title:
+                result = (original_language, original_title.strip())
+                # Store in cache with expiration
+                self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
+                return result
+
+        except Exception:
+            # If API call fails, return None (will fall back to existing logic)
+            pass
+
+        return None
 
     def close(self) -> None:
         """Close the HTTP client."""

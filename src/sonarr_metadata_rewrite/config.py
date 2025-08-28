@@ -40,10 +40,26 @@ class Settings(BaseSettings):
         description="Universal cache directory for all cached data",
     )
 
+    # TMDB API rate limiting
+    tmdb_max_retries: int = Field(
+        default=3, description="Maximum retry attempts for rate-limited requests"
+    )
+    tmdb_initial_retry_delay: float = Field(
+        default=1.0, description="Initial delay for rate limit retries (seconds)"
+    )
+    tmdb_max_retry_delay: float = Field(
+        default=60.0, description="Maximum delay for rate limit retries (seconds)"
+    )
+
     # Original file backup
     original_files_backup_dir: Path | None = Field(
         default=Path("./backups"),
         description="Directory to backup original files (None disables backup)",
+    )
+
+    # Service mode
+    service_mode: str = Field(
+        default="rewrite", description="Service mode: 'rewrite' or 'rollback'"
     )
 
     # Component control
@@ -64,6 +80,14 @@ class Settings(BaseSettings):
                 raise ValueError("preferred_languages cannot be empty")
             return languages
         raise ValueError("preferred_languages must be a comma-separated string")
+
+    @field_validator("service_mode")
+    @classmethod
+    def validate_service_mode(cls, v: str) -> str:
+        """Validate service mode value."""
+        if v not in ["rewrite", "rollback"]:
+            raise ValueError("service_mode must be either 'rewrite' or 'rollback'")
+        return v
 
 
 def get_settings() -> Settings:

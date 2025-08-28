@@ -305,7 +305,27 @@ class MetadataProcessor:
         if translation.title and translation.description:
             return translation
 
-        # Extract original content for fallback
+        # If title is empty, try to use original language title if language family
+        # matches
+        if not translation.title:
+            original_title = self._get_original_title_if_language_matches(
+                nfo_path, translation.language
+            )
+            if original_title:
+                # Use original title but keep the preferred language for reporting
+                final_title = original_title
+                final_description = (
+                    translation.description
+                    if translation.description
+                    else self._extract_original_content(nfo_path)[1]
+                )
+                return TranslatedContent(
+                    title=final_title,
+                    description=final_description,
+                    language=translation.language,
+                )
+
+        # Extract original content for standard fallback
         original_title, original_description = self._extract_original_content(nfo_path)
 
         # Apply fallback for empty fields
@@ -320,6 +340,44 @@ class MetadataProcessor:
             description=final_description,
             language=translation.language,
         )
+
+    def _get_original_title_if_language_matches(
+        self, nfo_path: Path, preferred_language: str
+    ) -> str | None:
+        """Get original title if original language matches preferred language family.
+
+        Args:
+            nfo_path: Path to .nfo file to extract TMDB IDs from
+            preferred_language: The preferred language code (e.g., "zh-CN")
+
+        Returns:
+            Original title if language families match, None otherwise
+        """
+        try:
+            # Extract TMDB IDs to call the details API
+            tmdb_ids = self._extract_tmdb_ids(nfo_path)
+            if not tmdb_ids:
+                return None
+
+            # Get original language and title from TMDB Details API
+            original_details = self.translator.get_original_details(tmdb_ids)
+            if not original_details:
+                return None
+
+            original_language, original_title = original_details
+
+            # Check if language families match
+            preferred_base = preferred_language.split("-")[0]
+            original_base = original_language.split("-")[0]
+
+            if preferred_base == original_base:
+                return original_title
+
+        except Exception:
+            # If anything fails, return None to use standard fallback
+            pass
+
+        return None
 
     def _backup_original(self, nfo_path: Path) -> bool:
         """Create backup of original .nfo file.
@@ -336,6 +394,10 @@ class MetadataProcessor:
         # Create backup directory structure mirroring original
         relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
         backup_path = self.settings.original_files_backup_dir / relative_path
+
+        # Check if backup already exists - don't overwrite it
+        if backup_path.exists():
+            return True  # Backup already exists, so we consider this successful
 
         # Ensure backup directory exists
         backup_path.parent.mkdir(parents=True, exist_ok=True)
