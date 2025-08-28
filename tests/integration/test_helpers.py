@@ -180,14 +180,17 @@ def setup_series_with_nfos(
     sonarr_container: SonarrClient,
     temp_media_root: Path,
 ) -> tuple[SeriesManager, list[Path], dict[Path, Path]]:
-    """Set up series with .nfo files and return backup mapping.
+    """Set up series without requiring initial .nfo files.
 
     Args:
         sonarr_container: Sonarr client (may or may not have metadata providers enabled)
         temp_media_root: Temporary media root directory
 
     Returns:
-        Tuple of (SeriesManager, nfo_files, original_backups)
+        Tuple of (SeriesManager, empty_nfo_list, empty_backup_mapping)
+        
+    Note: This function no longer generates .nfo files initially. 
+    The integration tests will enable metadata providers and generate .nfo files as needed.
     """
     series = SeriesManager(
         sonarr_container,
@@ -218,40 +221,19 @@ def setup_series_with_nfos(
         raise RuntimeError("Failed to trigger disk scan")
     print("Disk scan command submitted successfully")
 
-    # Wait for .nfo files to be generated
-    print("Waiting for .nfo files to be generated...")
-    nfo_files = wait_for_nfo_files(series_path, timeout=10.0)
+    # Wait for Sonarr to process the media files (not .nfo files)
+    print("Waiting for Sonarr to process media files...")
+    time.sleep(5)
 
-    if not nfo_files:
-        # List what files exist for debugging
-        all_files = list(series_path.rglob("*")) if series_path.exists() else []
-        print(f"No .nfo files found. All files in {series_path}: {all_files}")
+    # Check that basic series structure exists
+    if not series_path.exists():
         series.__exit__(None, None, None)
-        pytest.fail("Sonarr did not generate .nfo files within timeout after disk scan")
+        raise RuntimeError(f"Series directory {series_path} was not created")
 
-    print(f"Found .nfo files: {nfo_files}")
-
-    # Backup original .nfo files for comparison
-    original_backups = {}
-    for nfo_file in nfo_files:
-        backup_path = nfo_file.with_suffix(".nfo.original")
-        shutil.copy2(nfo_file, backup_path)
-        original_backups[nfo_file] = backup_path
-
-    # Parse original metadata to verify it contains TMDB IDs
-    for nfo_file in nfo_files:
-        metadata = parse_nfo_content(nfo_file)
-        print(f"Original metadata for {nfo_file.name}: {metadata}")
-
-        # Verify we have a TMDB ID (required for translation)
-        if not metadata.get("tmdb_id"):
-            series.__exit__(None, None, None)
-            pytest.skip(
-                f"No TMDB ID found in {nfo_file.name}. "
-                f"Sonarr may not have populated TMDB metadata yet."
-            )
-
-    return series, nfo_files, original_backups
+    print(f"Series setup complete: {series_path}")
+    
+    # Return empty lists for nfo_files and backups since they'll be generated per provider
+    return series, [], {}
 
 
 class ServiceRunner:
@@ -267,6 +249,7 @@ class ServiceRunner:
         env_overrides = {
             "REWRITE_ROOT_DIR": str(temp_media_root),
             "PREFERRED_LANGUAGES": "zh-CN",
+            "TMDB_API_KEY": "test_key_integration_12345",
         }
 
         # Apply service-specific configuration

@@ -286,8 +286,19 @@ class EmbyMetadataFormat(MetadataFormat):
         try:
             tree = ET.parse(nfo_path)
             root = tree.getroot()
-            # Emby supports both Kodi-style and its own elements
-            return root.tag in ("tvshow", "series", "episodedetails", "episode")
+            
+            # Check for pure Emby tags first
+            if root.tag in ("series", "episode"):
+                return True
+                
+            # For Kodi-style tags, check if it has Emby-specific elements
+            if root.tag in ("tvshow", "episodedetails"):
+                # If it has overview instead of plot, it's likely Emby format
+                overview_element = root.find("overview")
+                if overview_element is not None:
+                    return True
+                    
+            return False
         except Exception:
             return False
 
@@ -327,8 +338,13 @@ def detect_metadata_format(nfo_path: Path) -> MetadataFormat | None:
     Returns:
         MetadataFormat instance that supports the file, or None if none found
     """
-    for format_class in METADATA_FORMATS.values():
-        format_instance = format_class()
-        if format_instance.supports_file(nfo_path):
-            return format_instance
+    # Check formats in order of specificity (most specific first)
+    format_order = ["emby", "kodi"]
+    
+    for format_name in format_order:
+        if format_name in METADATA_FORMATS:
+            format_instance = METADATA_FORMATS[format_name]()
+            if format_instance.supports_file(nfo_path):
+                return format_instance
+    
     return None

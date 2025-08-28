@@ -137,13 +137,14 @@ def prepared_series_with_nfos(
     unconfigured_sonarr_container: SonarrClient,
     temp_media_root: Path,
 ) -> Generator[tuple[Path, list[Path], dict[Path, Path], int], None, None]:
-    """Prepare series with .nfo files and return backup mapping.
+    """Prepare series structure without initial .nfo files.
 
-    Note: This fixture does not enable any metadata providers.
-    Tests must explicitly enable the provider they want to test.
+    Note: This fixture does not enable any metadata providers and does not 
+    generate .nfo files initially. Tests must explicitly enable the provider 
+    they want to test and generate .nfo files as needed.
 
     Returns:
-        Tuple of (series_path, nfo_files, original_backups, series_id)
+        Tuple of (series_path, empty_nfo_list, empty_backup_mapping, series_id)
     """
     series, nfo_files, original_backups = setup_series_with_nfos(
         unconfigured_sonarr_container, temp_media_root
