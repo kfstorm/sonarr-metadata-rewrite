@@ -57,17 +57,26 @@ def create_fake_episode_file(
     return episode_file
 
 
-def wait_for_nfo_files(series_path: Path, timeout: float = 5.0) -> list[Path]:
+def wait_for_nfo_files(
+    series_path: Path, expected_count: int, timeout: float = 5.0
+) -> list[Path]:
     """Wait for .nfo files to be generated in series directory.
 
     Args:
         series_path: Path to series directory
+        expected_count: Expected number of .nfo files
         timeout: Maximum time to wait in seconds
 
     Returns:
         List of .nfo files found
+
+    Raises:
+        RuntimeError: If expected number of .nfo files not found within timeout
     """
-    print(f"Waiting for .nfo files in {series_path} (timeout: {timeout}s)")
+    print(
+        f"Waiting for {expected_count} .nfo files in {series_path} "
+        f"(timeout: {timeout}s)"
+    )
     start_time = time.time()
     last_check = 0.0
 
@@ -78,16 +87,21 @@ def wait_for_nfo_files(series_path: Path, timeout: float = 5.0) -> list[Path]:
             last_check = elapsed
 
         nfo_files = list(series_path.rglob("*.nfo"))
-        if nfo_files:
-            print(f"Found .nfo files after {elapsed:.1f}s: {nfo_files}")
+        if len(nfo_files) >= expected_count:
+            print(
+                f"Found {len(nfo_files)} .nfo files after {elapsed:.1f}s: {nfo_files}"
+            )
             # Wait a bit more to ensure files are fully written
             time.sleep(1)
             return sorted(nfo_files)
         time.sleep(1)
 
     elapsed = time.time() - start_time
-    print(f"No .nfo files found after {elapsed:.1f}s timeout")
-    return []
+    nfo_files = list(series_path.rglob("*.nfo"))
+    raise RuntimeError(
+        f"Expected {expected_count} .nfo files, but only found {len(nfo_files)} "
+        f"after {elapsed:.1f}s timeout. Files found: {nfo_files}"
+    )
 
 
 def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
@@ -205,9 +219,23 @@ def setup_series_with_nfos(
         series.__exit__(None, None, None)
         raise RuntimeError("Failed to trigger disk scan")
     print("Disk scan command submitted successfully")
-    
+
     # Wait for disk scan to complete
     time.sleep(10)
+
+    # Manual import the episode files to ensure Sonarr recognizes them
+    print("Manually importing episode files into Sonarr...")
+    episode_file_paths = [str(f) for f in episode_files]
+    import_success = configured_sonarr_container.manual_import(
+        series.id, episode_file_paths
+    )
+    if not import_success:
+        series.__exit__(None, None, None)
+        raise RuntimeError("Failed to manually import episode files")
+    print("Manual import command submitted successfully")
+
+    # Wait for manual import to complete
+    time.sleep(15)
 
     # Also trigger metadata refresh to ensure .nfo files are generated for episodes
     print("Triggering metadata refresh to ensure episode .nfo files are generated...")
@@ -216,20 +244,50 @@ def setup_series_with_nfos(
         series.__exit__(None, None, None)
         raise RuntimeError("Failed to trigger metadata refresh")
     print("Metadata refresh command submitted successfully")
-    
-    # Wait for metadata refresh to complete  
+
+    # Wait for metadata refresh to complete
     time.sleep(15)
 
     # Wait for .nfo files to be generated (allow more time for episode files)
     print("Waiting for .nfo files to be generated...")
-    nfo_files = wait_for_nfo_files(series_path, timeout=30.0)
+    episode_count = len(episode_files)
+    expected_nfo_count = episode_count + 1  # episodes + series
 
-    if not nfo_files:
-        # List what files exist for debugging
-        all_files = list(series_path.rglob("*")) if series_path.exists() else []
-        print(f"No .nfo files found. All files in {series_path}: {all_files}")
-        series.__exit__(None, None, None)
-        pytest.fail("Sonarr did not generate .nfo files within timeout after disk scan")
+    try:
+        nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
+    except RuntimeError as e:
+        # If initial attempt fails, try multiple refresh attempts
+        print(f"Initial .nfo generation failed: {e}")
+        print("Trying multiple refresh attempts...")
+
+        for attempt in range(3):
+            print(f"Refresh attempt {attempt + 1}/3...")
+            configured_sonarr_container.refresh_metadata(series.id)
+            time.sleep(20)
+
+            try:
+                nfo_files = wait_for_nfo_files(
+                    series_path, expected_nfo_count, timeout=30.0
+                )
+                break  # Success, exit retry loop
+            except RuntimeError:
+                if attempt == 2:  # Last attempt failed
+                    # Before failing, list what files exist for debugging
+                    all_files = (
+                        list(series_path.rglob("*")) if series_path.exists() else []
+                    )
+                    print(f"All files in series directory: {len(all_files)} files")
+                    for f in sorted(all_files):
+                        print(f"  - {f}")
+
+                    series.__exit__(None, None, None)
+                    raise RuntimeError(
+                        f"Expected {expected_nfo_count} .nfo files "
+                        f"({episode_count} episodes + 1 series) "
+                        "after multiple attempts. "
+                        "Sonarr metadata configuration may not be working correctly."
+                    ) from None
+                continue
 
     print(f"Found .nfo files: {nfo_files}")
 
@@ -237,59 +295,8 @@ def setup_series_with_nfos(
     all_files = list(series_path.rglob("*")) if series_path.exists() else []
     print(f"All files in series directory: {all_files}")
 
-    # Verify that we have .nfo files (at minimum the series .nfo file)
-    # Episode-specific .nfo files are not always generated by Sonarr
-    nfo_count = len(nfo_files)
-    episode_count = len(episode_files)
-
-    print(f"Generated {nfo_count} .nfo files and {episode_count} episode media files")
-
-    if nfo_count == 0:
-        series.__exit__(None, None, None)
-        pytest.fail("No .nfo files generated by Sonarr")
-
-    # Ensure we have exactly episode_count + 1 .nfo files (episodes + series)
-    expected_nfo_count = episode_count + 1
-    if nfo_count < expected_nfo_count:
-        # Wait much longer for Sonarr to generate episode .nfo files
-        print(f"Only {nfo_count} .nfo files found, waiting much longer for episode files...")
-        
-        # Try multiple refresh attempts
-        for attempt in range(3):
-            print(f"Refresh attempt {attempt + 1}/3...")
-            configured_sonarr_container.refresh_metadata(series.id)
-            time.sleep(20)
-            
-            nfo_files = wait_for_nfo_files(series_path, timeout=30.0)
-            nfo_count = len(nfo_files)
-            print(f"  Found {nfo_count} .nfo files after attempt {attempt + 1}")
-            
-            if nfo_count >= expected_nfo_count:
-                break
-        
-        if nfo_count < expected_nfo_count:
-            # Before failing, list what files exist for debugging
-            all_files = list(series_path.rglob("*")) if series_path.exists() else []
-            print(f"All files in series directory: {len(all_files)} files")
-            for f in sorted(all_files):
-                print(f"  - {f}")
-            
-            series.__exit__(None, None, None)
-            pytest.fail(
-                f"Expected {expected_nfo_count} .nfo files "
-                f"({episode_count} episodes + 1 series), got {nfo_count}. "
-                f"Sonarr metadata configuration may not be working correctly."
-            )
-    
-    if nfo_count != expected_nfo_count:
-        series.__exit__(None, None, None)
-        pytest.fail(
-            f"Expected {expected_nfo_count} .nfo files "
-            f"({episode_count} episodes + 1 series), got {nfo_count}"
-        )
-
     print(
-        f"✅ Sonarr generated {nfo_count} .nfo files for {episode_count} "
+        f"✅ Sonarr generated {len(nfo_files)} .nfo files for {episode_count} "
         f"episode media files"
     )
 

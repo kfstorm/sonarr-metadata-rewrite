@@ -141,6 +141,52 @@ class SonarrClient:
         response = self._make_request("POST", "/api/v3/command", json=command_data)
         return response.status_code in (200, 201)
 
+    def manual_import(self, series_id: int, files: list[str]) -> bool:
+        """Manually import episode files into Sonarr.
+
+        Args:
+            series_id: Sonarr series ID
+            files: List of file paths to import
+
+        Returns:
+            True if manual import command was accepted
+        """
+        # First, get the series to obtain quality profile and language profile
+        response = self._make_request("GET", f"/api/v3/series/{series_id}")
+        if not response.is_success:
+            print(f"Failed to get series {series_id}: {response.status_code}")
+            return False
+
+        series_data = response.json()
+        quality_profile_id = series_data.get("qualityProfileId", 1)
+        language_profile_id = series_data.get("languageProfileId", 1)
+
+        # Prepare import data for each file
+        import_items = []
+        for file_path in files:
+            import_items.append(
+                {
+                    "path": file_path,
+                    "seriesId": series_id,
+                    "qualityProfileId": quality_profile_id,
+                    "languageProfileId": language_profile_id,
+                }
+            )
+
+        command_data = {
+            "name": "ManualImport",
+            "importDecisions": import_items,
+        }
+
+        response = self._make_request("POST", "/api/v3/command", json=command_data)
+        if response.status_code in (200, 201):
+            print(f"Manual import command submitted for {len(files)} files")
+            return True
+        else:
+            print(f"Failed to submit manual import: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+
     def configure_metadata_settings(self) -> bool:
         """Configure Sonarr to enable NFO metadata generation.
 
@@ -177,25 +223,25 @@ class SonarrClient:
 
         # Debug: Print current Kodi configuration
         print(f"Current Kodi config before update: {json.dumps(kodi_config, indent=2)}")
-        
+
         # Enable the provider itself
         kodi_config["enable"] = True
-        
+
         # Update the individual field values in the fields array
         for field in kodi_config.get("fields", []):
             field_name = field.get("name")
             if field_name in [
                 "seriesMetadata",
-                "episodeMetadata", 
+                "episodeMetadata",
                 "episodeMetadataUrl",
                 "episodeImages",
-                "seriesImages", 
+                "seriesImages",
                 "seasonImages",
-                "seriesMetadataUrl"
+                "seriesMetadataUrl",
             ]:
                 field["value"] = True
                 print(f"  Setting {field_name} = True")
-        
+
         print(f"Updated Kodi config: {json.dumps(kodi_config, indent=2)}")
 
         # Update the configuration
@@ -205,38 +251,24 @@ class SonarrClient:
 
         if response.is_success:
             print("Successfully enabled Kodi metadata generation")
-            
+
             # Verify the configuration was applied
             verify_response = self._make_request("GET", "/api/v3/metadata")
             if verify_response.is_success:
                 metadata_configs = verify_response.json()
                 for config in metadata_configs:
                     if config.get("id") == kodi_config["id"]:
-                        print(f"Verified Kodi config after update: {json.dumps(config, indent=2)}")
+                        print(
+                            f"Verified Kodi config after update: "
+                            f"{json.dumps(config, indent=2)}"
+                        )
                         break
-            
+
             return True
         else:
             print(f"Failed to update metadata settings: {response.status_code}")
             print(f"Response body: {response.text}")
             return False
-
-    def refresh_series(self, series_id: int) -> bool:
-        """Refresh series metadata and regenerate NFO files.
-
-        Args:
-            series_id: Sonarr series ID
-
-        Returns:
-            True if refresh command was accepted
-        """
-        command_data = {
-            "name": "RefreshSeries",
-            "seriesId": series_id,
-        }
-
-        response = self._make_request("POST", "/api/v3/command", json=command_data)
-        return response.status_code in (200, 201)
 
     def remove_series(
         self,
