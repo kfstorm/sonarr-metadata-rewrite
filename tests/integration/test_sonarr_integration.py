@@ -2,6 +2,7 @@
 
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -14,6 +15,7 @@ from tests.integration.test_helpers import (
     metadata_matches,
     parse_nfo_content,
     run_service_with_config,
+    setup_series_with_nfos,
     verify_translations,
     wait_and_verify_translations,
     wait_for_nfo_files,
@@ -21,7 +23,7 @@ from tests.integration.test_helpers import (
 
 
 @pytest.mark.parametrize(
-    "service_config,test_behavior",
+    "service_config,test_behavior,series_config",
     [
         pytest.param(
             {
@@ -30,6 +32,7 @@ from tests.integration.test_helpers import (
                 "PERIODIC_SCAN_INTERVAL_SECONDS": "999999",
             },
             "touch_files",
+            None,  # Use default Breaking Bad series
             id="file_monitor_only",
         ),
         pytest.param(
@@ -39,6 +42,7 @@ from tests.integration.test_helpers import (
                 "PERIODIC_SCAN_INTERVAL_SECONDS": "3",
             },
             "wait_scanning",
+            None,
             id="file_scanner_only",
         ),
         pytest.param(
@@ -48,6 +52,7 @@ from tests.integration.test_helpers import (
                 "PERIODIC_SCAN_INTERVAL_SECONDS": "5",
             },
             "full_with_refresh",
+            None,
             id="series_refresh",
         ),
         pytest.param(
@@ -57,177 +62,213 @@ from tests.integration.test_helpers import (
                 "PERIODIC_SCAN_INTERVAL_SECONDS": "5",
             },
             "rollback_test",
+            None,
             id="rollback_mechanism",
+        ),
+        pytest.param(
+            {
+                "ENABLE_FILE_MONITOR": "true",
+                "ENABLE_FILE_SCANNER": "false",
+                "PREFERRED_LANGUAGES": "zh-CN",
+                "PERIODIC_SCAN_INTERVAL_SECONDS": "999999",
+            },
+            "chinese_translation",
+            {
+                "tvdb_id": 300635,  # Ming Dynasty TVDB ID
+                "expected_title_text": "大明王朝",
+            },
+            id="chinese_translation",
         ),
     ],
 )
 @pytest.mark.integration
 @pytest.mark.slow
 def test_integration_workflow(
-    prepared_series_with_nfos: tuple[Path, list[Path], dict[Path, Path], int],
     temp_media_root: Path,
     configured_sonarr_container: SonarrClient,
     service_config: dict[str, str],
     test_behavior: str,
+    series_config: dict[str, Any] | None,
 ) -> None:
     """Test integration workflows with different service configurations.
 
     Args:
-        prepared_series_with_nfos: Series setup with .nfo files, backups, and series ID
         temp_media_root: Temporary media root directory
         configured_sonarr_container: Configured Sonarr client
         service_config: Service configuration overrides
         test_behavior: Test behavior type
+        series_config: Optional series-specific configuration
     """
-    series_path, nfo_files, original_backups, series_id = prepared_series_with_nfos
-
-    if test_behavior == "full_with_refresh":
-        # Full workflow with series refresh - start service first
-        print("Starting translation service with both components...")
-        with run_service_with_config(temp_media_root, service_config) as service:
-            assert service.is_running(), "Service should be running"
-
-            # Wait for initial translation
-            print("Waiting for initial translation...")
-            time.sleep(8)
-
-            # Check initial translations
-            initial_translations = count_translations(nfo_files)
-
-            if initial_translations == 0:
-                print("No initial translations detected, waiting longer...")
-                time.sleep(10)
-
-            # Trigger series refresh to regenerate original .nfo files
-            print("Triggering series refresh to regenerate original .nfo files...")
-            refresh_success = configured_sonarr_container.refresh_series(series_id)
-            assert refresh_success, "Failed to trigger series refresh"
-
-            # Wait for Sonarr to regenerate and service to retranslate
-            print("Waiting for service to retranslate refreshed files...")
-            time.sleep(20)
-
-            # Verify retranslations
-            retranslations = count_translations(nfo_files)
-
-            # Ensure translated content is not empty
-            for nfo_file in nfo_files:
-                metadata = parse_nfo_content(nfo_file)
-                if is_translated(metadata):
-                    assert metadata["title"], f"Empty title in {nfo_file.name}"
-                    assert metadata["plot"], f"Empty plot in {nfo_file.name}"
-
-            assert (
-                retranslations > 0
-            ), "No .nfo files were retranslated after series refresh"
-            print(f"Series refresh: {retranslations}/{len(nfo_files)} retranslated")
-
-    elif test_behavior == "rollback_test":
-        # Rollback test workflow - translate, stop service, refresh, verify rollback
-        print("Starting rollback test workflow...")
-
-        # Store original metadata before any translation
-        print("Storing original metadata for rollback verification...")
-        original_metadata = {}
-        for nfo_file in nfo_files:
-            original_metadata[nfo_file] = parse_nfo_content(nfo_file)
-
-        with run_service_with_config(temp_media_root, service_config) as service:
-            assert service.is_running(), "Service should be running"
-
-            # Wait for initial translation
-            print("Waiting for initial translation...")
-            time.sleep(8)
-
-            # Verify translations occurred
-            translations = wait_and_verify_translations(nfo_files, 0, min_expected=1)
-            print(f"Initial translations: {translations}/{len(nfo_files)} translated")
-
-        # Service is now stopped - verify service shutdown
-        print("Service stopped - proceeding with rollback test...")
-
-        # Delete existing .nfo files to force Sonarr to regenerate them
-        print("Deleting existing .nfo files to force regeneration...")
-        for nfo_file in nfo_files:
-            if nfo_file.exists():
-                nfo_file.unlink()
-                print(f"Deleted: {nfo_file}")
-
-        # Trigger series refresh to regenerate original .nfo files
-        print("Triggering series refresh to restore original metadata...")
-        refresh_success = configured_sonarr_container.refresh_series(series_id)
-        assert refresh_success, "Failed to trigger series refresh for rollback"
-
-        # Wait for Sonarr to regenerate original files
-        print("Waiting for Sonarr to restore original files...")
-        time.sleep(15)
-
-        # Verify rollback - files should match original metadata
-        print("Verifying rollback to original metadata...")
-        rollback_verified = 0
-        for nfo_file in nfo_files:
-            current_metadata = parse_nfo_content(nfo_file)
-            original = original_metadata[nfo_file]
-
-            if metadata_matches(current_metadata, original):
-                rollback_verified += 1
-                print(f"✅ Rollback verified for {nfo_file.name}")
-            else:
-                print(f"❌ Rollback failed for {nfo_file.name}")
-                print(f"   Original title: {original.get('title')}")
-                print(f"   Current title: {current_metadata.get('title')}")
-
-        assert rollback_verified > 0, "No .nfo files were successfully rolled back"
-        print(
-            f"Rollback successful: {rollback_verified}/{len(nfo_files)} files restored"
+    # Handle Chinese translation test case
+    if test_behavior == "chinese_translation":
+        return test_chinese_translation_workflow(
+            temp_media_root,
+            configured_sonarr_container,
+            service_config,
+            series_config,
         )
 
-    else:
-        # Standard workflow - start service and test
-        print(f"Starting service with {test_behavior} configuration...")
-        with run_service_with_config(temp_media_root, service_config) as service:
-            assert service.is_running(), "Service should be running"
+    # Standard workflow with prepared series
+    series_path, nfo_files, original_backups, series_id = setup_series_with_nfos(
+        configured_sonarr_container, temp_media_root
+    )
 
-            if test_behavior == "touch_files":
-                # Touch files to trigger file monitor events
-                print("Triggering file monitor by touching .nfo files...")
-                for nfo_file in nfo_files:
-                    nfo_file.touch()
-                    print(f"Touched: {nfo_file}")
+    try:
+        if test_behavior == "full_with_refresh":
+            # Full workflow with series refresh - start service first
+            print("Starting translation service with both components...")
+            with run_service_with_config(temp_media_root, service_config) as service:
+                assert service.is_running(), "Service should be running"
 
-                print("Waiting for file monitor to process files...")
-                time.sleep(5)
-
-            elif test_behavior == "wait_scanning":
-                # Wait for file scanner to process
-                print("Waiting for file scanner to process files...")
+                # Wait for initial translation
+                print("Waiting for initial translation...")
                 time.sleep(8)
 
-            # Verify translations were applied
-            verify_translations(nfo_files, original_backups)
+                # Check initial translations
+                initial_translations = count_translations(nfo_files)
+
+                if initial_translations == 0:
+                    print("No initial translations detected, waiting longer...")
+                    time.sleep(10)
+
+                # Trigger series refresh to regenerate original .nfo files
+                print("Triggering series refresh to regenerate original .nfo files...")
+                refresh_success = configured_sonarr_container.refresh_series(series_id)
+                assert refresh_success, "Failed to trigger series refresh"
+
+                # Wait for Sonarr to regenerate and service to retranslate
+                print("Waiting for service to retranslate refreshed files...")
+                time.sleep(20)
+
+                # Verify retranslations
+                retranslations = count_translations(nfo_files)
+
+                # Ensure translated content is not empty
+                for nfo_file in nfo_files:
+                    metadata = parse_nfo_content(nfo_file)
+                    if is_translated(metadata):
+                        assert metadata["title"], f"Empty title in {nfo_file.name}"
+                        assert metadata["plot"], f"Empty plot in {nfo_file.name}"
+
+                assert (
+                    retranslations > 0
+                ), "No .nfo files were retranslated after series refresh"
+                print(f"Series refresh: {retranslations}/{len(nfo_files)} retranslated")
+
+        elif test_behavior == "rollback_test":
+            # Rollback test workflow - translate, stop service, refresh, verify rollback
+            print("Starting rollback test workflow...")
+
+            # Store original metadata before any translation
+            print("Storing original metadata for rollback verification...")
+            original_metadata = {}
+            for nfo_file in nfo_files:
+                original_metadata[nfo_file] = parse_nfo_content(nfo_file)
+
+            with run_service_with_config(temp_media_root, service_config) as service:
+                assert service.is_running(), "Service should be running"
+
+                # Wait for initial translation
+                print("Waiting for initial translation...")
+                time.sleep(8)
+
+                # Verify translations occurred
+                translations = wait_and_verify_translations(nfo_files, 0, min_expected=1)
+                print(f"Initial translations: {translations}/{len(nfo_files)} translated")
+
+            # Service is now stopped - verify service shutdown
+            print("Service stopped - proceeding with rollback test...")
+
+            # Delete existing .nfo files to force Sonarr to regenerate them
+            print("Deleting existing .nfo files to force regeneration...")
+            for nfo_file in nfo_files:
+                if nfo_file.exists():
+                    nfo_file.unlink()
+                    print(f"Deleted: {nfo_file}")
+
+            # Trigger series refresh to regenerate original .nfo files
+            print("Triggering series refresh to restore original metadata...")
+            refresh_success = configured_sonarr_container.refresh_series(series_id)
+            assert refresh_success, "Failed to trigger series refresh for rollback"
+
+            # Wait for Sonarr to regenerate original files
+            print("Waiting for Sonarr to restore original files...")
+            time.sleep(15)
+
+            # Verify rollback - files should match original metadata
+            print("Verifying rollback to original metadata...")
+            rollback_verified = 0
+            for nfo_file in nfo_files:
+                current_metadata = parse_nfo_content(nfo_file)
+                original = original_metadata[nfo_file]
+
+                if metadata_matches(current_metadata, original):
+                    rollback_verified += 1
+                    print(f"✅ Rollback verified for {nfo_file.name}")
+                else:
+                    print(f"❌ Rollback failed for {nfo_file.name}")
+                    print(f"   Original title: {original.get('title')}")
+                    print(f"   Current title: {current_metadata.get('title')}")
+
+            assert rollback_verified > 0, "No .nfo files were successfully rolled back"
+            print(
+                f"Rollback successful: {rollback_verified}/{len(nfo_files)} files restored"
+            )
+
+        else:
+            # Standard workflow - start service and test
+            print(f"Starting service with {test_behavior} configuration...")
+            with run_service_with_config(temp_media_root, service_config) as service:
+                assert service.is_running(), "Service should be running"
+
+                if test_behavior == "touch_files":
+                    # Touch files to trigger file monitor events
+                    print("Triggering file monitor by touching .nfo files...")
+                    for nfo_file in nfo_files:
+                        nfo_file.touch()
+                        print(f"Touched: {nfo_file}")
+
+                    print("Waiting for file monitor to process files...")
+                    time.sleep(5)
+
+                elif test_behavior == "wait_scanning":
+                    # Wait for file scanner to process
+                    print("Waiting for file scanner to process files...")
+                    time.sleep(8)
+
+                # Verify translations were applied
+                verify_translations(nfo_files, original_backups)
+    finally:
+        # Clean up series
+        try:
+            configured_sonarr_container.remove_series(series_id)
+        except Exception as e:
+            print(f"Warning: Failed to clean up series {series_id}: {e}")
 
 
-# Chinese series TVDB ID for "大明王朝1566"
-MING_DYNASTY_TVDB_ID = 300635
-
-
-@pytest.mark.integration
-@pytest.mark.slow
-def test_chinese_series_translation(
+def test_chinese_translation_workflow(
     temp_media_root: Path,
     configured_sonarr_container: SonarrClient,
+    service_config: dict[str, str],
+    series_config: dict[str, Any],
 ) -> None:
-    """Test translation of Chinese series "大明王朝1566" for Chinese titles.
+    """Test Chinese series translation workflow.
 
-    This test verifies that the original language detection feature correctly handles
-    Chinese content when preferred language translation has incomplete data.
+    Args:
+        temp_media_root: Temporary media root directory
+        configured_sonarr_container: Configured Sonarr client
+        service_config: Service configuration overrides
+        series_config: Chinese series configuration
     """
     print("Testing Chinese series translation for 大明王朝1566...")
 
     # Set up the specific Chinese series
+    tvdb_id = series_config["tvdb_id"]
+    expected_title_text = series_config["expected_title_text"]
+
     series = SeriesManager(
         configured_sonarr_container,
-        MING_DYNASTY_TVDB_ID,
+        tvdb_id,
         "/tv",
         temp_media_root,
     )
@@ -283,14 +324,6 @@ def test_chinese_series_translation(
                     f"Sonarr may not have populated TMDB metadata yet."
                 )
 
-        # Configure service for Chinese translation
-        service_config = {
-            "ENABLE_FILE_MONITOR": "true",
-            "ENABLE_FILE_SCANNER": "false",
-            "PREFERRED_LANGUAGES": "zh-CN",  # Specifically test Chinese
-            "PERIODIC_SCAN_INTERVAL_SECONDS": "999999",
-        }
-
         # Start translation service
         print("Starting translation service with Chinese preferences...")
         with run_service_with_config(temp_media_root, service_config) as service:
@@ -330,8 +363,8 @@ def test_chinese_series_translation(
 
                     # For tvshow.nfo, specifically check for the Chinese title
                     if nfo_file.name == "tvshow.nfo":
-                        assert "大明王朝" in chinese_title, (
-                            f"Chinese series title '大明王朝' not found in "
+                        assert expected_title_text in chinese_title, (
+                            f"Chinese series title '{expected_title_text}' not found in "
                             f"translated title: {chinese_title}"
                         )
                         print(f"✅ Chinese title correctly translated: {chinese_title}")
@@ -360,3 +393,7 @@ def test_chinese_series_translation(
                 f"Successfully translated {translated_count} out of "
                 f"{len(nfo_files)} files with Chinese content"
             )
+
+
+# Chinese series TVDB ID for "大明王朝1566"
+MING_DYNASTY_TVDB_ID = 300635
