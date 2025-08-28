@@ -43,16 +43,15 @@ jobs:
       with:
         images: ${{ env.IMAGE_NAME }}
         tags: |
-          # For releases (tags starting with v)
-          type=ref,event=tag
+          # For releases (tags starting with v) - use semantic versioning without 'v' prefix
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
-          # For nightly builds (scheduled runs)
+          # For nightly builds (scheduled runs from main branch)
           type=raw,value=nightly,enable={{is_default_branch}}
           type=raw,value=nightly-{{date 'YYYY-MM-DD'}},enable={{is_default_branch}}
-          # Latest tag for releases only
-          type=raw,value=latest,enable={{is_default_branch}}
+          # Latest tag only for release tags
+          type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
         flavor: |
           latest=false
 
@@ -81,6 +80,7 @@ jobs:
 
     - name: Update Docker Hub description
       uses: peter-evans/dockerhub-description@v4
+      continue-on-error: true
       with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_TOKEN }}
