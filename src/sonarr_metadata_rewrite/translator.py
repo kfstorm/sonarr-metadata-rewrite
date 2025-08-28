@@ -1,5 +1,6 @@
 """TMDB API client with translation caching."""
 
+import time
 from typing import Any
 
 import httpx
@@ -38,11 +39,9 @@ class Translator:
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        # Build endpoint and fetch from API
+        # Build endpoint and fetch from API with retry logic
         endpoint = f"/{tmdb_ids}/translations"
-        response = self.client.get(endpoint)
-        response.raise_for_status()
-        api_data = response.json()
+        api_data = self._fetch_with_retry(endpoint)
 
         # Parse translations
         translations = self._parse_api_translations(api_data)
@@ -51,6 +50,43 @@ class Translator:
         self.cache.set(cache_key, translations, expire=self.cache_expire_seconds)
 
         return translations
+
+    def _fetch_with_retry(self, endpoint: str) -> dict[str, Any]:
+        """Fetch data from TMDB API with exponential backoff retry for rate limits.
+
+        Args:
+            endpoint: API endpoint to fetch
+
+        Returns:
+            JSON response data
+
+        Raises:
+            httpx.HTTPError: If request fails after all retries
+        """
+        max_retries = self.settings.tmdb_max_retries
+        initial_delay = self.settings.tmdb_initial_retry_delay
+        max_delay = self.settings.tmdb_max_retry_delay
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.client.get(endpoint)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                # Handle rate limiting (HTTP 429)
+                if e.response.status_code == 429 and attempt < max_retries:
+                    # Calculate exponential backoff delay
+                    delay = min(initial_delay * (2**attempt), max_delay)
+                    time.sleep(delay)
+                    continue
+                # Re-raise for other HTTP errors or if max retries exceeded
+                raise
+            except (httpx.HTTPError, Exception):
+                # Re-raise all other errors immediately (no retry)
+                raise
+
+        # This should never be reached due to the logic above
+        raise RuntimeError("Unexpected code path in _fetch_with_retry")
 
     def _parse_api_translations(
         self, api_data: dict[str, Any]
