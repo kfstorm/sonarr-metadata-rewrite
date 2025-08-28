@@ -45,6 +45,11 @@ class MetadataProcessor:
                     selected_language=None,
                 )
 
+            # Extract current content once to avoid duplicate parsing
+            current_title, current_description = self._extract_original_content(
+                nfo_path
+            )
+
             # Get translations from TMDB API
             all_translations = self.translator.get_translations(tmdb_ids)
 
@@ -52,10 +57,6 @@ class MetadataProcessor:
             selected_translation = self._select_preferred_translation(all_translations)
             if selected_translation:
                 # Check if content already matches the selected translation
-                current_title, current_description = self._extract_original_content(
-                    nfo_path
-                )
-
                 if (
                     current_title == selected_translation.title
                     and current_description == selected_translation.description
@@ -78,9 +79,6 @@ class MetadataProcessor:
                 original_content = self._get_original_content_from_backup(nfo_path)
                 if original_content:
                     original_title, original_description = original_content
-                    current_title, current_description = self._extract_original_content(
-                        nfo_path
-                    )
 
                     # Only revert if current content is different from original
                     if (
@@ -140,7 +138,7 @@ class MetadataProcessor:
 
             # Apply fallback logic for empty translation fields
             selected_translation = self._apply_fallback_to_translation(
-                nfo_path, selected_translation
+                selected_translation, current_title, current_description
             )
 
             # Create backup if enabled
@@ -245,13 +243,17 @@ class MetadataProcessor:
         return original_title, original_description
 
     def _apply_fallback_to_translation(
-        self, nfo_path: Path, translation: TranslatedContent
+        self,
+        translation: TranslatedContent,
+        original_title: str,
+        original_description: str,
     ) -> TranslatedContent:
         """Apply fallback logic to translation with empty fields.
 
         Args:
-            nfo_path: Path to .nfo file to get original content from
             translation: Selected translation that may have empty fields
+            original_title: Original title content for fallback
+            original_description: Original description content for fallback
 
         Returns:
             TranslatedContent with empty fields replaced by original content
@@ -259,9 +261,6 @@ class MetadataProcessor:
         # If both title and description are present, no fallback needed
         if translation.title and translation.description:
             return translation
-
-        # Extract original content for fallback
-        original_title, original_description = self._extract_original_content(nfo_path)
 
         # Apply fallback for empty fields
         final_title = translation.title if translation.title else original_title
