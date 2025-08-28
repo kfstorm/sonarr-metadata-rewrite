@@ -239,11 +239,7 @@ def create_rate_limit_error_mock(
     Returns:
         HTTPStatusError instance with 429 status code
     """
-    rate_limit_response = Mock()
-    rate_limit_response.status_code = 429
-    return httpx.HTTPStatusError(
-        error_message, request=Mock(), response=rate_limit_response
-    )
+    return create_http_status_error_mock(429, error_message)
 
 
 def create_http_status_error_mock(
