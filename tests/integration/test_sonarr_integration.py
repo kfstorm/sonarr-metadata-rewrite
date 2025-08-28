@@ -390,20 +390,33 @@ def test_external_id_lookup_chinese_series(integration_environment):
         print(f"Original title: {original_content.get('title')}")
         print(f"Original TMDB ID: {original_content.get('tmdb_id')}")
 
-        # Create a test .nfo file with only TVDB ID (no TMDB ID) to simulate external ID lookup
-        test_nfo_content = f"""<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<tvshow>
-    <title>如果国宝会说话</title>
-    <uniqueid type="tvdb" default="true">364698</uniqueid>
-    <plot>A documentary series about Chinese cultural treasures and artifacts.</plot>
-    <genre>Documentary</genre>
-    <runtime>15</runtime>
-    <status>Continuing</status>
-</tvshow>"""
-
-        # Write the test content (without TMDB ID)
-        tvshow_nfo.write_text(test_nfo_content, encoding="utf-8")
-        print("Created test .nfo file with only TVDB ID")
+        # Modify the real .nfo file to remove TMDB ID (to simulate external ID lookup scenario)
+        # Parse the real XML content first
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(tvshow_nfo)
+        root = tree.getroot()
+        
+        # Remove any existing TMDB uniqueid elements to simulate scenario where only TVDB ID exists
+        for uniqueid in root.findall(".//uniqueid[@type='tmdb']"):
+            root.remove(uniqueid)
+        
+        # Ensure TVDB ID is present (should already be there from Sonarr)
+        tvdb_found = False
+        for uniqueid in root.findall(".//uniqueid[@type='tvdb']"):
+            if uniqueid.text and uniqueid.text.strip() == "364698":
+                tvdb_found = True
+                break
+        
+        if not tvdb_found:
+            # Add TVDB uniqueid if not present
+            tvdb_elem = ET.SubElement(root, "uniqueid")
+            tvdb_elem.set("type", "tvdb")
+            tvdb_elem.set("default", "true")
+            tvdb_elem.text = "364698"
+        
+        # Write the modified real content back (preserving all real Sonarr data except TMDB ID)
+        tree.write(tvshow_nfo, encoding="utf-8", xml_declaration=True)
+        print("Modified real .nfo file to remove TMDB ID while preserving other real data")
 
         # Configure service for external ID processing
         test_config = service_config.copy()
