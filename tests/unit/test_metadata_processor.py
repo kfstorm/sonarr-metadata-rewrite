@@ -321,12 +321,6 @@ def test_process_file_multiple_preferred_languages_first_match(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test that first available preferred language is selected."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Setup settings with multiple preferred languages
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -365,12 +359,6 @@ def test_process_file_multiple_preferred_languages_no_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when none of the preferred languages are available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Setup settings with preferred languages that don't match available translations
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -409,12 +397,6 @@ def test_process_file_multiple_preferred_languages_partial_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when some but not all preferred languages are available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Setup settings with mixed preferred languages (some available, some not)
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -456,12 +438,6 @@ def test_process_file_single_preferred_language_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     settings = Settings(
         tmdb_api_key="test_key_12345",
         rewrite_root_dir=test_data_dir,
@@ -497,12 +473,6 @@ def test_process_file_single_preferred_language_not_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's not available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     settings = Settings(
         tmdb_api_key="test_key_12345",
         rewrite_root_dir=test_data_dir,
@@ -817,12 +787,6 @@ def test_process_file_external_id_lookup_success(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test successful processing when TMDB ID is found via external ID lookup."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Create mock translator that returns TMDB ID via external lookup
     mock_translator = Mock()
     mock_translator.find_tmdb_id_by_external_id.return_value = (
@@ -983,8 +947,6 @@ def test_original_language_fallback_does_not_apply_for_different_family(
 
 def test_extract_external_ids_tvdb_and_imdb(test_settings: Settings) -> None:
     """Test extraction of both TVDB and IMDB IDs from .nfo XML."""
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-
     # Create test XML with both TVDB and IMDB IDs
     xml_content = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
@@ -993,13 +955,9 @@ def test_extract_external_ids_tvdb_and_imdb(test_settings: Settings) -> None:
     <uniqueid type="imdb">tt7890123</uniqueid>
 </tvshow>"""
 
-    import xml.etree.ElementTree as ET
-
     root = ET.fromstring(xml_content)
 
     # Use test settings and mock translator
-    from unittest.mock import Mock
-
     processor = MetadataProcessor(test_settings, Mock())
 
     external_ids = processor._extract_external_ids(root)
@@ -1010,8 +968,6 @@ def test_extract_external_ids_tvdb_and_imdb(test_settings: Settings) -> None:
 
 def test_extract_external_ids_tvdb_only(test_settings: Settings) -> None:
     """Test extraction of only TVDB ID from .nfo XML."""
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-
     # Create test XML with only TVDB ID
     xml_content = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
@@ -1020,13 +976,9 @@ def test_extract_external_ids_tvdb_only(test_settings: Settings) -> None:
     <uniqueid type="tvdb" default="true">364698</uniqueid>
 </tvshow>"""
 
-    import xml.etree.ElementTree as ET
-
     root = ET.fromstring(xml_content)
 
     # Use test settings and mock translator
-    from unittest.mock import Mock
-
     processor = MetadataProcessor(test_settings, Mock())
 
     external_ids = processor._extract_external_ids(root)
@@ -1037,8 +989,6 @@ def test_extract_external_ids_tvdb_only(test_settings: Settings) -> None:
 
 def test_extract_external_ids_no_ids(test_settings: Settings) -> None:
     """Test extraction when no external IDs are present."""
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-
     # Create test XML with no external IDs
     xml_content = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
@@ -1046,13 +996,9 @@ def test_extract_external_ids_no_ids(test_settings: Settings) -> None:
     <genre>Drama</genre>
 </tvshow>"""
 
-    import xml.etree.ElementTree as ET
-
     root = ET.fromstring(xml_content)
 
     # Use test settings and mock translator
-    from unittest.mock import Mock
-
     processor = MetadataProcessor(test_settings, Mock())
 
     external_ids = processor._extract_external_ids(root)

@@ -2,6 +2,7 @@
 
 import logging
 import shutil
+import time
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
@@ -115,8 +116,6 @@ class RollbackService:
 
         try:
             while True:
-                import time
-
                 time.sleep(60)  # Sleep for 1 minute at a time
         except KeyboardInterrupt:
             logger.info("Received interrupt signal, shutting down gracefully")

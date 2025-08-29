@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from pydantic import ValidationError
+
 from sonarr_metadata_rewrite.config import Settings, get_settings
 
 
@@ -88,10 +91,6 @@ def test_preferred_languages_single_language(test_data_dir: Path) -> None:
 
 def test_preferred_languages_empty_string_fails(test_data_dir: Path) -> None:
     """Test preferred_languages with empty string fails validation."""
-
-    import pytest
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
@@ -102,10 +101,6 @@ def test_preferred_languages_empty_string_fails(test_data_dir: Path) -> None:
 
 def test_preferred_languages_required_field(test_data_dir: Path) -> None:
     """Test preferred_languages is required."""
-
-    import pytest
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
@@ -147,10 +142,6 @@ def test_service_mode_rollback(test_data_dir: Path) -> None:
 
 def test_service_mode_invalid_value_fails(test_data_dir: Path) -> None:
     """Test service_mode with invalid value fails validation."""
-
-    import pytest
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",

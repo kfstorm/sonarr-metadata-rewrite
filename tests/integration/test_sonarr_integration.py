@@ -1,5 +1,6 @@
 """Integration test with real Sonarr container using simple container management."""
 
+import re
 import time
 from pathlib import Path
 
@@ -439,8 +440,6 @@ def test_external_id_lookup_chinese_series(
 
             # Check that title and plot contain Chinese characters to prove
             # translation occurred
-            import re
-
             chinese_char_pattern = r"[\u4e00-\u9fff]"
 
             title_has_chinese = bool(re.search(chinese_char_pattern, processed_title))
