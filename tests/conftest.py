@@ -193,6 +193,3 @@ def assert_process_result(
 
     if expected_message_contains is not None:
         assert expected_message_contains in result.message
-
-
-

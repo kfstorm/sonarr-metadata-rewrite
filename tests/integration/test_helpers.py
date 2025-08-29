@@ -230,14 +230,14 @@ def setup_series_with_nfos(
     # Use default TVDB ID if not provided
     if tvdb_id is None:
         tvdb_id = BREAKING_BAD_TVDB_ID
-    
+
     # Use default episode configurations if not provided
     if episode_configs is None:
         episode_configs = [
             {"season": 1, "episode": 1, "title": "Pilot"},
             {"season": 1, "episode": 2, "title": "Cat's in the Bag"},
         ]
-    
+
     series = SeriesManager(
         configured_sonarr_container,
         tvdb_id,
@@ -251,11 +251,11 @@ def setup_series_with_nfos(
     episode_files = []
     for config in episode_configs:
         episode_file = create_fake_episode_file(
-            temp_media_root, 
-            series.slug, 
-            config["season"], 
-            config["episode"], 
-            config["title"]
+            temp_media_root,
+            series.slug,
+            config["season"],
+            config["episode"],
+            config["title"],
         )
         episode_files.append(episode_file)
 
@@ -572,9 +572,9 @@ def wait_and_verify_translations(
 
 
 def verify_chinese_translations(
-    nfo_files: list[Path], 
+    nfo_files: list[Path],
     original_metadata: dict[Path, dict[str, Any]],
-    expected_title_text: str
+    expected_title_text: str,
 ) -> int:
     """Verify Chinese translation results with specific assertions.
 
@@ -598,9 +598,10 @@ def verify_chinese_translations(
         print(f"  Current title: {current_metadata.get('title')}")
 
         # Check if translation occurred
-        if (current_metadata.get("title") != original.get("title") or 
-            current_metadata.get("plot") != original.get("plot")):
-            
+        if current_metadata.get("title") != original.get(
+            "title"
+        ) or current_metadata.get("plot") != original.get("plot"):
+
             translated_count += 1
 
             # Verify we have a non-empty Chinese title
@@ -620,9 +621,9 @@ def verify_chinese_translations(
             assert chinese_plot, f"Empty translated plot in {nfo_file.name}"
 
             # Verify IDs are preserved
-            assert current_metadata.get("tmdb_id") == original.get("tmdb_id"), (
-                f"TMDB ID not preserved in {nfo_file.name}"
-            )
+            assert current_metadata.get("tmdb_id") == original.get(
+                "tmdb_id"
+            ), f"TMDB ID not preserved in {nfo_file.name}"
 
             print(f"✅ Successfully translated {nfo_file.name}")
         else:
@@ -632,8 +633,7 @@ def verify_chinese_translations(
 
 
 def verify_rollback_results(
-    nfo_files: list[Path],
-    original_metadata: dict[Path, dict[str, Any]]
+    nfo_files: list[Path], original_metadata: dict[Path, dict[str, Any]]
 ) -> int:
     """Verify rollback results match original metadata.
 
@@ -646,7 +646,7 @@ def verify_rollback_results(
     """
     print("Verifying rollback to original metadata...")
     rollback_verified = 0
-    
+
     for nfo_file in nfo_files:
         current_metadata = parse_nfo_content(nfo_file)
         original = original_metadata[nfo_file]
@@ -666,7 +666,7 @@ def run_standard_translation_workflow(
     temp_media_root: Path,
     service_config: dict[str, str],
     nfo_files: list[Path],
-    test_behavior: str
+    test_behavior: str,
 ) -> None:
     """Run standard translation workflow for touch_files and wait_scanning behaviors.
 
@@ -686,10 +686,10 @@ def run_standard_translation_workflow(
             for nfo_file in nfo_files:
                 nfo_file.touch()
                 print(f"Touched: {nfo_file}")
-            
+
             print("Waiting for file monitor to process files...")
             time.sleep(5)
-        
+
         elif test_behavior == "wait_scanning":
             # Wait for file scanner to process
             print("Waiting for file scanner to process files...")
