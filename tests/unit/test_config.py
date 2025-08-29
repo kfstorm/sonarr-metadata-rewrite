@@ -64,33 +64,30 @@ def test_settings_backup_disabled(test_data_dir: Path) -> None:
     assert settings.original_files_backup_dir is None
 
 
-def test_preferred_languages_comma_separated() -> None:
+def test_preferred_languages_comma_separated(test_data_dir: Path) -> None:
     """Test preferred_languages parsing from comma-separated string."""
-    from pathlib import Path
 
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
+        rewrite_root_dir=test_data_dir,
         preferred_languages="zh-CN, ja-JP , ko-KR",
     )
     assert settings.preferred_languages == ["zh-CN", "ja-JP", "ko-KR"]
 
 
-def test_preferred_languages_single_language() -> None:
+def test_preferred_languages_single_language(test_data_dir: Path) -> None:
     """Test preferred_languages with single language."""
-    from pathlib import Path
 
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
+        rewrite_root_dir=test_data_dir,
         preferred_languages="fr",
     )
     assert settings.preferred_languages == ["fr"]
 
 
-def test_preferred_languages_empty_string_fails() -> None:
+def test_preferred_languages_empty_string_fails(test_data_dir: Path) -> None:
     """Test preferred_languages with empty string fails validation."""
-    from pathlib import Path
 
     import pytest
     from pydantic import ValidationError
@@ -98,14 +95,13 @@ def test_preferred_languages_empty_string_fails() -> None:
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
-            rewrite_root_dir=Path("/tmp"),
+            rewrite_root_dir=test_data_dir,
             preferred_languages="",
         )
 
 
-def test_preferred_languages_required_field() -> None:
+def test_preferred_languages_required_field(test_data_dir: Path) -> None:
     """Test preferred_languages is required."""
-    from pathlib import Path
 
     import pytest
     from pydantic import ValidationError
@@ -113,7 +109,7 @@ def test_preferred_languages_required_field() -> None:
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
-            rewrite_root_dir=Path("/tmp"),
+            rewrite_root_dir=test_data_dir,
         )
 
 
@@ -149,9 +145,8 @@ def test_service_mode_rollback(test_data_dir: Path) -> None:
     assert settings.service_mode == "rollback"
 
 
-def test_service_mode_invalid_value_fails() -> None:
+def test_service_mode_invalid_value_fails(test_data_dir: Path) -> None:
     """Test service_mode with invalid value fails validation."""
-    from pathlib import Path
 
     import pytest
     from pydantic import ValidationError
@@ -159,7 +154,7 @@ def test_service_mode_invalid_value_fails() -> None:
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
-            rewrite_root_dir=Path("/tmp"),
+            rewrite_root_dir=test_data_dir,
             preferred_languages="zh-CN",
             service_mode="invalid",
         )

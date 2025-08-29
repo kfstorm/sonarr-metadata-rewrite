@@ -980,7 +980,7 @@ def test_original_language_fallback_does_not_apply_for_different_family(
     assert plot_elem is not None and plot_elem.text == "中文描述"  # Chinese description
 
 
-def test_extract_external_ids_tvdb_and_imdb() -> None:
+def test_extract_external_ids_tvdb_and_imdb(test_settings: Settings) -> None:
     """Test extraction of both TVDB and IMDB IDs from .nfo XML."""
     from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 
@@ -996,18 +996,10 @@ def test_extract_external_ids_tvdb_and_imdb() -> None:
 
     root = ET.fromstring(xml_content)
 
-    # Use any settings and translator for this test
+    # Use test settings and mock translator
     from unittest.mock import Mock
 
-    from sonarr_metadata_rewrite.config import Settings
-
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
-        preferred_languages="en",
-        cache_dir=Path("/tmp/cache"),
-    )
-    processor = MetadataProcessor(settings, Mock())
+    processor = MetadataProcessor(test_settings, Mock())
 
     external_ids = processor._extract_external_ids(root)
 
@@ -1015,7 +1007,7 @@ def test_extract_external_ids_tvdb_and_imdb() -> None:
     assert external_ids.imdb_id == "tt7890123"
 
 
-def test_extract_external_ids_tvdb_only() -> None:
+def test_extract_external_ids_tvdb_only(test_settings: Settings) -> None:
     """Test extraction of only TVDB ID from .nfo XML."""
     from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 
@@ -1031,18 +1023,10 @@ def test_extract_external_ids_tvdb_only() -> None:
 
     root = ET.fromstring(xml_content)
 
-    # Use any settings and translator for this test
+    # Use test settings and mock translator
     from unittest.mock import Mock
 
-    from sonarr_metadata_rewrite.config import Settings
-
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
-        preferred_languages="en",
-        cache_dir=Path("/tmp/cache"),
-    )
-    processor = MetadataProcessor(settings, Mock())
+    processor = MetadataProcessor(test_settings, Mock())
 
     external_ids = processor._extract_external_ids(root)
 
@@ -1050,7 +1034,7 @@ def test_extract_external_ids_tvdb_only() -> None:
     assert external_ids.imdb_id is None
 
 
-def test_extract_external_ids_no_ids() -> None:
+def test_extract_external_ids_no_ids(test_settings: Settings) -> None:
     """Test extraction when no external IDs are present."""
     from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 
@@ -1065,18 +1049,10 @@ def test_extract_external_ids_no_ids() -> None:
 
     root = ET.fromstring(xml_content)
 
-    # Use any settings and translator for this test
+    # Use test settings and mock translator
     from unittest.mock import Mock
 
-    from sonarr_metadata_rewrite.config import Settings
-
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=Path("/tmp"),
-        preferred_languages="en",
-        cache_dir=Path("/tmp/cache"),
-    )
-    processor = MetadataProcessor(settings, Mock())
+    processor = MetadataProcessor(test_settings, Mock())
 
     external_ids = processor._extract_external_ids(root)
 

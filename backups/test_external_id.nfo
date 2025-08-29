@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<tvshow>
-  <title>Series Without TMDB ID</title>
-  <plot>This series only has IMDB and TVDB IDs, no TMDB ID for testing</plot>
-  <uniqueid type="imdb" default="true">tt1234567</uniqueid>
-  <uniqueid type="tvdb">123456</uniqueid>
-  <genre>Drama</genre>
-  <premiered>2020-01-01</premiered>
-</tvshow>
