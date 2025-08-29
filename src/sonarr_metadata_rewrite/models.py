@@ -1,5 +1,6 @@
 """Data models for sonarr-metadata-rewrite."""
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,28 @@ class TranslatedContent:
     title: str
     description: str
     language: str
+
+
+@dataclass
+class MetadataInfo:
+    """Complete metadata information extracted from NFO file."""
+
+    # IDs
+    tmdb_id: int | None = None
+    tvdb_id: int | None = None
+    imdb_id: str | None = None
+
+    # File structure
+    file_type: str = "unknown"  # "tvshow" or "episodedetails" or "unknown"
+    season: int | None = None
+    episode: int | None = None
+
+    # Content
+    title: str = ""
+    description: str = ""
+
+    # Raw XML for writing
+    xml_tree: ET.ElementTree | None = None
 
 
 @dataclass

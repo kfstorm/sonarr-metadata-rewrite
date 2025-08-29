@@ -9,9 +9,9 @@ import pytest
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-from sonarr_metadata_rewrite.models import TranslatedContent
+from sonarr_metadata_rewrite.models import MetadataInfo, TranslatedContent
 from sonarr_metadata_rewrite.translator import Translator
-from tests.conftest import assert_process_result
+from tests.conftest import assert_process_result, create_test_settings
 
 
 @pytest.fixture
@@ -23,6 +23,8 @@ def mock_translator() -> Mock:
             title="示例剧集", description="这是一个示例描述", language="zh-CN"
         )
     }
+    # Mock external ID lookup to return None (no external mapping)
+    translator.find_tmdb_id_by_external_id.return_value = None
     return translator
 
 
@@ -30,6 +32,17 @@ def mock_translator() -> Mock:
 def processor(test_settings: Settings, mock_translator: Mock) -> MetadataProcessor:
     """Create metadata processor with mocks."""
     return MetadataProcessor(test_settings, mock_translator)
+
+
+@pytest.fixture
+def test_metadata_info() -> MetadataInfo:
+    """Create test MetadataInfo for fallback tests."""
+    return MetadataInfo(
+        tmdb_id=1396,
+        file_type="tvshow",
+        title="Breaking Bad",
+        description="A high school chemistry teacher diagnosed with lung cancer...",
+    )
 
 
 def test_process_file_series_success(
@@ -253,14 +266,14 @@ def test_nfo_file(create_test_files: Callable[[str, Path], Path]) -> Path:
 
 
 def test_apply_fallback_to_translation_no_fallback_needed(
-    processor: MetadataProcessor, test_nfo_file: Path
+    processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has both title and description."""
     translation = TranslatedContent(
         title="完整标题", description="完整描述", language="zh-CN"
     )
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should return the same translation since both fields are present
     assert result.title == "完整标题"
@@ -269,12 +282,12 @@ def test_apply_fallback_to_translation_no_fallback_needed(
 
 
 def test_apply_fallback_to_translation_empty_title(
-    processor: MetadataProcessor, test_nfo_file: Path
+    processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has empty title."""
     translation = TranslatedContent(title="", description="翻译描述", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should use original title but keep translated description
     assert result.title == "Breaking Bad"  # Original title from test data
@@ -283,12 +296,12 @@ def test_apply_fallback_to_translation_empty_title(
 
 
 def test_apply_fallback_to_translation_empty_description(
-    processor: MetadataProcessor, test_nfo_file: Path
+    processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has empty description."""
     translation = TranslatedContent(title="绝命毒师", description="", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should use translated title but fallback to original description
     assert result.title == "绝命毒师"  # Translated title
@@ -299,12 +312,12 @@ def test_apply_fallback_to_translation_empty_description(
 
 
 def test_apply_fallback_to_translation_both_empty(
-    processor: MetadataProcessor, test_nfo_file: Path
+    processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has both empty title and description."""
     translation = TranslatedContent(title="", description="", language="zh-CN")
 
-    result = processor._apply_fallback_to_translation(test_nfo_file, translation)
+    result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should use both original title and description
     assert result.title == "Breaking Bad"  # Original title from test data
@@ -319,20 +332,11 @@ def test_process_file_multiple_preferred_languages_first_match(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test that first available preferred language is selected."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
 
     # Setup settings with multiple preferred languages
-    settings = Settings(
-        tmdb_api_key="test_key_12345",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="ko-KR,ja-JP,zh-CN",  # Korean -> Japanese -> Chinese
-        periodic_scan_interval_seconds=1,
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
 
     # Mock translator with available translations (missing Korean)
@@ -363,20 +367,11 @@ def test_process_file_multiple_preferred_languages_no_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when none of the preferred languages are available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
 
     # Setup settings with preferred languages that don't match available translations
-    settings = Settings(
-        tmdb_api_key="test_key_12345",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="ko-KR,th-TH,vi-VN",  # Korean, Thai, Vietnamese
-        periodic_scan_interval_seconds=1,
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
 
     # Mock translator with only different languages available
@@ -407,20 +402,11 @@ def test_process_file_multiple_preferred_languages_partial_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when some but not all preferred languages are available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
 
     # Setup settings with mixed preferred languages (some available, some not)
-    settings = Settings(
-        tmdb_api_key="test_key_12345",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="ar,zh-CN,th-TH,ja-JP",  # Arabic, Chinese, Thai, Japanese
-        periodic_scan_interval_seconds=1,
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
 
     # Mock translator with some matching languages (missing Arabic and Thai)
@@ -454,19 +440,10 @@ def test_process_file_single_preferred_language_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's available."""
-    from unittest.mock import Mock
 
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
-    settings = Settings(
-        tmdb_api_key="test_key_12345",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="fr",  # Only French
-        periodic_scan_interval_seconds=1,
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
 
     mock_translator = Mock()
@@ -495,19 +472,10 @@ def test_process_file_single_preferred_language_not_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's not available."""
-    from unittest.mock import Mock
 
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
-    settings = Settings(
-        tmdb_api_key="test_key_12345",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="ar",  # Only Arabic
-        periodic_scan_interval_seconds=1,
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
 
     mock_translator = Mock()
@@ -563,13 +531,12 @@ def test_content_matches_preferred_translation_skips_processing(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
     """Test that processing is skipped when content matches translation."""
+
     # Create processor with backup enabled
-    settings = Settings(
+    settings = create_test_settings(
+        test_data_dir,
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
         preferred_languages="zh-CN",
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
     processor = MetadataProcessor(settings, mock_translator)
 
@@ -599,13 +566,12 @@ def test_preference_changed_better_translation_available_reprocesses(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
     """Test that file is reprocessed when better translation becomes available."""
+
     # Create processor with backup enabled
-    settings = Settings(
+    settings = create_test_settings(
+        test_data_dir,
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
         preferred_languages="zh-CN,ja-JP",  # Chinese preferred over Japanese
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
     processor = MetadataProcessor(settings, mock_translator)
 
@@ -644,13 +610,11 @@ def test_preference_change_no_translation_reverts_to_original_with_backup(
     test_data_dir: Path,
 ) -> None:
     """Test reversion to original content when preferences change to unavailable."""
+
     # Create processor with preferences that won't match available translations
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="ko-KR,zh-TW",  # Neither available in translations
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
     )
     mock_translator = Mock(spec=Translator)
     processor = MetadataProcessor(settings, mock_translator)
@@ -691,14 +655,9 @@ def test_multiple_rapid_processing_only_first_modifies(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
     """Test that multiple rapid calls to process same file only modify it once."""
+
     # Create processor with backup enabled
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
-    )
+    settings = create_test_settings(test_data_dir)
     processor = MetadataProcessor(settings, mock_translator)
 
     # Create .nfo with English content
@@ -743,14 +702,9 @@ def test_backup_not_overwritten_on_subsequent_processing(
     test_data_dir: Path,
 ) -> None:
     """Test that backup files are not overwritten on subsequent processing."""
+
     # Create processor with backup enabled
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
-    )
+    settings = create_test_settings(test_data_dir)
     mock_translator = Mock(spec=Translator)
     processor = MetadataProcessor(settings, mock_translator)
 
@@ -815,12 +769,11 @@ def test_original_language_fallback_selects_original_title(
 ) -> None:
     """Test that when preferred language has empty title and original language matches,
     system uses original title."""
+
     # Create processor with zh-CN as preferred language
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="zh-CN,ja-JP",  # zh-CN is preferred
-        cache_dir=test_data_dir / "cache",
         original_files_backup_dir=None,  # Disable backups for this test
     )
     mock_translator = Mock(spec=Translator)
@@ -877,11 +830,10 @@ def test_original_language_fallback_does_not_apply_for_different_family(
 ) -> None:
     """Test that when original language family doesn't match preferred,
     system uses standard fallback."""
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+
+    settings = create_test_settings(
+        test_data_dir,
         preferred_languages="zh-CN,ja-JP",
-        cache_dir=test_data_dir / "cache",
         original_files_backup_dir=None,  # Disable backups for this test
     )
     mock_translator = Mock(spec=Translator)
@@ -924,3 +876,245 @@ def test_original_language_fallback_does_not_apply_for_different_family(
         title_elem is not None and title_elem.text == "Breaking Bad"
     )  # Original from .nfo
     assert plot_elem is not None and plot_elem.text == "中文描述"  # Chinese description
+
+
+def test_process_file_tvdb_id_only_success(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test successful processing with only TVDB ID (no TMDB ID)."""
+    # Mock external ID lookup to return TMDB ID for TVDB lookup
+    assert isinstance(processor.translator, Mock)
+    processor.translator.find_tmdb_id_by_external_id.return_value = 1396
+
+    # Use the dedicated TVDB-only fixture
+    test_path = create_test_files("tvdb_only.nfo", test_data_dir / "test_tvdb.nfo")
+    result = processor.process_file(test_path)
+
+    # Should successfully resolve TMDB ID via TVDB and process
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify external ID lookup was called with correct parameters
+    processor.translator.find_tmdb_id_by_external_id.assert_called_with(
+        "123456", "tvdb_id"
+    )
+
+
+def test_process_file_imdb_id_only_success(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+    mock_translator: Mock,
+) -> None:
+    """Test successful processing with only IMDB ID (no TMDB ID)."""
+    # Create processor with mock that returns TMDB ID for IMDB lookup
+
+    settings = create_test_settings(test_data_dir)
+
+    # Mock external ID lookup to return TMDB ID for IMDB lookup
+    mock_translator.find_tmdb_id_by_external_id.return_value = 1396
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Use the dedicated IMDB-only fixture
+    test_path = create_test_files("imdb_only.nfo", test_data_dir / "test_imdb.nfo")
+    result = processor.process_file(test_path)
+
+    # Should successfully resolve TMDB ID via IMDB and process
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify external ID lookup was called with correct IMDB ID
+    mock_translator.find_tmdb_id_by_external_id.assert_called_with(
+        "tt1234567", "imdb_id"
+    )
+
+
+def test_process_file_episode_inherits_parent_tvdb_id(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test episode without IDs inheriting TVDB ID from parent tvshow.nfo."""
+
+    settings = create_test_settings(test_data_dir)
+
+    mock_translator = Mock(spec=Translator)
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+        )
+    }
+    # Mock external ID lookup to return TMDB ID for TVDB lookup
+    mock_translator.find_tmdb_id_by_external_id.return_value = 1396
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create directory structure: Series/Season 1/episode.nfo and Series/tvshow.nfo
+    series_dir = test_data_dir / "Test Series"
+    season_dir = series_dir / "Season 1"
+    season_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create tvshow.nfo with only external IDs (no TMDB ID)
+    create_test_files("no_tmdb_id.nfo", series_dir / "tvshow.nfo")
+
+    # Create episode file without any IDs
+    episode_nfo = """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>Episode Title</title>
+  <plot>Episode description</plot>
+  <season>1</season>
+  <episode>1</episode>
+</episodedetails>
+"""
+    episode_path = season_dir / "episode.nfo"
+    episode_path.write_text(episode_nfo)
+
+    result = processor.process_file(episode_path)
+
+    # Should successfully resolve TMDB ID via parent's TVDB ID
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify external ID lookup was called for parent's TVDB ID
+    mock_translator.find_tmdb_id_by_external_id.assert_called_with("123456", "tvdb_id")
+
+
+def test_process_file_external_id_lookup_fails(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test graceful failure when external ID lookup fails."""
+    # Mock external ID lookup to return None (lookup fails)
+    assert isinstance(processor.translator, Mock)
+    processor.translator.find_tmdb_id_by_external_id.return_value = None
+
+    # Use the existing no_tmdb_id fixture which has external IDs but no TMDB ID
+    test_path = create_test_files("no_tmdb_id.nfo", test_data_dir / "test_fail.nfo")
+    result = processor.process_file(test_path)
+
+    # Should fail gracefully when no TMDB ID can be resolved
+    assert_process_result(
+        result,
+        expected_success=False,
+        expected_file_modified=False,
+        expected_message_contains="No TMDB ID found",
+    )
+
+    # Verify both external ID lookups were attempted
+    calls = processor.translator.find_tmdb_id_by_external_id.call_args_list
+    assert len(calls) == 2  # Should try both TVDB and IMDB
+    assert ("123456", "tvdb_id") in [call.args for call in calls]
+    assert ("tt1234567", "imdb_id") in [call.args for call in calls]
+
+
+def test_process_file_mixed_id_scenarios(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test episode with external ID while parent has TMDB ID (parent wins)."""
+
+    settings = create_test_settings(test_data_dir)
+
+    mock_translator = Mock(spec=Translator)
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+        )
+    }
+    # Mock external ID lookup to return different TMDB ID
+    mock_translator.find_tmdb_id_by_external_id.return_value = 2468
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create directory structure
+    series_dir = test_data_dir / "Mixed ID Series"
+    season_dir = series_dir / "Season 1"
+    season_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create parent tvshow.nfo with direct TMDB ID
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+
+    # Create episode file with external ID but no TMDB ID
+    create_test_files("episode_no_tmdb_id.nfo", season_dir / "episode.nfo")
+
+    result = processor.process_file(season_dir / "episode.nfo")
+
+    # Should use parent TMDB ID (1396) rather than external ID lookup (2468)
+    # This tests the hierarchical resolution: parent TMDB ID has higher priority
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,  # From parent TMDB ID, not external lookup
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify external ID lookup was NOT called since parent TMDB ID was available
+    mock_translator.find_tmdb_id_by_external_id.assert_not_called()
+
+
+def test_process_file_episode_external_id_priority_over_parent_external_id(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test episode external ID takes priority over parent external ID."""
+
+    settings = create_test_settings(test_data_dir)
+
+    mock_translator = Mock(spec=Translator)
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+        )
+    }
+    # Mock external ID lookup to return TMDB ID for episode's external ID
+    mock_translator.find_tmdb_id_by_external_id.return_value = 2468
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create directory structure
+    series_dir = test_data_dir / "External Priority Series"
+    season_dir = series_dir / "Season 1"
+    season_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create parent tvshow.nfo with only external IDs (no TMDB ID)
+    create_test_files("no_tmdb_id.nfo", series_dir / "tvshow.nfo")
+
+    # Create episode file with different external ID but no TMDB ID
+    create_test_files("episode_no_tmdb_id.nfo", season_dir / "episode.nfo")
+
+    result = processor.process_file(season_dir / "episode.nfo")
+
+    # Should use episode's external ID lookup result (2468)
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=2468,  # From episode's external ID lookup
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify external ID lookup was called for episode's TVDB ID (4499792)
+    # Should NOT be called for parent's IDs since episode has its own
+    mock_translator.find_tmdb_id_by_external_id.assert_called_with("4499792", "tvdb_id")

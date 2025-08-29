@@ -3,6 +3,7 @@
 import tempfile
 from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -75,6 +76,26 @@ SAMPLE_NO_TMDB_ID_NFO = """<?xml version="1.0" encoding="utf-8"?>
 </tvshow>
 """
 
+SAMPLE_TVDB_ONLY_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Series With TVDB ID Only</title>
+  <plot>This series only has TVDB ID for testing TVDB lookup</plot>
+  <uniqueid type="tvdb" default="true">123456</uniqueid>
+  <genre>Drama</genre>
+  <premiered>2020-01-01</premiered>
+</tvshow>
+"""
+
+SAMPLE_IMDB_ONLY_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Series With IMDB ID Only</title>
+  <plot>This series only has IMDB ID for testing IMDB lookup</plot>
+  <uniqueid type="imdb" default="true">tt1234567</uniqueid>
+  <genre>Drama</genre>
+  <premiered>2020-01-01</premiered>
+</tvshow>
+"""
+
 SAMPLE_INVALID_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>Broken XML Test</title>
@@ -106,6 +127,8 @@ SAMPLE_DATA = {
     "tvshow.nfo": SAMPLE_TVSHOW_NFO,
     "episode.nfo": SAMPLE_EPISODE_NFO,
     "no_tmdb_id.nfo": SAMPLE_NO_TMDB_ID_NFO,
+    "tvdb_only.nfo": SAMPLE_TVDB_ONLY_NFO,
+    "imdb_only.nfo": SAMPLE_IMDB_ONLY_NFO,
     "invalid.nfo": SAMPLE_INVALID_NFO,
     "episode_no_tmdb_id.nfo": SAMPLE_EPISODE_NO_TMDB_ID_NFO,
 }
@@ -118,17 +141,37 @@ def test_data_dir() -> Generator[Path, None, None]:
         yield Path(temp_dir)
 
 
+def create_test_settings(test_data_dir: Path, **kwargs: Any) -> Settings:
+    """Create test settings with safe defaults and custom overrides.
+
+    Args:
+        test_data_dir: Temporary test directory path
+        **kwargs: Settings overrides (e.g., preferred_languages="zh-CN,ja-JP")
+
+    Returns:
+        Settings object with safe test defaults and any custom overrides
+    """
+    # Build explicit parameters for Settings constructor
+    params = {
+        "tmdb_api_key": kwargs.get("tmdb_api_key", "test_key_12345"),
+        "rewrite_root_dir": kwargs.get("rewrite_root_dir", test_data_dir),
+        "preferred_languages": kwargs.get("preferred_languages", "zh-CN"),
+        "periodic_scan_interval_seconds": kwargs.get(
+            "periodic_scan_interval_seconds", 1
+        ),
+        "original_files_backup_dir": kwargs.get(
+            "original_files_backup_dir", test_data_dir / "backups"
+        ),
+        "cache_dir": kwargs.get("cache_dir", test_data_dir / "cache"),
+    }
+
+    return Settings(**params)
+
+
 @pytest.fixture
 def test_settings(test_data_dir: Path) -> Settings:
     """Standard test settings using temporary test data directory."""
-    return Settings(
-        tmdb_api_key="test_key_12345",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        periodic_scan_interval_seconds=1,  # Fast interval for testing
-        original_files_backup_dir=test_data_dir / "backups",
-        cache_dir=test_data_dir / "cache",
-    )
+    return create_test_settings(test_data_dir)
 
 
 @pytest.fixture
