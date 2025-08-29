@@ -839,6 +839,7 @@ def test_process_file_external_id_lookup_success(
         rewrite_root_dir=test_data_dir,
         preferred_languages="zh-CN",
         cache_dir=test_data_dir / "cache",
+        original_files_backup_dir=test_data_dir / "backups",
     )
     processor = MetadataProcessor(settings, mock_translator)
 
