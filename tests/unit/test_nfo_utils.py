@@ -93,7 +93,9 @@ class TestFindNfoFiles:
         found_files = find_nfo_files(test_data_dir)
         assert found_files == []
 
-    def test_deduplicate_on_case_insensitive_filesystem(self, test_data_dir: Path) -> None:
+    def test_deduplicate_on_case_insensitive_filesystem(
+        self, test_data_dir: Path
+    ) -> None:
         """Test that files are deduplicated properly."""
         # Create files with different cases
         nfo_file = test_data_dir / "test.nfo"

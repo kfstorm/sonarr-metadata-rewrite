@@ -225,7 +225,9 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
 
 
 @patch("time.sleep")
-def test_hang_after_completion_keyboard_interrupt(mock_sleep: Mock, test_data_dir: Path) -> None:
+def test_hang_after_completion_keyboard_interrupt(
+    mock_sleep: Mock, test_data_dir: Path
+) -> None:
     """Test hang_after_completion handles KeyboardInterrupt gracefully."""
     settings = Settings(
         tmdb_api_key="test_key",
@@ -245,7 +247,9 @@ def test_hang_after_completion_keyboard_interrupt(mock_sleep: Mock, test_data_di
 
 
 @patch("time.sleep")
-def test_hang_after_completion_runs_indefinitely(mock_sleep: Mock, test_data_dir: Path) -> None:
+def test_hang_after_completion_runs_indefinitely(
+    mock_sleep: Mock, test_data_dir: Path
+) -> None:
     """Test hang_after_completion runs indefinitely without interruption."""
     settings = Settings(
         tmdb_api_key="test_key",
