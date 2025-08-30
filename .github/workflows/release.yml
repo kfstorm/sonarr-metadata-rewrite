@@ -14,6 +14,85 @@ env:
   IMAGE_NAME: kfstorm/sonarr-metadata-rewrite
 
 jobs:
+  check-changes:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Check for changes since last nightly build
+      id: check
+      run: |
+        set -e
+
+        # Get current commit
+        current_commit=$(git rev-parse HEAD)
+        echo "Current commit: $current_commit"
+
+        # Try to get the last nightly build commit from Docker Hub
+        echo "Checking Docker Hub for last nightly build..."
+
+        # Get anonymous auth token
+        token_response=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:kfstorm/sonarr-metadata-rewrite:pull")
+        if [ $? -ne 0 ] || [ -z "$token_response" ]; then
+          echo "Failed to get auth token, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        token=$(echo "$token_response" | jq -r '.token')
+        if [ -z "$token" ] || [ "$token" = "null" ]; then
+          echo "Invalid auth token, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Get nightly image manifest
+        manifest_response=$(curl -s -H "Accept: application/vnd.docker.distribution.manifest.v2+json" -H "Authorization: Bearer $token" "https://registry-1.docker.io/v2/kfstorm/sonarr-metadata-rewrite/manifests/nightly")
+        if [ $? -ne 0 ] || [ -z "$manifest_response" ]; then
+          echo "No nightly image found or failed to fetch manifest, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        config_digest=$(echo "$manifest_response" | jq -r '.config.digest // empty')
+        if [ -z "$config_digest" ] || [ "$config_digest" = "null" ]; then
+          echo "No config digest found, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "Config digest: $config_digest"
+
+        # Get image config with labels
+        config_response=$(curl -s -H "Authorization: Bearer $token" "https://registry-1.docker.io/v2/kfstorm/sonarr-metadata-rewrite/blobs/$config_digest")
+        if [ $? -ne 0 ] || [ -z "$config_response" ]; then
+          echo "Failed to fetch image config, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Extract commit SHA from org.opencontainers.image.revision label
+        last_commit=$(echo "$config_response" | jq -r '.config.Labels."org.opencontainers.image.revision" // empty')
+        if [ -z "$last_commit" ] || [ "$last_commit" = "null" ]; then
+          echo "No revision label found, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "Last nightly build commit: $last_commit"
+
+        # Compare commits
+        if [ "$current_commit" = "$last_commit" ]; then
+          echo "No changes since last nightly build, skipping build"
+          echo "skip=true" >> $GITHUB_OUTPUT
+        else
+          echo "Changes detected since last nightly build, proceeding with build"
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -32,6 +111,8 @@ jobs:
         make_latest: true
 
   extract-metadata:
+    needs: [check-changes]
+    if: always() && (github.event_name != 'schedule' || needs.check-changes.outputs.skip != 'true')
     runs-on: ubuntu-latest
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
@@ -56,7 +137,8 @@ jobs:
           latest=false
 
   build-and-push:
-    needs: extract-metadata
+    needs: [check-changes, extract-metadata]
+    if: always() && !failure() && !cancelled() && (github.event_name != 'schedule' || needs.check-changes.outputs.skip != 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     permissions:
       contents: read

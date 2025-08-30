@@ -319,12 +319,6 @@ def test_process_file_multiple_preferred_languages_first_match(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test that first available preferred language is selected."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Setup settings with multiple preferred languages
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -363,12 +357,6 @@ def test_process_file_multiple_preferred_languages_no_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when none of the preferred languages are available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Setup settings with preferred languages that don't match available translations
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -407,12 +395,6 @@ def test_process_file_multiple_preferred_languages_partial_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when some but not all preferred languages are available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
-
     # Setup settings with mixed preferred languages (some available, some not)
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -454,11 +436,6 @@ def test_process_file_single_preferred_language_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
 
     settings = Settings(
         tmdb_api_key="test_key_12345",
@@ -495,11 +472,6 @@ def test_process_file_single_preferred_language_not_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's not available."""
-    from unittest.mock import Mock
-
-    from sonarr_metadata_rewrite.config import Settings
-    from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-    from sonarr_metadata_rewrite.models import TranslatedContent
 
     settings = Settings(
         tmdb_api_key="test_key_12345",
