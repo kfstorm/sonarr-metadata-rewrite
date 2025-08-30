@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from sonarr_metadata_rewrite.retry_utils import retry
+
 
 class SonarrClient:
     """Simple Sonarr API client for integration tests."""
@@ -17,30 +19,39 @@ class SonarrClient:
 
     def wait_for_ready(self, max_attempts: int = 30, delay: float = 1.0) -> bool:
         """Wait for Sonarr to be ready and responding."""
-        print(
-            f"Waiting for Sonarr at {self.base_url} "
-            f"(max {max_attempts} attempts, {delay}s delay)"
-        )
-        for attempt in range(max_attempts):
-            try:
-                # Use API key if we have one
-                params = {}
-                if self.api_key:
-                    params["apikey"] = self.api_key
+        timeout_sec = max_attempts * delay
+        print(f"Waiting for Sonarr at {self.base_url} (max {timeout_sec:.1f}s timeout)")
 
-                response = self.client.get(
-                    f"{self.base_url}/api/v3/system/status", params=params, timeout=5.0
+        @retry(
+            timeout=timeout_sec,
+            interval=delay,
+            log_interval=5.0,
+            exceptions=(httpx.RequestError, httpx.HTTPStatusError),
+        )
+        def check_sonarr_status() -> bool:
+            # Use API key if we have one
+            params = {}
+            if self.api_key:
+                params["apikey"] = self.api_key
+
+            response = self.client.get(
+                f"{self.base_url}/api/v3/system/status", params=params, timeout=5.0
+            )
+            if response.status_code != 200:
+                raise httpx.HTTPStatusError(
+                    f"HTTP {response.status_code}",
+                    request=response.request,
+                    response=response,
                 )
-                if response.status_code == 200:
-                    print(f"Sonarr ready after {attempt + 1} attempts")
-                    return True
-                else:
-                    print(f"Attempt {attempt + 1}: HTTP {response.status_code}")
-            except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                print(f"Attempt {attempt + 1}: {type(e).__name__}: {e}")
-            time.sleep(delay)
-        print(f"Sonarr failed to become ready after {max_attempts} attempts")
-        return False
+            return True
+
+        try:
+            result = check_sonarr_status()
+            print("Sonarr is ready")
+            return result
+        except Exception as e:
+            print(f"Sonarr failed to become ready: {e}")
+            return False
 
     def _make_request(
         self, method: str, endpoint: str, **kwargs: Any
@@ -139,97 +150,6 @@ class SonarrClient:
 
         response = self._make_request("POST", "/api/v3/command", json=command_data)
         return response.status_code in (200, 201)
-
-    def manual_import(self, series_id: int, files: list[str]) -> bool:
-        """Manually import episode files into Sonarr using proper manual import API.
-
-        Args:
-            series_id: Sonarr series ID
-            files: List of file paths to import
-
-        Returns:
-            True if manual import was successful
-        """
-        print(f"Starting manual import for series {series_id}")
-
-        # First, get the series to obtain quality profile and language profile
-        response = self._make_request("GET", f"/api/v3/series/{series_id}")
-        if not response.is_success:
-            print(f"Failed to get series {series_id}: {response.status_code}")
-            return False
-
-        response.json()  # Verify API response is valid JSON
-
-        # For each file, check which directory to scan
-        scanned_folders = set()
-        all_import_items = []
-
-        for file_path in files:
-            file_obj = Path(file_path)
-            folder_to_scan = str(file_obj.parent)
-
-            if folder_to_scan not in scanned_folders:
-                # Step 1: Scan the folder to get potential import decisions
-                params = {
-                    "folder": folder_to_scan,
-                    "filterExistingFiles": "true",
-                    "replaceExistingFiles": "false",
-                }
-
-                response = self._make_request(
-                    "GET", "/api/v3/manualimport", params=params
-                )
-                if not response.is_success:
-                    print(
-                        f"Failed to scan folder for manual import: "
-                        f"{response.status_code}"
-                    )
-                    print(f"Response: {response.text}")
-                    continue
-
-                potential_imports = response.json()
-
-                # Step 2: Filter for the files we want to import from this folder
-                for item in potential_imports:
-                    item_path = item.get("path", "")
-                    item_name = Path(item_path).name
-
-                    # Check if this item matches any of our target files
-                    if any(Path(f).name == item_name for f in files):
-                        # Check for rejections that would prevent import
-                        rejections = item.get("rejections", [])
-                        permanent_rejections = [
-                            r for r in rejections if r.get("type") == "permanent"
-                        ]
-
-                        if permanent_rejections:
-                            print(
-                                f"Item has permanent rejections: {permanent_rejections}"
-                            )
-                            # Skip items with permanent rejections that we can't handle
-                            continue
-
-                        all_import_items.append(item)
-
-                scanned_folders.add(folder_to_scan)
-
-        if not all_import_items:
-            print(
-                "No matching files found in scan results or all had "
-                "permanent rejections"
-            )
-            return False
-
-        # Step 3: Use the direct manual import API endpoint (POST)
-        response = self._make_request(
-            "POST", "/api/v3/manualimport", json=all_import_items
-        )
-        if response.status_code in (200, 201, 202):
-            return True
-        else:
-            print(f"Failed to execute manual import: {response.status_code}")
-            print(f"Response: {response.text}")
-            return False
 
     def get_episode_files(self, series_id: int) -> list[dict[str, Any]]:
         """Get episode files for a series to verify imports.

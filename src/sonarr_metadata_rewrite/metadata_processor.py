@@ -4,6 +4,10 @@ import logging
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
@@ -11,6 +15,7 @@ from sonarr_metadata_rewrite.models import (
     TmdbIds,
     TranslatedContent,
 )
+from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -22,6 +27,31 @@ class MetadataProcessor:
     def __init__(self, settings: Settings, translator: Translator):
         self.settings = settings
         self.translator = translator
+
+    def _parse_nfo_with_retry(self, nfo_path: Path) -> "ElementTree[ET.Element]":
+        """Parse NFO file with retry logic for incomplete/corrupt files.
+
+        Args:
+            nfo_path: Path to .nfo file to parse
+
+        Returns:
+            Parsed XML tree
+
+        Raises:
+            ET.ParseError: If file remains corrupt after retries
+            OSError: If file cannot be accessed after retries
+        """
+
+        @retry(
+            timeout=10.0,
+            interval=0.5,
+            log_interval=3.0,
+            exceptions=(ET.ParseError, OSError),
+        )
+        def parse_file() -> "ElementTree[ET.Element]":
+            return ET.parse(nfo_path)
+
+        return parse_file()
 
     def process_file(self, nfo_path: Path) -> ProcessResult:
         """Process a single .nfo file with complete translation workflow.
@@ -171,7 +201,7 @@ class MetadataProcessor:
             )
 
     def _extract_tmdb_ids(self, nfo_path: Path) -> TmdbIds | None:
-        """Extract TMDB IDs from .nfo XML file.
+        """Extract TMDB IDs from .nfo XML file with retry logic for incomplete files.
 
         Args:
             nfo_path: Path to .nfo file
@@ -179,7 +209,7 @@ class MetadataProcessor:
         Returns:
             TmdbIds object if found, None otherwise
         """
-        tree = ET.parse(nfo_path)
+        tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
         # Find TMDB uniqueid
@@ -241,7 +271,7 @@ class MetadataProcessor:
             tvshow_path = current_dir / "tvshow.nfo"
             if tvshow_path.exists() and tvshow_path.is_file():
                 try:
-                    tree = ET.parse(tvshow_path)
+                    tree = self._parse_nfo_with_retry(tvshow_path)
                     root = tree.getroot()
 
                     # Only process if it's actually a tvshow file
@@ -272,7 +302,7 @@ class MetadataProcessor:
         Returns:
             Tuple of (original_title, original_description)
         """
-        tree = ET.parse(nfo_path)
+        tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
         # Extract title
@@ -418,7 +448,7 @@ class MetadataProcessor:
         Raises:
             Exception: If write operation fails
         """
-        tree = ET.parse(nfo_path)
+        tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
         # Update title element

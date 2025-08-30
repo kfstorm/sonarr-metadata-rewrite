@@ -1,17 +1,18 @@
 """Simple container orchestrator agnostic container management."""
 
 import subprocess
-import threading
 from typing import Any
 
+from tests.integration.fixtures.base_process_manager import BaseProcessManager
 
-class ContainerManager:
+
+class ContainerManager(BaseProcessManager):
     """Simple container manager that works with podman, docker, or any OCI runtime."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.runtime = self._detect_runtime()
-        self.containers: list[str] = []
-        self.processes: dict[str, subprocess.Popen[str]] = {}
+        self.container_name: str | None = None
 
     def _detect_runtime(self) -> str:
         """Detect available container runtime."""
@@ -48,6 +49,8 @@ class ContainerManager:
             environment: Environment variables
             extra_args: Additional arguments to pass to container run
         """
+        if self.process is not None:
+            raise RuntimeError("A container is already running")
         cmd = [self.runtime, "run", "--rm", "--name", name]
 
         # Add port mappings
@@ -71,61 +74,34 @@ class ContainerManager:
 
         cmd.append(image)
 
-        # Log the complete command before execution
-        cmd_str = " ".join(cmd)
-        print(f"Running container command: {cmd_str}")
+        # Start the container process using base class
+        self._start_process(cmd)
+        self.container_name = name
 
-        # Run container in foreground mode with output streaming
-        try:
-            print(f"Starting container: {name}")
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
-            self.processes[name] = process
-            self.containers.append(name)
+    def start_streaming(self) -> None:
+        """Start output streaming for the container."""
+        if self.process is None:
+            raise ValueError("No container is running")
 
-            # Start thread to stream output
-            def stream_output() -> None:
-                if process.stdout:
-                    for line in iter(process.stdout.readline, ""):
-                        if line:
-                            print(f"[{name}] {line.rstrip()}")
-                    process.stdout.close()
-
-            thread = threading.Thread(target=stream_output, daemon=True)
-            thread.start()
-
-        except Exception as e:
-            error_msg = f"Container run failed:\nCommand: {cmd_str}\nError: {e}"
-            raise RuntimeError(error_msg) from e
+        self.enable_output_streaming()
 
     def cleanup(self) -> None:
-        """Stop and remove all managed containers."""
-        # Terminate all processes
-        for _name, process in self.processes.items():
-            try:
-                process.terminate()
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+        """Stop and remove the managed container."""
+        # Stop the process using base class method
+        self.stop()
 
-        # Force remove any remaining containers
-        for name in self.containers:
+        # Force remove any remaining container
+        if self.container_name:
             try:
                 subprocess.run(
-                    [self.runtime, "rm", "-f", name], capture_output=True, timeout=10
+                    [self.runtime, "rm", "-f", self.container_name],
+                    capture_output=True,
+                    timeout=10,
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 pass
 
-        self.containers.clear()
-        self.processes.clear()
+        self.container_name = None
 
     def __enter__(self) -> "ContainerManager":
         return self
