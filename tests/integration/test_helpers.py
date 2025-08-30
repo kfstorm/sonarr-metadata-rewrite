@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.fixtures.subprocess_service_manager import (
@@ -56,7 +57,7 @@ def create_fake_episode_file(
 
 def retry(
     timeout: float = 15.0, interval: float = 0.5, log_interval: float = 2.0
-) -> Callable[[Callable[[], None]], Callable[[], None]]:
+) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
     """Retry decorator that catches any exception and retries until timeout.
 
     Args:
@@ -68,16 +69,16 @@ def retry(
         Decorator function
     """
 
-    def decorator(func: Callable[[], None]) -> Callable[[], None]:
-        def wrapper() -> None:
+    def decorator(func: Callable[[], Any]) -> Callable[[], Any]:
+        def wrapper() -> Any:
             start_time = time.time()
             last_log = 0.0
             last_error = None
 
             while time.time() - start_time < timeout:
                 try:
-                    func()
-                    return  # Success
+                    result = func()
+                    return result  # Success, return the result
                 except Exception as e:
                     last_error = e
 
@@ -121,21 +122,16 @@ def wait_for_nfo_files(
     )
 
     @retry(timeout=timeout, interval=0.5, log_interval=1.0)
-    def check_nfo_files() -> None:
-        nfo_files = list(series_path.rglob("*.nfo"))
-        if len(nfo_files) >= expected_count:
-            print(f"Found {len(nfo_files)} .nfo files: {nfo_files}")
-        else:
-            assert len(nfo_files) >= expected_count, (
-                f"Expected {expected_count} .nfo files, but only found "
-                f"{len(nfo_files)} in {series_path}. Files found: {nfo_files}"
-            )
+    def check_nfo_files() -> list[Path]:
+        nfo_files = find_nfo_files(series_path)
+        assert len(nfo_files) == expected_count, (
+            f"Expected exactly {expected_count} .nfo files, but found "
+            f"{len(nfo_files)} in {series_path}. Files found: {nfo_files}"
+        )
+        print(f"Found {len(nfo_files)} .nfo files: {nfo_files}")
+        return sorted(nfo_files)
 
-    check_nfo_files()
-
-    # Wait a bit more to ensure files are fully written
-    time.sleep(0.5)
-    return sorted(series_path.rglob("*.nfo"))
+    return check_nfo_files()
 
 
 def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
