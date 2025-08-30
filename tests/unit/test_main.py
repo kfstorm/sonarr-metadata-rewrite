@@ -1,6 +1,7 @@
 """Unit tests for main CLI module."""
 
 import os
+import re
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -58,7 +59,6 @@ class TestCli:
         assert result.exit_code == 0
         assert "version" in result.output
         # Version format should be semantic version or dev version
-        import re
 
         # Check for either semantic version (x.y.z) or development version
         version_patterns = [
