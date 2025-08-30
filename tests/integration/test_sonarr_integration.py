@@ -16,18 +16,6 @@ BREAKING_BAD_TVDB_ID = 81189
 MING_DYNASTY_TVDB_ID = 300635
 
 
-def trigger_file_monitor_events(nfo_files: list[Path]) -> None:
-    """Trigger file monitor events by touching NFO files.
-
-    Args:
-        nfo_files: List of NFO files to touch
-    """
-    print(f"Triggering file monitor events for {len(nfo_files)} files...")
-    for i, nfo_file in enumerate(nfo_files):
-        print(f"Touching file {i + 1}/{len(nfo_files)}: {nfo_file}")
-        nfo_file.touch()
-
-
 @pytest.mark.integration
 @pytest.mark.slow
 def test_file_monitor_workflow(
@@ -37,18 +25,17 @@ def test_file_monitor_workflow(
     """Test file monitor-only workflow with real-time NFO file processing.
 
     This test verifies that the file monitor component can detect and process
-    NFO files in real-time when they are modified (touched).
+    NFO files in real-time when they are created by Sonarr.
     """
-    with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, BREAKING_BAD_TVDB_ID
-    ) as nfo_files:
-        with ServiceRunner(
-            temp_media_root,
-            {"ENABLE_FILE_SCANNER": "false"},
-            startup_pattern="File monitor started",
-        ):
-            # Service startup waits for "File monitor started" log, so no sleep needed
-            trigger_file_monitor_events(nfo_files)
+    with ServiceRunner(
+        temp_media_root,
+        {"ENABLE_FILE_SCANNER": "false"},
+        startup_pattern="File monitor started",
+    ):
+        # Service startup waits for "File monitor started" log, so no sleep needed
+        with SeriesWithNfos(
+            configured_sonarr_container, temp_media_root, BREAKING_BAD_TVDB_ID
+        ) as nfo_files:
             verify_translations(nfo_files, expect_chinese=True)
 
 
