@@ -14,6 +14,7 @@ from tests.integration.test_helpers import (
 # Series TVDB IDs for testing
 BREAKING_BAD_TVDB_ID = 81189
 MING_DYNASTY_TVDB_ID = 300635
+EVERY_TREASURE_TELLS_A_STORY_TVDB_ID = 364698
 
 
 @pytest.mark.integration
@@ -95,22 +96,28 @@ def test_rollback_service_mode(
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_translation_fallback_for_empty_titles(
+@pytest.mark.parametrize(
+    "tvdb_id",
+    [
+        # Translation fallback when preferred language has empty titles (issue #26).
+        # Tests Chinese series "大明王朝1566" where some Chinese translations have
+        # empty titles but valid descriptions, requiring fallback to complete.
+        MING_DYNASTY_TVDB_ID,
+        # External ID lookup workflow using TVDB ID to find TMDB ID (issue #29).
+        # Tests "Every Treasure Tells a Story" series (TVDB: 364698 -> TMDB: 86965)
+        # to verify TMDB ID resolution from TVDB ID when direct TMDB ID unavailable.
+        EVERY_TREASURE_TELLS_A_STORY_TVDB_ID,
+    ],
+    ids=["translation-fallback", "external-id-lookup"],
+)
+def test_advanced_translation_scenarios(
     temp_media_root: Path,
     configured_sonarr_container: SonarrClient,
+    tvdb_id: int,
 ) -> None:
-    """Test translation fallback when preferred language has empty titles.
-
-    This test verifies the original language detection feature (issue #26) that
-    correctly handles series with incomplete preferred language translations by
-    falling back to the original language when titles are empty.
-
-    Specifically tests Chinese series "大明王朝1566" where some Chinese translations
-    have empty titles but valid descriptions, requiring fallback to complete
-    translations.
-    """
+    """Test advanced translation scenarios that require special handling."""
     with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, MING_DYNASTY_TVDB_ID
+        configured_sonarr_container, temp_media_root, tvdb_id
     ) as nfo_files:
         with ServiceRunner(temp_media_root, {}):
             verify_translations(nfo_files, expect_chinese=True)
