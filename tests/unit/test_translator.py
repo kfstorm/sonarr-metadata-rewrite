@@ -142,7 +142,7 @@ def test_get_translations_series_success(
     translations = translator.get_translations(tmdb_ids)
 
     # Verify API call
-    mock_get.assert_called_once_with("/tv/12345/translations")
+    mock_get.assert_called_once_with("/tv/12345/translations", params=None)
 
     # Verify parsed translations
     assert isinstance(translations, dict)
@@ -185,7 +185,9 @@ def test_get_translations_episode_success(
     translations = translator.get_translations(tmdb_ids)
 
     # Verify API call with correct endpoint
-    mock_get.assert_called_once_with("/tv/12345/season/1/episode/2/translations")
+    mock_get.assert_called_once_with(
+        "/tv/12345/season/1/episode/2/translations", params=None
+    )
 
     # Verify parsed translations
     assert isinstance(translations, dict)
@@ -619,3 +621,180 @@ def test_rate_limit_preserves_cache_on_failure(
 
     # Cache should still be empty (no partial data stored)
     assert cache_key not in translator.cache
+
+
+@pytest.fixture
+def mock_find_tvdb_response() -> dict[str, Any]:
+    """Mock TMDB find by TVDB ID API response."""
+    return {
+        "movie_results": [],
+        "person_results": [],
+        "tv_results": [
+            {
+                "id": 1396,
+                "name": "Breaking Bad",
+                "original_name": "Breaking Bad",
+                "overview": "A high school chemistry teacher...",
+                "first_air_date": "2008-01-20",
+            }
+        ],
+        "tv_episode_results": [],
+        "tv_season_results": [],
+    }
+
+
+@pytest.fixture
+def mock_find_imdb_response() -> dict[str, Any]:
+    """Mock TMDB find by IMDB ID API response."""
+    return {
+        "movie_results": [],
+        "person_results": [],
+        "tv_results": [
+            {
+                "id": 2316,
+                "name": "The Office",
+                "original_name": "The Office",
+                "overview": "The everyday lives of office employees...",
+                "first_air_date": "2005-03-24",
+            }
+        ],
+        "tv_episode_results": [],
+        "tv_season_results": [],
+    }
+
+
+def test_find_tmdb_id_by_external_id_tvdb_success(
+    translator: Translator, mock_find_tvdb_response: dict[str, Any]
+) -> None:
+    """Test successful TVDB to TMDB ID lookup."""
+    with patch.object(translator.client, "get") as mock_get:
+        # Mock successful API response
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = mock_find_tvdb_response
+        mock_get.return_value = mock_response
+
+        # Call the method
+        result = translator.find_tmdb_id_by_external_id("81189", "tvdb_id")
+
+        # Verify result
+        assert result == 1396
+
+        # Verify API call
+        mock_get.assert_called_once_with(
+            "/find/81189", params={"external_source": "tvdb_id"}
+        )
+
+
+def test_find_tmdb_id_by_external_id_imdb_success(
+    translator: Translator, mock_find_imdb_response: dict[str, Any]
+) -> None:
+    """Test successful IMDB to TMDB ID lookup."""
+    with patch.object(translator.client, "get") as mock_get:
+        # Mock successful API response
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = mock_find_imdb_response
+        mock_get.return_value = mock_response
+
+        # Call the method
+        result = translator.find_tmdb_id_by_external_id("tt0386676", "imdb_id")
+
+        # Verify result
+        assert result == 2316
+
+        # Verify API call
+        mock_get.assert_called_once_with(
+            "/find/tt0386676", params={"external_source": "imdb_id"}
+        )
+
+
+def test_find_tmdb_id_by_external_id_no_results(translator: Translator) -> None:
+    """Test external ID lookup with no TV results."""
+    empty_response: dict[str, Any] = {
+        "movie_results": [],
+        "person_results": [],
+        "tv_results": [],  # Empty results
+        "tv_episode_results": [],
+        "tv_season_results": [],
+    }
+
+    with patch.object(translator.client, "get") as mock_get:
+        # Mock API response with no TV results
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = empty_response
+        mock_get.return_value = mock_response
+
+        # Call the method
+        result = translator.find_tmdb_id_by_external_id("999999", "tvdb_id")
+
+        # Verify result is None
+        assert result is None
+
+
+def test_find_tmdb_id_by_external_id_api_error(translator: Translator) -> None:
+    """Test external ID lookup with API error."""
+    with patch.object(translator.client, "get") as mock_get:
+        # Mock API error
+        mock_get.side_effect = httpx.HTTPError("API Error")
+
+        # Call the method
+        result = translator.find_tmdb_id_by_external_id("12345", "tvdb_id")
+
+        # Verify result is None
+        assert result is None
+
+
+def test_find_tmdb_id_by_external_id_caching(
+    translator: Translator, mock_find_tvdb_response: dict[str, Any]
+) -> None:
+    """Test external ID lookup caching behavior."""
+    with patch.object(translator.client, "get") as mock_get:
+        # Mock successful API response
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = mock_find_tvdb_response
+        mock_get.return_value = mock_response
+
+        # First call
+        result1 = translator.find_tmdb_id_by_external_id("81189", "tvdb_id")
+        assert result1 == 1396
+
+        # Second call - should use cache
+        result2 = translator.find_tmdb_id_by_external_id("81189", "tvdb_id")
+        assert result2 == 1396
+
+        # Verify only one API call was made
+        mock_get.assert_called_once()
+
+
+def test_find_tmdb_id_by_external_id_cache_negative_result(
+    translator: Translator,
+) -> None:
+    """Test that negative results are also cached."""
+    empty_response: dict[str, Any] = {
+        "movie_results": [],
+        "person_results": [],
+        "tv_results": [],
+        "tv_episode_results": [],
+        "tv_season_results": [],
+    }
+
+    with patch.object(translator.client, "get") as mock_get:
+        # Mock API response with no results
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = empty_response
+        mock_get.return_value = mock_response
+
+        # First call
+        result1 = translator.find_tmdb_id_by_external_id("999999", "tvdb_id")
+        assert result1 is None
+
+        # Second call - should use cache
+        result2 = translator.find_tmdb_id_by_external_id("999999", "tvdb_id")
+        assert result2 is None
+
+        # Verify only one API call was made
+        mock_get.assert_called_once()

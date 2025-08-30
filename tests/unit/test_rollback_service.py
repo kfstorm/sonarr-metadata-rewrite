@@ -6,17 +6,14 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.rollback_service import RollbackService
+from tests.conftest import create_test_settings
 
 
 def test_rollback_service_init(test_data_dir: Path) -> None:
     """Test RollbackService initialization."""
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=test_data_dir / "backups",
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
     )
     service = RollbackService(settings)
@@ -25,12 +22,10 @@ def test_rollback_service_init(test_data_dir: Path) -> None:
 
 def test_execute_rollback_no_backup_dir_configured(test_data_dir: Path) -> None:
     """Test rollback fails when backup directory is not configured."""
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=None,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        original_files_backup_dir=None,
     )
     service = RollbackService(settings)
 
@@ -43,12 +38,10 @@ def test_execute_rollback_backup_dir_not_exists(
 ) -> None:
     """Test rollback handles non-existent backup directory gracefully."""
     backup_dir = test_data_dir / "nonexistent_backups"
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=backup_dir,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
 
@@ -66,12 +59,10 @@ def test_execute_rollback_no_backup_files(
     backup_dir = test_data_dir / "empty_backups"
     backup_dir.mkdir(exist_ok=True)
 
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=backup_dir,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
 
@@ -105,12 +96,11 @@ def test_execute_rollback_successful(
     original_file = original_show_dir / "tvshow.nfo"
     original_file.write_text("Translated content")
 
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=original_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=backup_dir,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        rewrite_root_dir=original_dir,
+        original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
 
@@ -143,12 +133,11 @@ def test_execute_rollback_missing_original_directory(
 
     # Note: We don't create the original show directory to simulate deleted show
 
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=original_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=backup_dir,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        rewrite_root_dir=original_dir,
+        original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
 
@@ -180,12 +169,11 @@ def test_restore_single_file_success(test_data_dir: Path) -> None:
     original_file = original_show_dir / "tvshow.nfo"
     original_file.write_text("Translated content")
 
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=original_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=backup_dir,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        rewrite_root_dir=original_dir,
+        original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
 
@@ -210,12 +198,11 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
     backup_file = backup_show_dir / "tvshow.nfo"
     backup_file.write_text("Original content")
 
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=original_dir,
-        preferred_languages="zh-CN",
-        original_files_backup_dir=backup_dir,
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
+        rewrite_root_dir=original_dir,
+        original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
 
@@ -228,10 +215,8 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
 def test_hang_after_completion_keyboard_interrupt(mock_sleep: Mock) -> None:
     """Test hang_after_completion handles KeyboardInterrupt gracefully."""
     test_data_dir = Path("/tmp")
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
     )
     service = RollbackService(settings)
@@ -249,10 +234,8 @@ def test_hang_after_completion_keyboard_interrupt(mock_sleep: Mock) -> None:
 def test_hang_after_completion_runs_indefinitely(mock_sleep: Mock) -> None:
     """Test hang_after_completion runs indefinitely without interruption."""
     test_data_dir = Path("/tmp")
-    settings = Settings(
-        tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+    settings = create_test_settings(
+        test_data_dir,
         service_mode="rollback",
     )
     service = RollbackService(settings)

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
+    MetadataInfo,
     ProcessResult,
     TmdbIds,
     TranslatedContent,
@@ -63,9 +64,13 @@ class MetadataProcessor:
             ProcessResult with success status and details
         """
         tmdb_ids = None
+        metadata_info = None
         try:
-            # Extract TMDB IDs from .nfo file
-            tmdb_ids = self._extract_tmdb_ids(nfo_path)
+            # Extract all metadata in single parse (including content for comparison)
+            metadata_info = self._extract_metadata_info(nfo_path)
+
+            # Build TMDB IDs from parsed metadata using hierarchical resolution
+            tmdb_ids = self._build_tmdb_ids_from_metadata(metadata_info, nfo_path)
             if not tmdb_ids:
                 return ProcessResult(
                     success=False,
@@ -81,9 +86,10 @@ class MetadataProcessor:
             # Apply language preferences to find best translation
             selected_translation = self._select_preferred_translation(all_translations)
             if selected_translation:
-                # Check if content already matches the selected translation
-                current_title, current_description = self._extract_original_content(
-                    nfo_path
+                # Check if content matches selected translation (use cached)
+                current_title, current_description = (
+                    metadata_info.title,
+                    metadata_info.description,
                 )
 
                 if (
@@ -105,11 +111,15 @@ class MetadataProcessor:
 
             if not selected_translation:
                 # No preferred translation found - try to revert to original backup
-                original_content = self._get_original_content_from_backup(nfo_path)
-                if original_content:
-                    original_title, original_description = original_content
-                    current_title, current_description = self._extract_original_content(
-                        nfo_path
+                original_metadata = self._get_backup_metadata_info(nfo_path)
+                if original_metadata:
+                    original_title, original_description = (
+                        original_metadata.title,
+                        original_metadata.description,
+                    )
+                    current_title, current_description = (
+                        metadata_info.title,
+                        metadata_info.description,
                     )
 
                     # Only revert if current content is different from original
@@ -170,14 +180,16 @@ class MetadataProcessor:
 
             # Apply fallback logic for empty translation fields
             selected_translation = self._apply_fallback_to_translation(
-                nfo_path, selected_translation
+                metadata_info, selected_translation
             )
 
             # Create backup if enabled
             backup_created = self._backup_original(nfo_path)
 
-            # Write translated metadata
-            self._write_translated_metadata(nfo_path, selected_translation)
+            # Write translated metadata using cached XML tree
+            self._write_translated_metadata_with_tree(
+                metadata_info.xml_tree, nfo_path, selected_translation
+            )
 
             return ProcessResult(
                 success=True,
@@ -200,89 +212,108 @@ class MetadataProcessor:
                 selected_language=None,
             )
 
-    def _extract_tmdb_ids(self, nfo_path: Path) -> TmdbIds | None:
-        """Extract TMDB IDs from .nfo XML file with retry logic for incomplete files.
+    def _extract_metadata_info(self, nfo_path: Path) -> MetadataInfo:
+        """Extract all metadata information from NFO file in single parse.
 
         Args:
             nfo_path: Path to .nfo file
 
         Returns:
-            TmdbIds object if found, None otherwise
+            MetadataInfo object with all extracted data
         """
         tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
-        # Find TMDB uniqueid
-        tmdb_id = None
-        uniqueid_elements = root.findall('.//uniqueid[@type="tmdb"]')
-        if uniqueid_elements:
-            tmdb_id_text = uniqueid_elements[0].text
-            if tmdb_id_text and tmdb_id_text.strip():
-                tmdb_id = int(tmdb_id_text.strip())
+        # Determine file type from root tag
+        file_type = root.tag if root.tag in ("tvshow", "episodedetails") else "unknown"
 
-        # Determine if this is a series or episode file
-        if root.tag == "tvshow":
-            # Series file
-            if tmdb_id is None:
-                return None
-            return TmdbIds(series_id=tmdb_id)
-        elif root.tag == "episodedetails":
-            # Episode file - extract season and episode numbers first
+        info = MetadataInfo(file_type=file_type, xml_tree=tree)  # type: ignore[arg-type]
+
+        # Extract all uniqueid elements
+        for uniqueid in root.findall(".//uniqueid"):
+            id_type = uniqueid.get("type", "").lower()
+            id_value = uniqueid.text
+
+            if not id_value or not id_value.strip():
+                continue
+
+            if id_type == "tmdb":
+                info.tmdb_id = int(id_value.strip())
+            elif id_type == "tvdb":
+                info.tvdb_id = int(id_value.strip())
+            elif id_type == "imdb":
+                info.imdb_id = id_value.strip()
+
+        # Extract title
+        title_element = root.find("title")
+        if title_element is not None and title_element.text:
+            info.title = title_element.text.strip()
+
+        # Extract plot/description
+        plot_element = root.find("plot")
+        if plot_element is not None and plot_element.text:
+            info.description = plot_element.text.strip()
+
+        # For episode files, extract season/episode numbers
+        if file_type == "episodedetails":
             season_element = root.find("season")
             episode_element = root.find("episode")
 
-            if season_element is None or episode_element is None:
-                # Missing season/episode information
-                return None
+            if season_element is not None and season_element.text:
+                info.season = int(season_element.text.strip())
+            if episode_element is not None and episode_element.text:
+                info.episode = int(episode_element.text.strip())
 
-            season_text = season_element.text
-            episode_text = episode_element.text
-            if season_text is None or episode_text is None:
-                return None
+        return info
 
-            season = int(season_text.strip())
-            episode = int(episode_text.strip())
+    def _resolve_tmdb_id_with_metadata(
+        self, metadata_info: MetadataInfo, nfo_path: Path
+    ) -> int | None:
+        """Resolve TMDB ID using hierarchical strategy with pre-parsed metadata.
 
-            # If no TMDB ID in episode file, try to find it from parent tvshow.nfo
-            if tmdb_id is None:
-                tmdb_id = self._find_series_tmdb_id_from_parent(nfo_path)
-                if tmdb_id is None:
-                    return None
+        Args:
+            metadata_info: Already-parsed metadata information
+            nfo_path: Path to .nfo file (for hierarchical resolution if needed)
 
-            return TmdbIds(series_id=tmdb_id, season=season, episode=episode)
-        else:
-            # Unknown file type
-            return None
+        Returns:
+            TMDB series ID if found, None otherwise
+        """
+        # Tier 1: Direct TMDB ID (already checked in metadata_info)
+        if metadata_info.tmdb_id:
+            return metadata_info.tmdb_id
 
-    def _find_series_tmdb_id_from_parent(self, episode_nfo_path: Path) -> int | None:
-        """Find TMDB series ID from parent directory's tvshow.nfo file.
+        # Tier 2: For episode files, try parent recursively
+        parent_info = None
+        if metadata_info.file_type == "episodedetails":
+            parent_info = self._find_parent_metadata_info(nfo_path)
+            if parent_info and parent_info.tmdb_id:
+                return parent_info.tmdb_id
+
+        # Tier 3: External APIs
+        return self._resolve_via_external_apis(metadata_info, parent_info)
+
+    def _find_parent_metadata_info(self, episode_nfo_path: Path) -> MetadataInfo | None:
+        """Find and parse parent tvshow.nfo file for episode.
 
         Args:
             episode_nfo_path: Path to episode .nfo file
 
         Returns:
-            TMDB series ID if found, None otherwise
+            MetadataInfo of parent tvshow.nfo if found, None otherwise
         """
-        # Start from the episode file's directory and walk up to find tvshow.nfo
         current_dir = episode_nfo_path.parent
 
-        # Check up to 3 levels up to find tvshow.nfo (handles Season subdirectories)
+        # Check up to 3 levels up to find tvshow.nfo
         for _ in range(3):
             tvshow_path = current_dir / "tvshow.nfo"
             if tvshow_path.exists() and tvshow_path.is_file():
                 try:
-                    tree = self._parse_nfo_with_retry(tvshow_path)
-                    root = tree.getroot()
-
-                    # Only process if it's actually a tvshow file
-                    if root.tag == "tvshow":
-                        uniqueid_elements = root.findall('.//uniqueid[@type="tmdb"]')
-                        if uniqueid_elements:
-                            tmdb_id_text = uniqueid_elements[0].text
-                            if tmdb_id_text and tmdb_id_text.strip():
-                                return int(tmdb_id_text.strip())
+                    # Parse and extract metadata info
+                    metadata_info = self._extract_metadata_info(tvshow_path)
+                    if metadata_info.file_type == "tvshow":
+                        return metadata_info
                 except (ET.ParseError, ValueError, AttributeError):
-                    # Failed to parse or extract TMDB ID, continue searching
+                    # Failed to parse, continue searching
                     pass
 
             # Move up one directory level
@@ -293,39 +324,101 @@ class MetadataProcessor:
 
         return None
 
-    def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
-        """Extract original title and description from .nfo file.
+    def _resolve_via_external_apis(
+        self,
+        current_info: MetadataInfo,
+        parent_info: MetadataInfo | None,
+    ) -> int | None:
+        """Try to resolve TMDB ID using external APIs.
 
         Args:
-            nfo_path: Path to .nfo file
+            current_info: Metadata from current NFO file
+            parent_info: Metadata from parent NFO file (if applicable)
 
         Returns:
-            Tuple of (original_title, original_description)
+            TMDB series ID if found, None otherwise
         """
-        tree = self._parse_nfo_with_retry(nfo_path)
-        root = tree.getroot()
+        # Try current file's external IDs first
+        tmdb_id = self._try_external_id_lookup(current_info)
+        if tmdb_id:
+            return tmdb_id
 
-        # Extract title
-        original_title = ""
-        title_element = root.find("title")
-        if title_element is not None and title_element.text:
-            original_title = title_element.text.strip()
+        # For episode files, also try parent's external IDs
+        if parent_info:
+            tmdb_id = self._try_external_id_lookup(parent_info)
+            if tmdb_id:
+                # Don't write to current file since the ID belongs to parent
+                return tmdb_id
 
-        # Extract plot/description
-        original_description = ""
-        plot_element = root.find("plot")
-        if plot_element is not None and plot_element.text:
-            original_description = plot_element.text.strip()
+        return None
 
-        return original_title, original_description
+    def _try_external_id_lookup(self, info: MetadataInfo) -> int | None:
+        """Try to find TMDB ID using external IDs from metadata info.
+
+        Args:
+            info: MetadataInfo containing external IDs
+
+        Returns:
+            TMDB series ID if found, None otherwise
+        """
+        # Try TVDB ID first
+        if info.tvdb_id:
+            tmdb_id = self.translator.find_tmdb_id_by_external_id(
+                str(info.tvdb_id), "tvdb_id"
+            )
+            if tmdb_id:
+                return tmdb_id
+
+        # Try IMDB ID
+        if info.imdb_id:
+            tmdb_id = self.translator.find_tmdb_id_by_external_id(
+                info.imdb_id, "imdb_id"
+            )
+            if tmdb_id:
+                return tmdb_id
+
+        return None
+
+    def _build_tmdb_ids_from_metadata(
+        self, metadata_info: MetadataInfo, nfo_path: Path
+    ) -> TmdbIds | None:
+        """Build TmdbIds object from parsed metadata using hierarchical resolution.
+
+        Args:
+            metadata_info: Already-parsed metadata information
+            nfo_path: Path to the NFO file (for hierarchical resolution if needed)
+
+        Returns:
+            TmdbIds object if found, None otherwise
+        """
+        # Use hierarchical resolution (returns immediately if tmdb_id exists)
+        tmdb_series_id = self._resolve_tmdb_id_with_metadata(metadata_info, nfo_path)
+        if tmdb_series_id is None:
+            return None
+
+        # Build TmdbIds based on file type
+        if metadata_info.file_type == "tvshow":
+            return TmdbIds(series_id=tmdb_series_id)
+        elif metadata_info.file_type == "episodedetails":
+            if metadata_info.season is None or metadata_info.episode is None:
+                # Missing season/episode information
+                return None
+            return TmdbIds(
+                series_id=tmdb_series_id,
+                season=metadata_info.season,
+                episode=metadata_info.episode,
+            )
+
+        # Unknown file type
+        return None
 
     def _apply_fallback_to_translation(
-        self, nfo_path: Path, translation: TranslatedContent
+        self, metadata_info: MetadataInfo, translation: TranslatedContent
     ) -> TranslatedContent:
         """Apply fallback logic to translation with empty fields.
 
         Args:
-            nfo_path: Path to .nfo file to get original content from
+            metadata_info: Cached metadata information from NFO file
             translation: Selected translation that may have empty fields
 
         Returns:
@@ -339,7 +432,7 @@ class MetadataProcessor:
         # matches
         if not translation.title:
             original_title = self._get_original_title_if_language_matches(
-                nfo_path, translation.language
+                metadata_info, translation.language
             )
             if original_title:
                 # Use original title but keep the preferred language for reporting
@@ -347,7 +440,7 @@ class MetadataProcessor:
                 final_description = (
                     translation.description
                     if translation.description
-                    else self._extract_original_content(nfo_path)[1]
+                    else metadata_info.description
                 )
                 return TranslatedContent(
                     title=final_title,
@@ -355,13 +448,12 @@ class MetadataProcessor:
                     language=translation.language,
                 )
 
-        # Extract original content for standard fallback
-        original_title, original_description = self._extract_original_content(nfo_path)
-
-        # Apply fallback for empty fields
-        final_title = translation.title if translation.title else original_title
+        # Apply fallback using cached original content
+        final_title = translation.title if translation.title else metadata_info.title
         final_description = (
-            translation.description if translation.description else original_description
+            translation.description
+            if translation.description
+            else metadata_info.description
         )
 
         # Return new TranslatedContent with fallback applied
@@ -372,22 +464,28 @@ class MetadataProcessor:
         )
 
     def _get_original_title_if_language_matches(
-        self, nfo_path: Path, preferred_language: str
+        self, metadata_info: MetadataInfo, preferred_language: str
     ) -> str | None:
         """Get original title if original language matches preferred language family.
 
         Args:
-            nfo_path: Path to .nfo file to extract TMDB IDs from
+            metadata_info: Cached metadata information containing TMDB IDs
             preferred_language: The preferred language code (e.g., "zh-CN")
 
         Returns:
             Original title if language families match, None otherwise
         """
         try:
-            # Extract TMDB IDs to call the details API
-            tmdb_ids = self._extract_tmdb_ids(nfo_path)
-            if not tmdb_ids:
+            # Need TMDB ID for API call
+            if not metadata_info.tmdb_id:
                 return None
+
+            # Build TmdbIds object for API call
+            tmdb_ids = TmdbIds(
+                series_id=metadata_info.tmdb_id,
+                season=metadata_info.season,
+                episode=metadata_info.episode,
+            )
 
             # Get original language and title from TMDB Details API
             original_details = self.translator.get_original_details(tmdb_ids)
@@ -436,38 +534,45 @@ class MetadataProcessor:
         shutil.copy2(nfo_path, backup_path)
         return True
 
-    def _write_translated_metadata(
-        self, nfo_path: Path, translation: TranslatedContent
+    def _write_translated_metadata_with_tree(
+        self,
+        xml_tree: ET.ElementTree | None,
+        nfo_path: Path,
+        translation: TranslatedContent,
     ) -> None:
-        """Write translated metadata to .nfo file.
+        """Write translated metadata using cached XML tree.
 
         Args:
+            xml_tree: Cached XML tree from metadata extraction
             nfo_path: Path to .nfo file to update
             translation: Translated content
 
         Raises:
             Exception: If write operation fails
         """
-        tree = self._parse_nfo_with_retry(nfo_path)
-        root = tree.getroot()
+        if xml_tree is None:
+            raise ValueError("XML tree cannot be None")
+
+        root = xml_tree.getroot()
 
         # Update title element
-        title_element = root.find("title")
+        title_element = root.find("title")  # type: ignore[union-attr]
         if title_element is not None:
             title_element.text = translation.title
 
         # Update plot/description element
-        plot_element = root.find("plot")
+        plot_element = root.find("plot")  # type: ignore[union-attr]
         if plot_element is not None:
             plot_element.text = translation.description
 
         # Write the updated XML back to file atomically
-        # Use a temporary file to ensure atomic writes
         temp_path = nfo_path.with_suffix(".nfo.tmp")
         try:
             # Configure XML formatting
-            ET.indent(tree, space="  ", level=0)
-            tree.write(temp_path, encoding="utf-8", xml_declaration=True, method="xml")
+            ET.indent(xml_tree, space="  ", level=0)
+            xml_tree.write(
+                temp_path, encoding="utf-8", xml_declaration=True, method="xml"
+            )
 
             # Atomic replacement
             temp_path.replace(nfo_path)
@@ -494,17 +599,14 @@ class MetadataProcessor:
                 return all_translations[preferred_lang]
         return None
 
-    def _get_original_content_from_backup(
-        self, nfo_path: Path
-    ) -> tuple[str, str] | None:
-        """Get original content from backup file if available.
+    def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
+        """Get original metadata from backup file if available.
 
         Args:
             nfo_path: Path to current .nfo file
 
         Returns:
-            Tuple of (original_title, original_description) if backup exists,
-            None otherwise
+            MetadataInfo object if backup exists, None otherwise
         """
         if not self.settings.original_files_backup_dir:
             return None
@@ -515,7 +617,7 @@ class MetadataProcessor:
 
         if backup_path.exists():
             try:
-                return self._extract_original_content(backup_path)
+                return self._extract_metadata_info(backup_path)
             except Exception as e:
                 logger.warning(f"Failed to read backup file {backup_path}: {e}")
                 return None

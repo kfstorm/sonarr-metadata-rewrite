@@ -51,11 +51,14 @@ class Translator:
 
         return translations
 
-    def _fetch_with_retry(self, endpoint: str) -> dict[str, Any]:
+    def _fetch_with_retry(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Fetch data from TMDB API with exponential backoff retry for rate limits.
 
         Args:
             endpoint: API endpoint to fetch
+            params: Optional query parameters
 
         Returns:
             JSON response data
@@ -69,7 +72,7 @@ class Translator:
 
         for attempt in range(max_retries + 1):
             try:
-                response = self.client.get(endpoint)
+                response = self.client.get(endpoint, params=params)
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:
@@ -178,6 +181,49 @@ class Translator:
             # If API call fails, return None (will fall back to existing logic)
             pass
 
+        return None
+
+    def find_tmdb_id_by_external_id(
+        self, external_id: str, external_source: str
+    ) -> int | None:
+        """Find TMDB ID using external ID (TVDB or IMDB).
+
+        Args:
+            external_id: The external ID (e.g., TVDB or IMDB ID)
+            external_source: Source type ('tvdb_id' or 'imdb_id')
+
+        Returns:
+            TMDB series ID if found, None otherwise
+        """
+        cache_key = f"external_find:{external_source}:{external_id}"
+
+        # Check cache first
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        try:
+            # Use TMDB's find endpoint with external source
+            endpoint = f"/find/{external_id}"
+            params = {"external_source": external_source}
+
+            api_data = self._fetch_with_retry(endpoint, params)
+
+            # Look for TV results
+            tv_results = api_data.get("tv_results", [])
+            if tv_results:
+                tmdb_id = tv_results[0].get("id")
+                if tmdb_id:
+                    result = int(tmdb_id)
+                    # Store in cache with expiration
+                    self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
+                    return result
+
+        except Exception:
+            # If API call fails, return None
+            pass
+
+        # Cache negative result to avoid repeated API calls
+        self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
         return None
 
     def close(self) -> None:

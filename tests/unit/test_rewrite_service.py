@@ -1,6 +1,6 @@
 """Unit tests for rewrite service."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -106,8 +106,10 @@ def test_service_integration_processing_failure(
     rewrite_service: RewriteService,
     test_data_dir: Path,
     create_test_files: Callable[[str, Path], Path],
+    patch_fetch_with_retry: Generator[None, None, None],
 ) -> None:
     """Test integration: service handles processing failures through callback."""
+    # patch_fetch_with_retry fixture is used to mock HTTP requests
     test_path = create_test_files("no_tmdb_id.nfo", test_data_dir / "failure_test.nfo")
 
     # Directly call the callback (simulating file monitor/scanner trigger)
