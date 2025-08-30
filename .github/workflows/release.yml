@@ -153,7 +153,7 @@ jobs:
       DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
   update-docker-hub-description:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !failure() && !cancelled()
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
