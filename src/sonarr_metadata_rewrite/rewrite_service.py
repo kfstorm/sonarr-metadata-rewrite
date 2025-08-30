@@ -79,7 +79,7 @@ class RewriteService:
             nfo_path: Path to .nfo file to process
         """
         try:
-            logger.debug(f"Processing file: {nfo_path}")
+            logger.info(f"📄 Processing file: {nfo_path}")
 
             # Process the file through MetadataProcessor
             result = self.metadata_processor.process_file(nfo_path)

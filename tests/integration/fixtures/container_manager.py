@@ -1,17 +1,18 @@
 """Simple container orchestrator agnostic container management."""
 
 import subprocess
-import threading
 from typing import Any
 
+from tests.integration.fixtures.base_process_manager import BaseProcessManager
 
-class ContainerManager:
+
+class ContainerManager(BaseProcessManager):
     """Simple container manager that works with podman, docker, or any OCI runtime."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.runtime = self._detect_runtime()
         self.containers: list[str] = []
-        self.processes: dict[str, subprocess.Popen[str]] = {}
 
     def _detect_runtime(self) -> str:
         """Detect available container runtime."""
@@ -71,49 +72,21 @@ class ContainerManager:
 
         cmd.append(image)
 
-        # Log the complete command before execution
-        cmd_str = " ".join(cmd)
-        print(f"Running container command: {cmd_str}")
+        # Start the container process using base class
+        self._start_process(name, cmd)
+        self.containers.append(name)
 
-        # Run container in foreground mode with output streaming
-        try:
-            print(f"Starting container: {name}")
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
-            self.processes[name] = process
-            self.containers.append(name)
+    def start_streaming(self, name: str) -> None:
+        """Start output streaming for a specific container."""
+        if name not in self.processes:
+            raise ValueError(f"Container {name} not found")
 
-            # Start thread to stream output
-            def stream_output() -> None:
-                if process.stdout:
-                    for line in iter(process.stdout.readline, ""):
-                        if line:
-                            print(f"[{name}] {line.rstrip()}")
-                    process.stdout.close()
-
-            thread = threading.Thread(target=stream_output, daemon=True)
-            thread.start()
-
-        except Exception as e:
-            error_msg = f"Container run failed:\nCommand: {cmd_str}\nError: {e}"
-            raise RuntimeError(error_msg) from e
+        self.enable_output_streaming()
 
     def cleanup(self) -> None:
         """Stop and remove all managed containers."""
-        # Terminate all processes
-        for _name, process in self.processes.items():
-            try:
-                process.terminate()
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+        # Stop all processes using base class method
+        self._stop_all_processes()
 
         # Force remove any remaining containers
         for name in self.containers:
@@ -125,7 +98,6 @@ class ContainerManager:
                 pass
 
         self.containers.clear()
-        self.processes.clear()
 
     def __enter__(self) -> "ContainerManager":
         return self

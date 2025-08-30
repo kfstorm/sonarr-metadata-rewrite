@@ -107,6 +107,9 @@ def sonarr_container(
     if not client.wait_for_ready(max_attempts=30, delay=1.0):
         raise RuntimeError("Sonarr failed to become ready within 30 seconds")
 
+    # Only start streaming output after Sonarr is confirmed ready
+    container_manager.start_streaming(container_name)
+
     try:
         yield client
     finally:

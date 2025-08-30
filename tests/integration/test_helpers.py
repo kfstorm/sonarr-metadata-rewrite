@@ -211,11 +211,11 @@ class SeriesWithNfos:
         self.episodes = episodes or [("Episode 1", 1, 1), ("Episode 2", 1, 2)]
         self.series: SeriesManager | None = None
 
-    def __enter__(self) -> tuple[list[Path], int]:
+    def __enter__(self) -> list[Path]:
         """Set up series and return series info.
 
         Returns:
-            Tuple of (nfo_files, series_id)
+            List of NFO file paths
         """
         self.series = SeriesManager(self.sonarr, self.tvdb_id, "/tv", self.media_root)
         self.series.__enter__()
@@ -234,36 +234,17 @@ class SeriesWithNfos:
         if not scan_success:
             raise RuntimeError("Failed to trigger disk scan")
 
-        # Wait for disk scan to complete
-        time.sleep(10)
+        # Wait for disk scan to complete and import files
+        @retry(timeout=15.0, interval=1.0, log_interval=2.0)
+        def check_disk_scan_complete() -> None:
+            assert self.series is not None
+            imported_files = self.sonarr.get_episode_files(self.series.id)
+            assert len(imported_files) >= len(episode_files), (
+                f"Disk scan still in progress: expected {len(episode_files)} "
+                f"episode files, but only {len(imported_files)} imported so far"
+            )
 
-        # Check if disk scan already imported the files
-        imported_files = self.sonarr.get_episode_files(self.series.id)
-
-        # Only do manual import if disk scan didn't import the files
-        if len(imported_files) < len(episode_files):
-            # Convert host paths to container paths for manual import
-            container_paths = []
-            for episode_file in episode_files:
-                relative_path = episode_file.relative_to(self.media_root)
-                container_path = f"/tv/{relative_path}"
-                container_paths.append(container_path)
-
-            import_success = self.sonarr.manual_import(self.series.id, container_paths)
-            if not import_success:
-                raise RuntimeError("Failed to manually import episode files")
-
-            # Verify that episode files were imported
-            @retry(timeout=15.0, interval=1.0, log_interval=2.0)
-            def check_import_complete() -> None:
-                assert self.series is not None
-                imported_files = self.sonarr.get_episode_files(self.series.id)
-                assert len(imported_files) >= len(episode_files), (
-                    f"Manual import verification failed: expected {len(episode_files)} "
-                    f"episode files, but only {len(imported_files)} were imported"
-                )
-
-            check_import_complete()
+        check_disk_scan_complete()
 
         # Trigger metadata refresh to ensure .nfo files are generated
         metadata_success = self.sonarr.refresh_series(self.series.id)
@@ -274,7 +255,7 @@ class SeriesWithNfos:
         expected_nfo_count = len(episode_files) + 1  # episodes + series
         nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
 
-        return nfo_files, self.series.id
+        return nfo_files
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Clean up series."""
@@ -289,7 +270,6 @@ class ServiceRunner:
         self,
         temp_media_root: Path,
         service_config: dict[str, str],
-        startup_wait: float = 2.0,
     ):
         # Base configuration
         env_overrides = {
@@ -303,12 +283,9 @@ class ServiceRunner:
         env_overrides.update(service_config)
 
         self.service = SubprocessServiceManager(env_overrides=env_overrides)
-        self.startup_wait = startup_wait
 
     def __enter__(self) -> SubprocessServiceManager:
         self.service.start()
-        if self.service.is_running():
-            time.sleep(self.startup_wait)
         return self.service
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
