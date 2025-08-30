@@ -332,7 +332,6 @@ def test_process_file_multiple_preferred_languages_first_match(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test that first available preferred language is selected."""
-
     # Setup settings with multiple preferred languages
     settings = create_test_settings(
         test_data_dir,
@@ -367,7 +366,6 @@ def test_process_file_multiple_preferred_languages_no_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when none of the preferred languages are available."""
-
     # Setup settings with preferred languages that don't match available translations
     settings = create_test_settings(
         test_data_dir,
@@ -402,7 +400,6 @@ def test_process_file_multiple_preferred_languages_partial_matches(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when some but not all preferred languages are available."""
-
     # Setup settings with mixed preferred languages (some available, some not)
     settings = create_test_settings(
         test_data_dir,

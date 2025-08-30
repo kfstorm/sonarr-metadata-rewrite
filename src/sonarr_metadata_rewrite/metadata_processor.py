@@ -4,6 +4,10 @@ import logging
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
@@ -12,6 +16,7 @@ from sonarr_metadata_rewrite.models import (
     TmdbIds,
     TranslatedContent,
 )
+from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -23,6 +28,31 @@ class MetadataProcessor:
     def __init__(self, settings: Settings, translator: Translator):
         self.settings = settings
         self.translator = translator
+
+    def _parse_nfo_with_retry(self, nfo_path: Path) -> "ElementTree[ET.Element]":
+        """Parse NFO file with retry logic for incomplete/corrupt files.
+
+        Args:
+            nfo_path: Path to .nfo file to parse
+
+        Returns:
+            Parsed XML tree
+
+        Raises:
+            ET.ParseError: If file remains corrupt after retries
+            OSError: If file cannot be accessed after retries
+        """
+
+        @retry(
+            timeout=10.0,
+            interval=0.5,
+            log_interval=3.0,
+            exceptions=(ET.ParseError, OSError),
+        )
+        def parse_file() -> "ElementTree[ET.Element]":
+            return ET.parse(nfo_path)
+
+        return parse_file()
 
     def process_file(self, nfo_path: Path) -> ProcessResult:
         """Process a single .nfo file with complete translation workflow.
@@ -188,7 +218,7 @@ class MetadataProcessor:
         Returns:
             MetadataInfo object with all extracted data
         """
-        tree = ET.parse(nfo_path)
+        tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
         # Determine file type from root tag
@@ -388,7 +418,7 @@ class MetadataProcessor:
         Returns:
             Tuple of (original_title, original_description)
         """
-        tree = ET.parse(nfo_path)
+        tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
         # Extract title

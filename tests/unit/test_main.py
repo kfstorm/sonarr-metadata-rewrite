@@ -1,6 +1,7 @@
 """Unit tests for main CLI module."""
 
 import os
+import re
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -58,14 +59,16 @@ class TestCli:
         assert result.exit_code == 0
         assert "version" in result.output
         # Version format should be semantic version or dev version
+
+        # Check for either semantic version (x.y.z) or development version
+        version_patterns = [
+            r"version \d+\.\d+\.\d+",  # Semantic version like "version 1.0.2"
+            r"dev",  # Development version
+            r"\+g[0-9a-f]+",  # Git commit hash in version
+        ]
         assert any(
-            pattern in result.output
-            for pattern in [
-                "version 0.",
-                "dev",
-                "+g",
-            ]  # Covers both release and dev versions
-        )
+            re.search(pattern, result.output) for pattern in version_patterns
+        ), f"Version output '{result.output.strip()}' doesn't match expected patterns"
 
     def test_cli_help(self) -> None:
         """Test CLI help option."""

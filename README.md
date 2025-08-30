@@ -276,20 +276,6 @@ restart loops. Stop it manually when done:
 docker stop sonarr-metadata-rewrite
 ```
 
-### Manual Restore (Alternative)
-
-If you prefer to restore manually or don't have backups:
-
-1. **Stop the container first** to prevent re-translation:
-
-   ```bash
-   docker stop sonarr-metadata-rewrite
-   ```
-
-2. Delete the translated .nfo files from your TV show directories
-3. Go to Sonarr > Series > Update All
-4. Sonarr will regenerate the original English .nfo files
-
 ## Development
 
 Want to hack on this? Cool!

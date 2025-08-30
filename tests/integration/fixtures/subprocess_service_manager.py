@@ -2,40 +2,40 @@
 
 import os
 import shutil
-import subprocess
 import tempfile
-import time
 from pathlib import Path
 from typing import Any
 
+from tests.integration.fixtures.base_process_manager import BaseProcessManager
 
-class SubprocessServiceManager:
+
+class SubprocessServiceManager(BaseProcessManager):
     """Manages the metadata rewrite service as a subprocess for integration testing."""
 
     def __init__(
         self,
         env_overrides: dict[str, str],
+        startup_pattern: str | None = None,
     ):
         """Initialize subprocess service manager.
 
         Args:
             env_overrides: Environment variables. Must include REWRITE_ROOT_DIR.
+            startup_pattern: Optional log pattern to wait for before considering
+                service started.
         """
+        super().__init__()
+
         if "REWRITE_ROOT_DIR" not in env_overrides:
             raise ValueError("REWRITE_ROOT_DIR must be specified in env_overrides")
 
         self.env_overrides = env_overrides
         self.media_root = Path(env_overrides["REWRITE_ROOT_DIR"])
-
-        self.process: subprocess.Popen[str] | None = None
         self.temp_dirs: list[Path] = []
+        self.startup_pattern = startup_pattern
 
-    def start(self, timeout: float = 10.0) -> None:
-        """Start the service subprocess.
-
-        Args:
-            timeout: Maximum time to wait for service startup
-        """
+    def start(self) -> None:
+        """Start the service subprocess."""
         if self.process is not None:
             raise RuntimeError("Service is already running")
 
@@ -69,26 +69,16 @@ class SubprocessServiceManager:
         # Apply user-provided overrides (includes REWRITE_ROOT_DIR)
         env.update(self.env_overrides)
 
-        # Start the service subprocess
+        # Start the service subprocess using base class
         cmd = ["uv", "run", "sonarr-metadata-rewrite"]
-        print(f"Starting service subprocess: {' '.join(cmd)}")
         print(f"Environment overrides: {self.env_overrides}")
 
+        # Enable output streaming by default to show service logs
+        self.enable_output_streaming()
+
         try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                env=env,
-                bufsize=1,
-                universal_newlines=True,
-            )
-
-            # Wait for service to start successfully
-            self._wait_for_startup(timeout)
-            print("Service subprocess started successfully")
-
+            # Wait for startup pattern if specified
+            self._start_process(cmd, env, self.startup_pattern, startup_timeout=15.0)
         except Exception as e:
             self._cleanup()
             raise RuntimeError(f"Failed to start service subprocess: {e}") from e
@@ -102,78 +92,9 @@ class SubprocessServiceManager:
         if self.process is None:
             return
 
-        print("Stopping service subprocess...")
-
-        try:
-            # Send SIGTERM for graceful shutdown
-            self.process.terminate()
-
-            # Wait for graceful shutdown
-            try:
-                self.process.wait(timeout=timeout)
-                print("Service subprocess stopped gracefully")
-            except subprocess.TimeoutExpired:
-                print("Graceful shutdown timeout, forcing kill...")
-                self.process.kill()
-                self.process.wait()
-                print("Service subprocess killed")
-
-        except Exception as e:
-            print(f"Error stopping subprocess: {e}")
-            try:
-                self.process.kill()
-                self.process.wait()
-            except Exception:
-                pass
-
-        finally:
-            self.process = None
-            self._cleanup()
-
-    def is_running(self) -> bool:
-        """Check if the service subprocess is still running."""
-        return self.process is not None and self.process.poll() is None
-
-    def _wait_for_startup(self, timeout: float) -> None:
-        """Wait for service to start up successfully.
-
-        Args:
-            timeout: Maximum time to wait for startup
-        """
-        start_time = time.time()
-        startup_success = False
-
-        while time.time() - start_time < timeout:
-            if self.process is None:
-                break
-
-            # Check if process is still running
-            if self.process.poll() is not None:
-                # Process has exited
-                stdout, stderr = self.process.communicate()
-                error_output = (
-                    f"stdout: {stdout}\nstderr: {stderr}" if stderr else stdout
-                )
-                raise RuntimeError(
-                    f"Service subprocess exited during startup: {error_output}"
-                )
-
-            # Check for startup success indicators in logs
-            try:
-                if self.process.stdout:
-                    line = self.process.stdout.readline()
-                    if line:
-                        print(f"[service] {line.rstrip()}")
-                        if "Service started successfully" in line:
-                            startup_success = True
-                            break
-            except Exception:
-                pass
-
-            time.sleep(0.1)
-
-        if not startup_success:
-            raise RuntimeError("Service subprocess failed to start within timeout")
+        # Stop the service process using base class method
+        super().stop(timeout)
+        self._cleanup()
 
     def _cleanup(self) -> None:
         """Clean up temporary directories and resources."""

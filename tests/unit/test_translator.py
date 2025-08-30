@@ -596,8 +596,9 @@ def test_rate_limit_exponential_backoff_max_delay(
 
 
 @patch("httpx.Client.get")
+@patch("time.sleep")
 def test_rate_limit_preserves_cache_on_failure(
-    mock_get: Mock, translator: Translator
+    mock_sleep: Mock, mock_get: Mock, translator: Translator
 ) -> None:
     """Test that rate limit failures don't corrupt cache."""
     # Rate limit error for all attempts
