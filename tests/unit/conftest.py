@@ -4,10 +4,14 @@ import time
 import xml.etree.ElementTree as ET
 from collections.abc import Generator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
+
+import sonarr_metadata_rewrite.metadata_processor
+import sonarr_metadata_rewrite.translator
+from sonarr_metadata_rewrite.retry_utils import retry
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import ElementTree
@@ -35,13 +39,10 @@ def patch_time_sleep() -> Generator[None, None, None]:
 @pytest.fixture(autouse=True)
 def patch_retry_timeout() -> Generator[None, None, None]:
     """Reduce retry timeout for unit tests to speed up failure cases."""
-    import sonarr_metadata_rewrite.metadata_processor
 
     def fast_parse_nfo_with_retry(
         self: object, nfo_path: Path
     ) -> "ElementTree[ET.Element]":
-        from sonarr_metadata_rewrite.retry_utils import retry
-
         @retry(
             timeout=0.1,  # Very short timeout for unit tests
             interval=0.01,  # Very short interval
@@ -57,5 +58,37 @@ def patch_retry_timeout() -> Generator[None, None, None]:
         sonarr_metadata_rewrite.metadata_processor.MetadataProcessor,
         "_parse_nfo_with_retry",
         fast_parse_nfo_with_retry,
+    ):
+        yield
+
+
+@pytest.fixture
+def patch_fetch_with_retry() -> Generator[None, None, None]:
+    """Mock _fetch_with_retry to avoid real HTTP requests in integration tests.
+
+    This is not autouse=True because translator unit tests need to test
+    the real HTTP behavior. Use this fixture explicitly in tests that
+    need fast execution without HTTP calls.
+    """
+
+    def mock_fetch_with_retry(
+        self: object, endpoint: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Mock fetch that returns empty results to simulate API failures/no results."""
+        # Return empty results for external ID lookups (find endpoint)
+        if endpoint.startswith("/find/"):
+            return {"tv_results": [], "movie_results": [], "person_results": []}
+
+        # Return empty translations for translation endpoints
+        if endpoint.endswith("/translations"):
+            return {"translations": []}
+
+        # Return empty results for any other endpoint
+        return {}
+
+    with patch.object(
+        sonarr_metadata_rewrite.translator.Translator,
+        "_fetch_with_retry",
+        mock_fetch_with_retry,
     ):
         yield

@@ -34,6 +34,7 @@ _.side_effect
 # Pytest fixtures with autouse=True are automatically used
 patch_time_sleep
 patch_retry_timeout
+patch_fetch_with_retry
 
 # TYPE_CHECKING imports for type annotations
 ElementTree

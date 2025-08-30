@@ -111,9 +111,12 @@ class MetadataProcessor:
 
             if not selected_translation:
                 # No preferred translation found - try to revert to original backup
-                original_content = self._get_original_content_from_backup(nfo_path)
-                if original_content:
-                    original_title, original_description = original_content
+                original_metadata = self._get_backup_metadata_info(nfo_path)
+                if original_metadata:
+                    original_title, original_description = (
+                        original_metadata.title,
+                        original_metadata.description,
+                    )
                     current_title, current_description = (
                         metadata_info.title,
                         metadata_info.description,
@@ -409,32 +412,6 @@ class MetadataProcessor:
         # Unknown file type
         return None
 
-    def _extract_original_content(self, nfo_path: Path) -> tuple[str, str]:
-        """Extract original title and description from .nfo file.
-
-        Args:
-            nfo_path: Path to .nfo file
-
-        Returns:
-            Tuple of (original_title, original_description)
-        """
-        tree = self._parse_nfo_with_retry(nfo_path)
-        root = tree.getroot()
-
-        # Extract title
-        original_title = ""
-        title_element = root.find("title")
-        if title_element is not None and title_element.text:
-            original_title = title_element.text.strip()
-
-        # Extract plot/description
-        original_description = ""
-        plot_element = root.find("plot")
-        if plot_element is not None and plot_element.text:
-            original_description = plot_element.text.strip()
-
-        return original_title, original_description
-
     def _apply_fallback_to_translation(
         self, metadata_info: MetadataInfo, translation: TranslatedContent
     ) -> TranslatedContent:
@@ -622,17 +599,14 @@ class MetadataProcessor:
                 return all_translations[preferred_lang]
         return None
 
-    def _get_original_content_from_backup(
-        self, nfo_path: Path
-    ) -> tuple[str, str] | None:
-        """Get original content from backup file if available.
+    def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
+        """Get original metadata from backup file if available.
 
         Args:
             nfo_path: Path to current .nfo file
 
         Returns:
-            Tuple of (original_title, original_description) if backup exists,
-            None otherwise
+            MetadataInfo object if backup exists, None otherwise
         """
         if not self.settings.original_files_backup_dir:
             return None
@@ -643,7 +617,7 @@ class MetadataProcessor:
 
         if backup_path.exists():
             try:
-                return self._extract_original_content(backup_path)
+                return self._extract_metadata_info(backup_path)
             except Exception as e:
                 logger.warning(f"Failed to read backup file {backup_path}: {e}")
                 return None
