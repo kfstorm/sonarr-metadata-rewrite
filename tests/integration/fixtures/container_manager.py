@@ -12,7 +12,7 @@ class ContainerManager(BaseProcessManager):
     def __init__(self) -> None:
         super().__init__()
         self.runtime = self._detect_runtime()
-        self.containers: list[str] = []
+        self.container_name: str | None = None
 
     def _detect_runtime(self) -> str:
         """Detect available container runtime."""
@@ -49,6 +49,8 @@ class ContainerManager(BaseProcessManager):
             environment: Environment variables
             extra_args: Additional arguments to pass to container run
         """
+        if self.process is not None:
+            raise RuntimeError("A container is already running")
         cmd = [self.runtime, "run", "--rm", "--name", name]
 
         # Add port mappings
@@ -73,31 +75,33 @@ class ContainerManager(BaseProcessManager):
         cmd.append(image)
 
         # Start the container process using base class
-        self._start_process(name, cmd)
-        self.containers.append(name)
+        self._start_process(cmd)
+        self.container_name = name
 
-    def start_streaming(self, name: str) -> None:
-        """Start output streaming for a specific container."""
-        if name not in self.processes:
-            raise ValueError(f"Container {name} not found")
+    def start_streaming(self) -> None:
+        """Start output streaming for the container."""
+        if self.process is None:
+            raise ValueError("No container is running")
 
         self.enable_output_streaming()
 
     def cleanup(self) -> None:
-        """Stop and remove all managed containers."""
-        # Stop all processes using base class method
-        self._stop_all_processes()
+        """Stop and remove the managed container."""
+        # Stop the process using base class method
+        self.stop()
 
-        # Force remove any remaining containers
-        for name in self.containers:
+        # Force remove any remaining container
+        if self.container_name:
             try:
                 subprocess.run(
-                    [self.runtime, "rm", "-f", name], capture_output=True, timeout=10
+                    [self.runtime, "rm", "-f", self.container_name],
+                    capture_output=True,
+                    timeout=10,
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 pass
 
-        self.containers.clear()
+        self.container_name = None
 
     def __enter__(self) -> "ContainerManager":
         return self

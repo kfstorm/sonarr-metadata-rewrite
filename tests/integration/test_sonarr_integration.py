@@ -1,6 +1,5 @@
 """Integration test with real Sonarr container using simple container management."""
 
-import time
 from pathlib import Path
 
 import pytest
@@ -25,10 +24,8 @@ def trigger_file_monitor_events(nfo_files: list[Path]) -> None:
     """
     print(f"Triggering file monitor events for {len(nfo_files)} files...")
     for i, nfo_file in enumerate(nfo_files):
-        print(f"Touching file {i+1}/{len(nfo_files)}: {nfo_file}")
+        print(f"Touching file {i + 1}/{len(nfo_files)}: {nfo_file}")
         nfo_file.touch()
-        # Add small delay to ensure events are properly processed
-        time.sleep(0.1)
 
 
 @pytest.mark.integration
@@ -45,11 +42,12 @@ def test_file_monitor_workflow(
     with SeriesWithNfos(
         configured_sonarr_container, temp_media_root, BREAKING_BAD_TVDB_ID
     ) as nfo_files:
-        with ServiceRunner(temp_media_root, {"ENABLE_FILE_SCANNER": "false"}):
-            # Wait longer for service to fully start and setup file monitor
-            print("Waiting for service to fully initialize...")
-            time.sleep(2.0)
-
+        with ServiceRunner(
+            temp_media_root,
+            {"ENABLE_FILE_SCANNER": "false"},
+            startup_pattern="File monitor started",
+        ):
+            # Service startup waits for "File monitor started" log, so no sleep needed
             trigger_file_monitor_events(nfo_files)
             verify_translations(nfo_files, expect_chinese=True)
 

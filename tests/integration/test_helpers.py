@@ -270,6 +270,7 @@ class ServiceRunner:
         self,
         temp_media_root: Path,
         service_config: dict[str, str],
+        startup_pattern: str | None = None,
     ):
         # Base configuration
         env_overrides = {
@@ -282,7 +283,9 @@ class ServiceRunner:
         # Apply service-specific configuration overrides
         env_overrides.update(service_config)
 
-        self.service = SubprocessServiceManager(env_overrides=env_overrides)
+        self.service = SubprocessServiceManager(
+            env_overrides=env_overrides, startup_pattern=startup_pattern
+        )
 
     def __enter__(self) -> SubprocessServiceManager:
         self.service.start()

@@ -15,11 +15,14 @@ class SubprocessServiceManager(BaseProcessManager):
     def __init__(
         self,
         env_overrides: dict[str, str],
+        startup_pattern: str | None = None,
     ):
         """Initialize subprocess service manager.
 
         Args:
             env_overrides: Environment variables. Must include REWRITE_ROOT_DIR.
+            startup_pattern: Optional log pattern to wait for before considering
+                service started.
         """
         super().__init__()
 
@@ -29,12 +32,11 @@ class SubprocessServiceManager(BaseProcessManager):
         self.env_overrides = env_overrides
         self.media_root = Path(env_overrides["REWRITE_ROOT_DIR"])
         self.temp_dirs: list[Path] = []
+        self.startup_pattern = startup_pattern
 
     def start(self) -> None:
         """Start the service subprocess."""
-        service_name = "sonarr-metadata-rewrite"
-
-        if service_name in self.processes:
+        if self.process is not None:
             raise RuntimeError("Service is already running")
 
         # Check if user specified custom directories
@@ -75,7 +77,8 @@ class SubprocessServiceManager(BaseProcessManager):
         self.enable_output_streaming()
 
         try:
-            self._start_process(service_name, cmd, env)
+            # Wait for startup pattern if specified
+            self._start_process(cmd, env, self.startup_pattern, startup_timeout=15.0)
         except Exception as e:
             self._cleanup()
             raise RuntimeError(f"Failed to start service subprocess: {e}") from e
@@ -86,13 +89,11 @@ class SubprocessServiceManager(BaseProcessManager):
         Args:
             timeout: Maximum time to wait for graceful shutdown
         """
-        service_name = "sonarr-metadata-rewrite"
-
-        if service_name not in self.processes:
+        if self.process is None:
             return
 
         # Stop the service process using base class method
-        self._stop_process(service_name, timeout)
+        super().stop(timeout)
         self._cleanup()
 
     def _cleanup(self) -> None:

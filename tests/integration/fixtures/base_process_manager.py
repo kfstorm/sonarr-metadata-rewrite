@@ -6,40 +6,47 @@ from typing import Any
 
 
 class BaseProcessManager:
-    """Base class for managing subprocesses with output streaming capability."""
+    """Base class for managing a single subprocess with output streaming capability."""
 
     def __init__(self) -> None:
-        self.processes: dict[str, subprocess.Popen[str]] = {}
+        self.process: subprocess.Popen[str] | None = None
         self.should_stream_output = False
-        self._output_threads: dict[str, threading.Thread] = {}
+        self._output_thread: threading.Thread | None = None
+        self._startup_event: threading.Event | None = None
 
     def _start_process(
         self,
-        name: str,
         cmd: list[str],
         env: dict[str, str] | None = None,
+        startup_log_pattern: str | None = None,
+        startup_timeout: float = 10.0,
     ) -> subprocess.Popen[str]:
         """Start a subprocess with output capture.
 
         Args:
-            name: Unique name for the process
             cmd: Command and arguments to execute
             env: Environment variables for the process
+            startup_log_pattern: Optional log pattern to wait for before returning
+            startup_timeout: Maximum time to wait for startup pattern
 
         Returns:
             Started subprocess instance
 
         Raises:
-            RuntimeError: If process fails to start
+            RuntimeError: If process fails to start or startup pattern not detected
         """
-        if name in self.processes:
-            raise RuntimeError(f"Process '{name}' is already running")
+        if self.process is not None:
+            raise RuntimeError("A process is already running")
 
         cmd_str = " ".join(cmd)
-        print(f"Starting process '{name}': {cmd_str}")
+        print(f"Starting process: {cmd_str}")
+
+        # Setup startup event if pattern provided
+        if startup_log_pattern:
+            self._startup_event = threading.Event()
 
         try:
-            process = subprocess.Popen(
+            self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -48,93 +55,109 @@ class BaseProcessManager:
                 bufsize=1,
                 universal_newlines=True,
             )
-            self.processes[name] = process
-            self._start_output_streaming(name, process)
-            return process
+            self._start_output_streaming(self.process, startup_log_pattern)
+
+            # Wait for startup pattern if specified
+            if self._startup_event and startup_log_pattern:
+                print(f"Waiting for startup pattern: '{startup_log_pattern}'...")
+                if not self._startup_event.wait(startup_timeout):
+                    # Cleanup process on timeout
+                    self._terminate_process(self.process)
+                    self.process = None
+                    self._startup_event = None
+                    raise RuntimeError(
+                        f"Startup timeout: Pattern '{startup_log_pattern}' not found "
+                        f"in {startup_timeout}s"
+                    )
+                print("Startup pattern detected!")
+
+            return self.process
 
         except Exception as e:
             error_msg = f"Process start failed:\nCommand: {cmd_str}\nError: {e}"
             raise RuntimeError(error_msg) from e
 
     def _start_output_streaming(
-        self, name: str, process: subprocess.Popen[str]
+        self, process: subprocess.Popen[str], startup_log_pattern: str | None = None
     ) -> None:
-        """Start output streaming thread for a process.
+        """Start output streaming thread for the process.
 
         Args:
-            name: Process name for logging
             process: Process instance to stream from
+            startup_log_pattern: Optional pattern to detect for startup completion
         """
 
         def stream_output() -> None:
             if process.stdout:
                 for line in iter(process.stdout.readline, ""):
-                    if line and self.should_stream_output:
-                        print(f"[{name}] {line.rstrip()}")
+                    if line:
+                        line_stripped = line.rstrip()
+                        if self.should_stream_output:
+                            print(f"[process] {line_stripped}")
+
+                        # Check for startup pattern
+                        if (
+                            startup_log_pattern
+                            and self._startup_event
+                            and not self._startup_event.is_set()
+                        ):
+                            if startup_log_pattern in line_stripped:
+                                self._startup_event.set()
+
                 process.stdout.close()
 
-        thread = threading.Thread(target=stream_output, daemon=True)
-        thread.start()
-        self._output_threads[name] = thread
+        self._output_thread = threading.Thread(target=stream_output, daemon=True)
+        self._output_thread.start()
 
     def enable_output_streaming(self) -> None:
         """Enable output streaming for all managed processes."""
         self.should_stream_output = True
 
-    def _stop_process(self, name: str, timeout: float = 10.0) -> None:
-        """Stop a specific process gracefully.
+    def _terminate_process(
+        self, process: subprocess.Popen[str], timeout: float = 5.0
+    ) -> None:
+        """Terminate a process gracefully, then forcefully if needed.
 
         Args:
-            name: Name of process to stop
+            process: Process to terminate
+            timeout: Time to wait for graceful termination before killing
+        """
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        except Exception:
+            process.kill()
+            process.wait()
+
+    def stop(self, timeout: float = 10.0) -> None:
+        """Stop the process gracefully.
+
+        Args:
             timeout: Maximum time to wait for graceful shutdown
         """
-        process = self.processes.get(name)
-        if not process:
+        if not self.process:
             return
 
-        print(f"Stopping process '{name}'...")
+        print("Stopping process...")
 
-        try:
-            # Send SIGTERM for graceful shutdown
-            process.terminate()
-
-            # Wait for graceful shutdown
-            try:
-                process.wait(timeout=timeout)
-                print(f"Process '{name}' stopped gracefully")
-            except subprocess.TimeoutExpired:
-                print(f"Graceful shutdown timeout for '{name}', forcing kill...")
-                process.kill()
-                process.wait()
-                print(f"Process '{name}' killed")
-
-        except Exception as e:
-            print(f"Error stopping process '{name}': {e}")
-            try:
-                process.kill()
-                process.wait()
-            except Exception:
-                pass
+        # Send SIGTERM for graceful shutdown
+        self._terminate_process(self.process, timeout)
+        print("Process stopped")
 
         # Clean up references
-        self.processes.pop(name, None)
-        self._output_threads.pop(name, None)
-
-    def _stop_all_processes(self, timeout: float = 10.0) -> None:
-        """Stop all managed processes.
-
-        Args:
-            timeout: Maximum time to wait for each process shutdown
-        """
-        process_names = list(self.processes.keys())
-        for name in process_names:
-            self._stop_process(name, timeout)
+        self.process = None
+        self._output_thread = None
+        self._startup_event = None
 
     def _cleanup(self) -> None:
-        """Clean up all processes and resources."""
-        self._stop_all_processes()
-        self.processes.clear()
-        self._output_threads.clear()
+        """Clean up the process and resources."""
+        self.stop()
+        self.process = None
+        self._output_thread = None
+        self._startup_event = None
 
     def __enter__(self) -> "BaseProcessManager":
         return self
