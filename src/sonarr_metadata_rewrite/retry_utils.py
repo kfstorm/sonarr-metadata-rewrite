@@ -35,7 +35,10 @@ def retry(
                 try:
                     result = func()
                     if attempt > 1:
-                        print(f"Retry succeeded on attempt {attempt}")
+                        print(
+                            f"Retry succeeded on attempt {attempt}. "
+                            f"Previous error: {last_error}"
+                        )
                     return result  # Success, return the result
                 except exceptions as e:
                     last_error = e

@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from sonarr_metadata_rewrite.retry_utils import retry
+
 
 class SonarrClient:
     """Simple Sonarr API client for integration tests."""
@@ -17,30 +19,39 @@ class SonarrClient:
 
     def wait_for_ready(self, max_attempts: int = 30, delay: float = 1.0) -> bool:
         """Wait for Sonarr to be ready and responding."""
-        print(
-            f"Waiting for Sonarr at {self.base_url} "
-            f"(max {max_attempts} attempts, {delay}s delay)"
-        )
-        for attempt in range(max_attempts):
-            try:
-                # Use API key if we have one
-                params = {}
-                if self.api_key:
-                    params["apikey"] = self.api_key
+        timeout_sec = max_attempts * delay
+        print(f"Waiting for Sonarr at {self.base_url} (max {timeout_sec:.1f}s timeout)")
 
-                response = self.client.get(
-                    f"{self.base_url}/api/v3/system/status", params=params, timeout=5.0
+        @retry(
+            timeout=timeout_sec,
+            interval=delay,
+            log_interval=5.0,
+            exceptions=(httpx.RequestError, httpx.HTTPStatusError),
+        )
+        def check_sonarr_status() -> bool:
+            # Use API key if we have one
+            params = {}
+            if self.api_key:
+                params["apikey"] = self.api_key
+
+            response = self.client.get(
+                f"{self.base_url}/api/v3/system/status", params=params, timeout=5.0
+            )
+            if response.status_code != 200:
+                raise httpx.HTTPStatusError(
+                    f"HTTP {response.status_code}",
+                    request=response.request,
+                    response=response,
                 )
-                if response.status_code == 200:
-                    print(f"Sonarr ready after {attempt + 1} attempts")
-                    return True
-                else:
-                    print(f"Attempt {attempt + 1}: HTTP {response.status_code}")
-            except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                print(f"Attempt {attempt + 1}: {type(e).__name__}: {e}")
-            time.sleep(delay)
-        print(f"Sonarr failed to become ready after {max_attempts} attempts")
-        return False
+            return True
+
+        try:
+            result = check_sonarr_status()
+            print("Sonarr is ready")
+            return result
+        except Exception as e:
+            print(f"Sonarr failed to become ready: {e}")
+            return False
 
     def _make_request(
         self, method: str, endpoint: str, **kwargs: Any
