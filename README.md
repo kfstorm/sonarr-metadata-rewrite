@@ -28,12 +28,12 @@ first, then Japanese, then just leave it in English if neither is available.
 
 ## Installation
 
-You'll need Docker and a **TMDB Bearer Token** (API Read Access Token) from
+You'll need Docker and a **TMDB API Read Access Token** from
 [themoviedb.org](https://www.themoviedb.org/settings/api).
 
-⚠️ **Important**: This application requires a **Bearer Token** (also called
-"API Read Access Token"), NOT a "URL Parameter API Key". Get your Bearer Token
-from the [TMDB API settings page](https://www.themoviedb.org/settings/api)
+⚠️ **Important**: This application requires an **API Read Access Token**, NOT an
+"API Key". Get your API Read Access Token from the
+[TMDB API settings page](https://www.themoviedb.org/settings/api)
 under the "API Read Access Token" section. Learn more about authentication at
 the [TMDB Authentication Guide](https://developer.themoviedb.org/docs/authentication-application).
 
@@ -84,7 +84,7 @@ volumes:
 ### Required Settings
 
 ```bash
-TMDB_API_KEY=your_bearer_token_here  # Your TMDB Bearer Token (API Read Access Token)
+TMDB_API_KEY=your_api_read_access_token_here  # Your TMDB API Read Access Token
 REWRITE_ROOT_DIR=/media              # Path to your TV shows (inside container)
 # Comma-separated language codes in priority order
 PREFERRED_LANGUAGES=zh-CN,ja-JP
@@ -318,7 +318,8 @@ hooks that run all the checks automatically.
 
 ### Service won't start
 
-- Check that your TMDB Bearer Token is valid (see authentication section above)
+- Check that your TMDB API Read Access Token is valid (see authentication
+  section above)
 - Make sure the media directory exists and is readable
 - Look at the error messages, they're usually pretty helpful
 
@@ -326,11 +327,11 @@ hooks that run all the checks automatically.
 
 If you see "401 Unauthorized" errors:
 
-- **Most common cause**: You're using a "URL Parameter API Key" instead of a
-  "Bearer Token"
-- **Solution**: Get the correct "API Read Access Token" (Bearer Token) from
+- **Most common cause**: You're using an "API Key" instead of an
+  "API Read Access Token"
+- **Solution**: Get the correct "API Read Access Token" from
   [TMDB API settings](https://www.themoviedb.org/settings/api)
-- **How to tell**: Bearer tokens are much longer than URL parameter API keys
+- **How to tell**: API Read Access Tokens are much longer than API Keys
 - **Reference**: [TMDB Authentication Guide](https://developer.themoviedb.org/docs/authentication-application)
 
 ### Files aren't getting translated

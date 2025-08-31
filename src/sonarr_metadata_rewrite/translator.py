@@ -51,30 +51,6 @@ class Translator:
 
         return translations
 
-    def _handle_http_status_error(self, e: httpx.HTTPStatusError) -> None:
-        """Handle HTTP status errors with helpful messages for common issues.
-
-        Args:
-            e: The HTTP status error to handle
-
-        Raises:
-            httpx.HTTPStatusError: Re-raised with improved error message for auth issues
-        """
-        if e.response.status_code == 401:
-            raise httpx.HTTPStatusError(
-                f"Authentication failed with TMDB API. This usually means you have "
-                f"the wrong type of API key. This application requires a "
-                f"'Bearer Token' (also called 'API Read Access Token'), not a "
-                f"'URL Parameter API Key'. Please visit "
-                f"https://developer.themoviedb.org/docs/authentication-application "
-                f"and get the Bearer Token from your API settings. "
-                f"Original error: {e}",
-                request=e.request,
-                response=e.response,
-            )
-        # Re-raise for other HTTP errors
-        raise e
-
     def _fetch_with_retry(
         self, endpoint: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -106,8 +82,8 @@ class Translator:
                     delay = min(initial_delay * (2**attempt), max_delay)
                     time.sleep(delay)
                     continue
-                # Handle authentication and other HTTP errors
-                self._handle_http_status_error(e)
+                # Re-raise for other HTTP errors or if max retries exceeded
+                raise
             except (httpx.HTTPError, Exception):
                 # Re-raise all other errors immediately (no retry)
                 raise
@@ -173,20 +149,14 @@ class Translator:
                     f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}"
                     f"/episode/{tmdb_ids.episode}"
                 )
-                try:
-                    episode_response = self.client.get(episode_endpoint)
-                    episode_response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    self._handle_http_status_error(e)
+                episode_response = self.client.get(episode_endpoint)
+                episode_response.raise_for_status()
                 episode_data = episode_response.json()
 
                 # Get series details for the original language
                 series_endpoint = f"/tv/{tmdb_ids.series_id}"
-                try:
-                    series_response = self.client.get(series_endpoint)
-                    series_response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    self._handle_http_status_error(e)
+                series_response = self.client.get(series_endpoint)
+                series_response.raise_for_status()
                 series_data = series_response.json()
 
                 original_language = series_data.get("original_language", "")
@@ -194,11 +164,8 @@ class Translator:
             else:
                 # Series details endpoint
                 endpoint = f"/tv/{tmdb_ids.series_id}"
-                try:
-                    response = self.client.get(endpoint)
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    self._handle_http_status_error(e)
+                response = self.client.get(endpoint)
+                response.raise_for_status()
                 api_data = response.json()
 
                 original_language = api_data.get("original_language", "")
@@ -210,15 +177,8 @@ class Translator:
                 self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
                 return result
 
-        except httpx.HTTPStatusError as e:
-            # Re-raise authentication errors so users get helpful feedback
-            if e.response.status_code == 401:
-                self._handle_http_status_error(e)
-            # For other HTTP errors, fall back gracefully (return None)
-            pass
         except Exception:
-            # If API call fails for other reasons, return None
-            # (will fall back to existing logic)
+            # If API call fails, return None (will fall back to existing logic)
             pass
 
         return None
