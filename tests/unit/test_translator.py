@@ -798,3 +798,57 @@ def test_find_tmdb_id_by_external_id_cache_negative_result(
 
         # Verify only one API call was made
         mock_get.assert_called_once()
+
+
+@patch("httpx.Client.get")
+def test_401_authentication_error_helpful_message(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that 401 errors provide helpful authentication guidance."""
+    # Return 401 error
+    auth_error_response = Mock()
+    auth_error_response.status_code = 401
+    auth_error = httpx.HTTPStatusError(
+        "Unauthorized", request=Mock(), response=auth_error_response
+    )
+    mock_get.side_effect = auth_error
+
+    tmdb_ids = TmdbIds(series_id=12345)
+
+    # Should raise a helpful authentication error message
+    with pytest.raises(
+        httpx.HTTPStatusError,
+        match=r"Authentication failed with TMDB API.*Bearer Token.*"
+        r"API Read Access Token",
+    ):
+        translator.get_translations(tmdb_ids)
+
+    # Should have made only 1 attempt (no retries for auth errors)
+    assert mock_get.call_count == 1
+
+
+@patch("httpx.Client.get")
+def test_401_error_in_get_original_details(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that 401 errors in get_original_details provide helpful messaging."""
+    # Return 401 error
+    auth_error_response = Mock()
+    auth_error_response.status_code = 401
+    auth_error = httpx.HTTPStatusError(
+        "Unauthorized", request=Mock(), response=auth_error_response
+    )
+    mock_get.side_effect = auth_error
+
+    tmdb_ids = TmdbIds(series_id=12345)
+
+    # Should raise a helpful authentication error message
+    with pytest.raises(
+        httpx.HTTPStatusError,
+        match=r"Authentication failed with TMDB API.*Bearer Token.*"
+        r"API Read Access Token",
+    ):
+        translator.get_original_details(tmdb_ids)
+
+    # Should have made only 1 attempt
+    assert mock_get.call_count == 1
