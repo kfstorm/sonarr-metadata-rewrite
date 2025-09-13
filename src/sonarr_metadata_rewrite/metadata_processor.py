@@ -586,18 +586,67 @@ class MetadataProcessor:
     def _select_preferred_translation(
         self, all_translations: dict[str, TranslatedContent]
     ) -> TranslatedContent | None:
-        """Select best translation based on language preferences.
+        """Select best translation based on language preferences with field merging.
+
+        When a preferred language has incomplete data (missing title or description),
+        this method will attempt to fill in the missing fields from the next
+        preferred language in the list.
 
         Args:
             all_translations: Dictionary of all available translations
 
         Returns:
-            Selected metadata object or None if no preferred language found
+            Selected metadata object (potentially merged) or None if no
+            preferred language found
         """
+        selected_translation = None
+        selected_language = None
+
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
-                return all_translations[preferred_lang]
-        return None
+                translation = all_translations[preferred_lang]
+
+                if selected_translation is None:
+                    # First available preferred language
+                    selected_translation = translation
+                    selected_language = preferred_lang
+
+                    # If complete, we're done
+                    if translation.title and translation.description:
+                        break
+                else:
+                    # We have a partial translation, try to fill gaps
+                    current_translation = selected_translation
+                    fallback_translation = translation
+
+                    # Merge fields: use primary language fields when available,
+                    # fall back to secondary language for missing fields
+                    merged_title = (
+                        current_translation.title
+                        if current_translation.title
+                        else fallback_translation.title
+                    )
+                    merged_description = (
+                        current_translation.description
+                        if current_translation.description
+                        else fallback_translation.description
+                    )
+
+                    # Update the selected translation with merged content
+                    # selected_language is guaranteed to be non-None here
+                    assert selected_language is not None
+                    selected_translation = TranslatedContent(
+                        title=merged_title,
+                        description=merged_description,
+                        # Keep primary language for reporting
+                        language=selected_language,
+                    )
+
+                    # If now complete, we're done
+                    if merged_title and merged_description:
+                        break
+
+        return selected_translation
 
     def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
         """Get original metadata from backup file if available.

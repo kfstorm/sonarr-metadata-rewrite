@@ -497,6 +497,269 @@ def test_process_file_single_preferred_language_not_available(
     assert "File unchanged" in result.message
 
 
+# Multiple preferred languages with incomplete data tests
+
+
+def test_process_file_multiple_preferred_languages_merge_incomplete_data(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test merging data from multiple preferred languages when primary has
+    incomplete data."""
+    # Setup settings with multiple preferred languages
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="fr-CA,fr-FR",  # Canadian French -> France French
+    )
+
+    # Mock translator where fr-CA has title but no description,
+    # fr-FR has description but no title
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr-CA": TranslatedContent(
+            title="Génération V",  # Has title
+            description="",  # No description
+            language="fr-CA",
+        ),
+        "fr-FR": TranslatedContent(
+            title="",  # No title
+            description="De The Boys est née Génération V, nouvelle série "
+            "sur la seule université américaine pour super-héros.",  # Has description
+            language="fr-FR",
+        ),
+        "en": TranslatedContent("Gen V", "English description", "en"),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_merge.nfo")
+
+    result = processor.process_file(test_path)
+
+    # Should successfully merge: title from fr-CA, description from fr-FR
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="fr-CA",  # Should report primary language
+        expected_file_modified=True,
+        expected_message_contains="Successfully translated",
+    )
+
+    # Verify the merged content in the file
+    tree = ET.parse(test_path)
+    root = tree.getroot()
+
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert title_elem is not None and title_elem.text == "Génération V"
+    assert (
+        plot_elem is not None
+        and plot_elem.text is not None
+        and "De The Boys est née Génération V" in plot_elem.text
+    )
+
+
+def test_process_file_multiple_preferred_languages_merge_only_description_missing(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test merging when primary language only missing description."""
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="fr-CA,fr-FR",
+    )
+
+    # fr-CA has title but no description, fr-FR has both
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr-CA": TranslatedContent(
+            title="Génération V",
+            description="",  # Missing description
+            language="fr-CA",
+        ),
+        "fr-FR": TranslatedContent(
+            title="Génération V (France)",  # Different title
+            description="Description française complète",
+            language="fr-FR",
+        ),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_desc_merge.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="fr-CA",
+        expected_file_modified=True,
+    )
+
+    # Should use fr-CA title and fr-FR description
+    tree = ET.parse(test_path)
+    root = tree.getroot()
+
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert title_elem is not None and title_elem.text == "Génération V"  # From fr-CA
+    assert (
+        plot_elem is not None and plot_elem.text == "Description française complète"
+    )  # From fr-FR
+
+
+def test_process_file_multiple_preferred_languages_merge_only_title_missing(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test merging when primary language only missing title."""
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="fr-CA,fr-FR",
+    )
+
+    # fr-CA has description but no title, fr-FR has both
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr-CA": TranslatedContent(
+            title="",  # Missing title
+            description="Description canadienne",
+            language="fr-CA",
+        ),
+        "fr-FR": TranslatedContent(
+            title="Titre français",
+            description="Description française",  # Different description
+            language="fr-FR",
+        ),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_title_merge.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="fr-CA",
+        expected_file_modified=True,
+    )
+
+    # Should use fr-FR title and fr-CA description
+    tree = ET.parse(test_path)
+    root = tree.getroot()
+
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert title_elem is not None and title_elem.text == "Titre français"  # From fr-FR
+    assert (
+        plot_elem is not None and plot_elem.text == "Description canadienne"
+    )  # From fr-CA
+
+
+def test_process_file_multiple_preferred_languages_complete_data_no_merge(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test that merging doesn't happen when primary language has complete data."""
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="fr-CA,fr-FR",
+    )
+
+    # fr-CA has complete data, should not use fr-FR at all
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr-CA": TranslatedContent(
+            title="Génération V Complete",
+            description="Description canadienne complète",
+            language="fr-CA",
+        ),
+        "fr-FR": TranslatedContent(
+            title="Titre français différent",
+            description="Description française différente",
+            language="fr-FR",
+        ),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_no_merge.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="fr-CA",
+        expected_file_modified=True,
+    )
+
+    # Should use only fr-CA data
+    tree = ET.parse(test_path)
+    root = tree.getroot()
+
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert title_elem is not None and title_elem.text == "Génération V Complete"
+    assert plot_elem is not None and plot_elem.text == "Description canadienne complète"
+
+
+def test_process_file_multiple_preferred_languages_three_way_merge(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test merging from three preferred languages when multiple are incomplete."""
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="fr-CA,fr-FR,fr",  # Three French variants
+    )
+
+    # fr-CA missing both, fr-FR has title, fr has description
+    mock_translator = Mock()
+    mock_translator.get_translations.return_value = {
+        "fr-CA": TranslatedContent(
+            title="", description="", language="fr-CA"  # Missing  # Missing
+        ),
+        "fr-FR": TranslatedContent(
+            title="Titre France",  # Has title
+            description="",  # Missing description
+            language="fr-FR",
+        ),
+        "fr": TranslatedContent(
+            title="Titre générique",  # Has title (but won't be used)
+            description="Description française générique",  # Has description
+            language="fr",
+        ),
+    }
+
+    processor = MetadataProcessor(settings, mock_translator)
+    test_path = create_test_files("tvshow.nfo", test_data_dir / "test_three_merge.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_language="fr-CA",  # Should report primary language
+        expected_file_modified=True,
+    )
+
+    # Should use fr-FR title and fr description
+    tree = ET.parse(test_path)
+    root = tree.getroot()
+
+    title_elem = root.find("title")
+    plot_elem = root.find("plot")
+
+    assert title_elem is not None and title_elem.text == "Titre France"  # From fr-FR
+    assert (
+        plot_elem is not None and plot_elem.text == "Description française générique"
+    )  # From fr
+
+
 # Reprocessing Prevention Tests
 
 
