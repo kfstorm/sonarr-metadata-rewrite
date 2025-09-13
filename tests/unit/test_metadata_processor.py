@@ -58,6 +58,8 @@ def test_process_file_series_success(
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="示例剧集",
+        expected_description="这是一个示例描述",
         expected_series_id=1396,
         expected_file_modified=True,
         expected_language="zh-CN",
@@ -78,6 +80,8 @@ def test_process_file_episode_success(
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="示例剧集",
+        expected_description="这是一个示例描述",
         expected_series_id=1396,
         expected_season=1,
         expected_episode=1,
@@ -539,23 +543,12 @@ def test_process_file_multiple_preferred_languages_merge_incomplete_data(
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="Génération V",
+        expected_description="De The Boys est née Génération V, nouvelle série "
+        "sur la seule université américaine pour super-héros.",
         expected_language="fr-CA",  # Should report primary language
         expected_file_modified=True,
-        expected_message_contains="Successfully translated",
-    )
-
-    # Verify the merged content in the file
-    tree = ET.parse(test_path)
-    root = tree.getroot()
-
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-
-    assert title_elem is not None and title_elem.text == "Génération V"
-    assert (
-        plot_elem is not None
-        and plot_elem.text is not None
-        and "De The Boys est née Génération V" in plot_elem.text
+        expected_message_contains="title: fr-CA, description: fr-FR",  # Should show merged languages
     )
 
 
@@ -592,21 +585,12 @@ def test_process_file_multiple_preferred_languages_merge_only_description_missin
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="Génération V",  # From fr-CA
+        expected_description="Description française complète",  # From fr-FR
         expected_language="fr-CA",
         expected_file_modified=True,
+        expected_message_contains="title: fr-CA, description: fr-FR",
     )
-
-    # Should use fr-CA title and fr-FR description
-    tree = ET.parse(test_path)
-    root = tree.getroot()
-
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-
-    assert title_elem is not None and title_elem.text == "Génération V"  # From fr-CA
-    assert (
-        plot_elem is not None and plot_elem.text == "Description française complète"
-    )  # From fr-FR
 
 
 def test_process_file_multiple_preferred_languages_merge_only_title_missing(
@@ -642,21 +626,12 @@ def test_process_file_multiple_preferred_languages_merge_only_title_missing(
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="Titre français",  # From fr-FR
+        expected_description="Description canadienne",  # From fr-CA
         expected_language="fr-CA",
         expected_file_modified=True,
+        expected_message_contains="title: fr-FR, description: fr-CA",
     )
-
-    # Should use fr-FR title and fr-CA description
-    tree = ET.parse(test_path)
-    root = tree.getroot()
-
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-
-    assert title_elem is not None and title_elem.text == "Titre français"  # From fr-FR
-    assert (
-        plot_elem is not None and plot_elem.text == "Description canadienne"
-    )  # From fr-CA
 
 
 def test_process_file_multiple_preferred_languages_complete_data_no_merge(
@@ -692,19 +667,12 @@ def test_process_file_multiple_preferred_languages_complete_data_no_merge(
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="Génération V Complete",
+        expected_description="Description canadienne complète",
         expected_language="fr-CA",
         expected_file_modified=True,
+        expected_message_contains="Successfully translated to fr-CA",  # Should be simple message
     )
-
-    # Should use only fr-CA data
-    tree = ET.parse(test_path)
-    root = tree.getroot()
-
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-
-    assert title_elem is not None and title_elem.text == "Génération V Complete"
-    assert plot_elem is not None and plot_elem.text == "Description canadienne complète"
 
 
 def test_process_file_multiple_preferred_languages_three_way_merge(
@@ -743,21 +711,12 @@ def test_process_file_multiple_preferred_languages_three_way_merge(
     assert_process_result(
         result,
         expected_success=True,
+        expected_title="Titre France",  # From fr-FR
+        expected_description="Description française générique",  # From fr
         expected_language="fr-CA",  # Should report primary language
         expected_file_modified=True,
+        expected_message_contains="title: fr-FR, description: fr",
     )
-
-    # Should use fr-FR title and fr description
-    tree = ET.parse(test_path)
-    root = tree.getroot()
-
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-
-    assert title_elem is not None and title_elem.text == "Titre France"  # From fr-FR
-    assert (
-        plot_elem is not None and plot_elem.text == "Description française générique"
-    )  # From fr
 
 
 # Reprocessing Prevention Tests

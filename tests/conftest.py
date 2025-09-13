@@ -206,6 +206,8 @@ def callback_tracker() -> Mock:
 def assert_process_result(
     result: ProcessResult,
     expected_success: bool,
+    expected_title: str = "",
+    expected_description: str = "",
     expected_series_id: int | None = None,
     expected_season: int | None = None,
     expected_episode: int | None = None,
@@ -236,3 +238,20 @@ def assert_process_result(
 
     if expected_message_contains is not None:
         assert expected_message_contains in result.message
+        
+    # Verify file content matches expected title and description only for successful file modifications
+    if result.success and result.file_modified and (expected_title or expected_description):
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(result.file_path)
+        root = tree.getroot()
+        
+        title_elem = root.find("title")
+        plot_elem = root.find("plot")
+        
+        actual_title = title_elem.text if title_elem is not None else ""
+        actual_description = plot_elem.text if plot_elem is not None else ""
+        
+        if expected_title:
+            assert actual_title == expected_title, f"Title mismatch: expected '{expected_title}', got '{actual_title}'"
+        if expected_description:
+            assert actual_description == expected_description, f"Description mismatch: expected '{expected_description}', got '{actual_description}'"

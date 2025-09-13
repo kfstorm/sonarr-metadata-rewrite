@@ -191,10 +191,13 @@ class MetadataProcessor:
                 metadata_info.xml_tree, nfo_path, selected_translation
             )
 
+            # Build success message with detailed language info
+            success_message = self._build_success_message(selected_translation)
+
             return ProcessResult(
                 success=True,
                 file_path=nfo_path,
-                message=f"Successfully translated to {selected_translation.language}",
+                message=success_message,
                 tmdb_ids=tmdb_ids,
                 translations_found=True,
                 backup_created=backup_created,
@@ -601,6 +604,8 @@ class MetadataProcessor:
         """
         selected_translation = None
         selected_language = None
+        title_language = None
+        description_language = None
 
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
@@ -610,6 +615,8 @@ class MetadataProcessor:
                     # First available preferred language
                     selected_translation = translation
                     selected_language = preferred_lang
+                    title_language = preferred_lang if translation.title else None
+                    description_language = preferred_lang if translation.description else None
 
                     # If complete, we're done
                     if translation.title and translation.description:
@@ -632,21 +639,65 @@ class MetadataProcessor:
                         else fallback_translation.description
                     )
 
+                    # Update language tracking for fields
+                    if not current_translation.title and fallback_translation.title:
+                        title_language = preferred_lang
+                    if not current_translation.description and fallback_translation.description:
+                        description_language = preferred_lang
+
                     # Update the selected translation with merged content
                     # selected_language is guaranteed to be non-None here
                     assert selected_language is not None
                     selected_translation = TranslatedContent(
                         title=merged_title,
                         description=merged_description,
-                        # Keep primary language for reporting
+                        # Keep primary language for reporting, but store source languages
                         language=selected_language,
                     )
+                    
+                    # Store the source languages as custom attributes
+                    selected_translation.title_language = title_language  # type: ignore[attr-defined]
+                    selected_translation.description_language = description_language  # type: ignore[attr-defined]
 
                     # If now complete, we're done
                     if merged_title and merged_description:
                         break
 
+        # Store the source languages for logging
+        if selected_translation and (title_language or description_language):
+            selected_translation.title_language = title_language  # type: ignore[attr-defined]
+            selected_translation.description_language = description_language  # type: ignore[attr-defined]
+
         return selected_translation
+
+    def _build_success_message(self, translation: TranslatedContent) -> str:
+        """Build detailed success message showing language sources for title and description.
+        
+        Args:
+            translation: The selected translation (potentially merged)
+            
+        Returns:
+            Formatted success message indicating language sources
+        """
+        title_lang = getattr(translation, 'title_language', None)
+        desc_lang = getattr(translation, 'description_language', None)
+        
+        # If both title and description come from the same language, use simple message
+        if title_lang == desc_lang and title_lang:
+            return f"Successfully translated to {title_lang}"
+        
+        # If title and description come from different languages, specify both
+        if title_lang and desc_lang and title_lang != desc_lang:
+            return f"Successfully translated (title: {title_lang}, description: {desc_lang})"
+        
+        # If only one field has a specific source language
+        if title_lang and not desc_lang:
+            return f"Successfully translated (title: {title_lang}, description: fallback)"
+        if desc_lang and not title_lang:
+            return f"Successfully translated (title: fallback, description: {desc_lang})"
+        
+        # Fallback to primary language if no specific sources tracked
+        return f"Successfully translated to {translation.language}"
 
     def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
         """Get original metadata from backup file if available.
