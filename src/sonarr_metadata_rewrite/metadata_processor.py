@@ -15,6 +15,7 @@ from sonarr_metadata_rewrite.models import (
     ProcessResult,
     TmdbIds,
     TranslatedContent,
+    TranslatedString,
 )
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
@@ -77,7 +78,7 @@ class MetadataProcessor:
                     file_path=nfo_path,
                     message="No TMDB ID found in .nfo file",
                     file_modified=False,
-                    selected_language=None,
+                    translated_content=None,
                 )
 
             # Get translations from TMDB API
@@ -93,20 +94,16 @@ class MetadataProcessor:
                 )
 
                 if (
-                    current_title == selected_translation.title
-                    and current_description == selected_translation.description
+                    current_title == selected_translation.title.content
+                    and current_description == selected_translation.description.content
                 ):
                     return ProcessResult(
                         success=True,
                         file_path=nfo_path,
-                        message=(
-                            f"Content already matches preferred translation "
-                            f"({selected_translation.language})"
-                        ),
+                        message="Content already matches preferred translation",
                         tmdb_ids=tmdb_ids,
-                        translations_found=True,
                         file_modified=False,
-                        selected_language=selected_translation.language,
+                        translated_content=selected_translation,
                     )
 
             if not selected_translation:
@@ -128,9 +125,12 @@ class MetadataProcessor:
                         or current_description != original_description
                     ):
                         selected_translation = TranslatedContent(
-                            title=original_title,
-                            description=original_description,
-                            language="original",
+                            title=TranslatedString(
+                                content=original_title, language="original"
+                            ),
+                            description=TranslatedString(
+                                content=original_description, language="original"
+                            ),
                         )
                         # Continue to write original content back
                     else:
@@ -152,9 +152,8 @@ class MetadataProcessor:
                                 f"Available: [{available_langs}]"
                             ),
                             tmdb_ids=tmdb_ids,
-                            translations_found=bool(all_translations),
                             file_modified=False,
-                            selected_language=None,
+                            translated_content=None,
                         )
                 else:
                     # No backup available - return existing failure result
@@ -173,9 +172,8 @@ class MetadataProcessor:
                             f"Available: [{available_langs}]"
                         ),
                         tmdb_ids=tmdb_ids,
-                        translations_found=bool(all_translations),
                         file_modified=False,
-                        selected_language=None,
+                        translated_content=None,
                     )
 
             # Apply fallback logic for empty translation fields
@@ -194,12 +192,11 @@ class MetadataProcessor:
             return ProcessResult(
                 success=True,
                 file_path=nfo_path,
-                message=f"Successfully translated to {selected_translation.language}",
+                message=self._build_success_message(selected_translation),
                 tmdb_ids=tmdb_ids,
-                translations_found=True,
                 backup_created=backup_created,
                 file_modified=True,
-                selected_language=selected_translation.language,
+                translated_content=selected_translation,
             )
 
         except Exception as e:
@@ -209,7 +206,7 @@ class MetadataProcessor:
                 message=f"Processing error: {e}",
                 tmdb_ids=tmdb_ids,
                 file_modified=False,
-                selected_language=None,
+                translated_content=None,
             )
 
     def _extract_metadata_info(self, nfo_path: Path) -> MetadataInfo:
@@ -425,42 +422,53 @@ class MetadataProcessor:
             TranslatedContent with empty fields replaced by original content
         """
         # If both title and description are present, no fallback needed
-        if translation.title and translation.description:
+        if translation.title.content and translation.description.content:
             return translation
 
-        # If title is empty, try to use original language title if language family
-        # matches
-        if not translation.title:
+        # If title is empty, try original language title if language family matches
+        if not translation.title.content:
+            # Get the language from either field (prefer title, fallback to description)
+            preferred_language = (
+                translation.title.language
+                if translation.title.language != "unknown"
+                else translation.description.language
+            )
             original_title = self._get_original_title_if_language_matches(
-                metadata_info, translation.language
+                metadata_info, preferred_language
             )
             if original_title:
                 # Use original title but keep the preferred language for reporting
-                final_title = original_title
-                final_description = (
-                    translation.description
-                    if translation.description
-                    else metadata_info.description
-                )
                 return TranslatedContent(
-                    title=final_title,
-                    description=final_description,
-                    language=translation.language,
+                    title=TranslatedString(
+                        content=original_title, language=preferred_language
+                    ),
+                    description=(
+                        translation.description
+                        if translation.description.content
+                        else TranslatedString(
+                            content=metadata_info.description, language="original"
+                        )
+                    ),
                 )
 
         # Apply fallback using cached original content
-        final_title = translation.title if translation.title else metadata_info.title
+        final_title = (
+            translation.title
+            if translation.title.content
+            else TranslatedString(content=metadata_info.title, language="original")
+        )
         final_description = (
             translation.description
-            if translation.description
-            else metadata_info.description
+            if translation.description.content
+            else TranslatedString(
+                content=metadata_info.description, language="original"
+            )
         )
 
         # Return new TranslatedContent with fallback applied
         return TranslatedContent(
             title=final_title,
             description=final_description,
-            language=translation.language,
         )
 
     def _get_original_title_if_language_matches(
@@ -558,12 +566,12 @@ class MetadataProcessor:
         # Update title element
         title_element = root.find("title")  # type: ignore[union-attr]
         if title_element is not None:
-            title_element.text = translation.title
+            title_element.text = translation.title.content
 
         # Update plot/description element
         plot_element = root.find("plot")  # type: ignore[union-attr]
         if plot_element is not None:
-            plot_element.text = translation.description
+            plot_element.text = translation.description.content
 
         # Write the updated XML back to file atomically
         temp_path = nfo_path.with_suffix(".nfo.tmp")
@@ -586,18 +594,63 @@ class MetadataProcessor:
     def _select_preferred_translation(
         self, all_translations: dict[str, TranslatedContent]
     ) -> TranslatedContent | None:
-        """Select best translation based on language preferences.
+        """Select best translation based on language preferences with smart merging.
 
         Args:
             all_translations: Dictionary of all available translations
 
         Returns:
-            Selected metadata object or None if no preferred language found
+            Merged translation from preferred languages or None if no match found
         """
+        title_string = None
+        description_string = None
+
+        # Find best title and description from preferred languages
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
-                return all_translations[preferred_lang]
+                translation = all_translations[preferred_lang]
+
+                # Take title if we don't have one yet and this translation has content
+                if not title_string and translation.title.content:
+                    title_string = translation.title
+
+                # Take description if missing and this translation has content
+                if not description_string and translation.description.content:
+                    description_string = translation.description
+
+                # Stop if we have both title and description
+                if title_string and description_string:
+                    break
+
+        # Return merged translation if we found at least one field
+        if title_string or description_string:
+            # Use empty TranslatedString with "unknown" language for missing fields
+            return TranslatedContent(
+                title=title_string or TranslatedString(content="", language="unknown"),
+                description=description_string
+                or TranslatedString(content="", language="unknown"),
+            )
+
         return None
+
+    def _build_success_message(self, translation: TranslatedContent) -> str:
+        """Build success message showing language sources for title and description.
+
+        Args:
+            translation: The selected translation content
+
+        Returns:
+            Formatted success message
+        """
+        if translation.title.language == translation.description.language:
+            return f"Successfully translated to {translation.title.language}"
+        else:
+            parts = []
+            if translation.title.content:
+                parts.append(f"title: {translation.title.language}")
+            if translation.description.content:
+                parts.append(f"description: {translation.description.language}")
+            return f"Successfully translated ({', '.join(parts)})"
 
     def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
         """Get original metadata from backup file if available.

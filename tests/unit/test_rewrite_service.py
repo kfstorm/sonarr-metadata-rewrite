@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TranslatedContent
+from sonarr_metadata_rewrite.models import TranslatedContent, TranslatedString
 from sonarr_metadata_rewrite.rewrite_service import RewriteService
 
 
@@ -88,7 +88,10 @@ def test_service_integration_successful_processing(
         rewrite_service.metadata_processor.translator, "get_translations"
     ) as mock_get_translations:
         mock_get_translations.return_value = {
-            "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN")
+            "zh-CN": TranslatedContent(
+                title=TranslatedString(content="中文标题", language="zh-CN"),
+                description=TranslatedString(content="中文描述", language="zh-CN"),
+            )
         }
 
         # Directly call the callback (simulating file monitor/scanner trigger)

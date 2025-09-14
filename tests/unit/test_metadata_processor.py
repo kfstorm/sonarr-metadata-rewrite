@@ -9,7 +9,11 @@ import pytest
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
-from sonarr_metadata_rewrite.models import MetadataInfo, TranslatedContent
+from sonarr_metadata_rewrite.models import (
+    MetadataInfo,
+    TranslatedContent,
+    TranslatedString,
+)
 from sonarr_metadata_rewrite.translator import Translator
 from tests.conftest import assert_process_result, create_test_settings
 
@@ -20,7 +24,8 @@ def mock_translator() -> Mock:
     translator = Mock(spec=Translator)
     translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+            title=TranslatedString(content="示例剧集", language="zh-CN"),
+            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
         )
     }
     # Mock external ID lookup to return None (no external mapping)
@@ -96,9 +101,18 @@ def test_process_file_language_preference(
     # Create mock translator with multiple languages
     assert isinstance(processor.translator, Mock)
     processor.translator.get_translations.return_value = {
-        "en": TranslatedContent("English Title", "English Description", "en"),
-        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
-        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
+        ),
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        ),
+        "ja-JP": TranslatedContent(
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
+        ),
     }
 
     test_path = create_test_files("tvshow.nfo", test_data_dir / "test_lang_pref.nfo")
@@ -232,10 +246,14 @@ def test_process_file_no_preferred_translation(
     # Mock translator to return translations that don't match preferred languages
     mock_translator.get_translations.return_value = {
         "en": TranslatedContent(
-            title="English Title", description="English Description", language="en"
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
         ),
         "ja-JP": TranslatedContent(
-            title="Japanese Title", description="Japanese Description", language="ja-JP"
+            title=TranslatedString(content="Japanese Title", language="ja-JP"),
+            description=TranslatedString(
+                content="Japanese Description", language="ja-JP"
+            ),
         ),
     }
 
@@ -250,11 +268,8 @@ def test_process_file_no_preferred_translation(
     assert "Available: [en, ja-JP]" in result.message
     assert result.tmdb_ids is not None
     assert result.tmdb_ids.series_id == 1396
-    assert (
-        result.translations_found is True
-    )  # Translations were found, just not preferred
     assert result.file_modified is False  # File was not changed
-    assert result.selected_language is None
+    assert result.translated_content is None
 
 
 @pytest.fixture
@@ -270,61 +285,183 @@ def test_apply_fallback_to_translation_no_fallback_needed(
 ) -> None:
     """Test fallback logic when translation has both title and description."""
     translation = TranslatedContent(
-        title="完整标题", description="完整描述", language="zh-CN"
+        title=TranslatedString(content="完整标题", language="zh-CN"),
+        description=TranslatedString(content="完整描述", language="zh-CN"),
     )
 
     result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should return the same translation since both fields are present
-    assert result.title == "完整标题"
-    assert result.description == "完整描述"
-    assert result.language == "zh-CN"
+    assert result.title.content == "完整标题"
+    assert result.description.content == "完整描述"
+    assert result.title.language == "zh-CN"
+    assert result.description.language == "zh-CN"
 
 
 def test_apply_fallback_to_translation_empty_title(
     processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has empty title."""
-    translation = TranslatedContent(title="", description="翻译描述", language="zh-CN")
+    translation = TranslatedContent(
+        title=TranslatedString(content="", language="zh-CN"),
+        description=TranslatedString(content="翻译描述", language="zh-CN"),
+    )
 
     result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should use original title but keep translated description
-    assert result.title == "Breaking Bad"  # Original title from test data
-    assert result.description == "翻译描述"  # Translated description
-    assert result.language == "zh-CN"
+    assert result.title.content == "Breaking Bad"  # Original title from test data
+    assert result.description.content == "翻译描述"  # Translated description
+    assert result.title.language == "original"
+    assert result.description.language == "zh-CN"
 
 
 def test_apply_fallback_to_translation_empty_description(
     processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has empty description."""
-    translation = TranslatedContent(title="绝命毒师", description="", language="zh-CN")
+    translation = TranslatedContent(
+        title=TranslatedString(content="绝命毒师", language="zh-CN"),
+        description=TranslatedString(content="", language="zh-CN"),
+    )
 
     result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should use translated title but fallback to original description
-    assert result.title == "绝命毒师"  # Translated title
+    assert result.title.content == "绝命毒师"  # Translated title
     assert (
-        "high school chemistry teacher" in result.description
+        "high school chemistry teacher" in result.description.content
     )  # Original description from test data
-    assert result.language == "zh-CN"
+    assert result.title.language == "zh-CN"
+    assert result.description.language == "original"
 
 
 def test_apply_fallback_to_translation_both_empty(
     processor: MetadataProcessor, test_metadata_info: MetadataInfo
 ) -> None:
     """Test fallback logic when translation has both empty title and description."""
-    translation = TranslatedContent(title="", description="", language="zh-CN")
+    translation = TranslatedContent(
+        title=TranslatedString(content="", language="zh-CN"),
+        description=TranslatedString(content="", language="zh-CN"),
+    )
 
     result = processor._apply_fallback_to_translation(test_metadata_info, translation)
 
     # Should use both original title and description
-    assert result.title == "Breaking Bad"  # Original title from test data
+    assert result.title.content == "Breaking Bad"  # Original title from test data
     assert (
-        "high school chemistry teacher" in result.description
+        "high school chemistry teacher" in result.description.content
     )  # Original description from test data
-    assert result.language == "zh-CN"
+    assert result.title.language == "original"
+    assert result.description.language == "original"
+
+
+def test_select_preferred_translation_single_language_complete(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test that complete single-language translation is selected without merging."""
+    # Create processor with zh-CN,ja-JP preferences
+    settings = create_test_settings(test_data_dir, preferred_languages="zh-CN,ja-JP")
+    processor = MetadataProcessor(settings, mock_translator)
+
+    all_translations = {
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        ),
+        "ja-JP": TranslatedContent(
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
+        ),
+    }
+
+    result = processor._select_preferred_translation(all_translations)
+
+    # Should select complete zh-CN translation without merging
+    assert result is not None
+    assert result.title.content == "中文标题"
+    assert result.title.language == "zh-CN"
+    assert result.description.content == "中文描述"
+    assert result.description.language == "zh-CN"
+
+
+def test_select_preferred_translation_partial_with_fallback(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test merging stops once complete translation is found."""
+    # Create processor with fr-CA,fr-FR,es preferences
+    settings = create_test_settings(test_data_dir, preferred_languages="fr-CA,fr-FR,es")
+    processor = MetadataProcessor(settings, mock_translator)
+
+    all_translations = {
+        "fr-CA": TranslatedContent(
+            title=TranslatedString(content="Titre français-canadien", language="fr-CA"),
+            description=TranslatedString(
+                content="", language="fr-CA"
+            ),  # Empty description
+        ),
+        "fr-FR": TranslatedContent(
+            title=TranslatedString(content="", language="fr-FR"),  # Empty title
+            description=TranslatedString(
+                content="Description française", language="fr-FR"
+            ),
+        ),
+        "es": TranslatedContent(
+            title=TranslatedString(content="Título español", language="es"),
+            description=TranslatedString(content="Descripción española", language="es"),
+        ),
+    }
+
+    result = processor._select_preferred_translation(all_translations)
+
+    # Should merge fr-CA title with fr-FR description, not use es
+    assert result is not None
+    assert result.title.content == "Titre français-canadien"
+    assert result.title.language == "fr-CA"
+    assert result.description.content == "Description française"
+    assert result.description.language == "fr-FR"
+
+
+def test_build_success_message_single_language(
+    processor: MetadataProcessor,
+) -> None:
+    """Test _build_success_message for single language translation."""
+    translation = TranslatedContent(
+        title=TranslatedString(content="中文标题", language="zh-CN"),
+        description=TranslatedString(content="中文描述", language="zh-CN"),
+    )
+
+    message = processor._build_success_message(translation)
+
+    assert message == "Successfully translated to zh-CN"
+
+
+def test_build_success_message_mixed_languages(
+    processor: MetadataProcessor,
+) -> None:
+    """Test _build_success_message for mixed language translation."""
+    translation = TranslatedContent(
+        title=TranslatedString(content="Génération V", language="fr-CA"),
+        description=TranslatedString(content="Description française", language="fr-FR"),
+    )
+
+    message = processor._build_success_message(translation)
+
+    assert message == "Successfully translated (title: fr-CA, description: fr-FR)"
+
+
+def test_build_success_message_partial_translation(
+    processor: MetadataProcessor,
+) -> None:
+    """Test _build_success_message when only one field has content."""
+    translation = TranslatedContent(
+        title=TranslatedString(content="Only Title", language="en"),
+        description=TranslatedString(content="", language="unknown"),
+    )
+
+    message = processor._build_success_message(translation)
+
+    assert message == "Successfully translated (title: en)"
 
 
 def test_process_file_multiple_preferred_languages_first_match(
@@ -341,9 +478,18 @@ def test_process_file_multiple_preferred_languages_first_match(
     # Mock translator with available translations (missing Korean)
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
-        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
-        "en": TranslatedContent("English Title", "English Description", "en"),
+        "ja-JP": TranslatedContent(
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
+        ),
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        ),
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
+        ),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -375,10 +521,24 @@ def test_process_file_multiple_preferred_languages_no_matches(
     # Mock translator with only different languages available
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
-        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
-        "en": TranslatedContent("English Title", "English Description", "en"),
-        "fr": TranslatedContent("Titre français", "Description française", "fr"),
+        "ja-JP": TranslatedContent(
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
+        ),
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        ),
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
+        ),
+        "fr": TranslatedContent(
+            title=TranslatedString(content="Titre français", language="fr"),
+            description=TranslatedString(
+                content="Description française", language="fr"
+            ),
+        ),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -389,7 +549,7 @@ def test_process_file_multiple_preferred_languages_no_matches(
     # Should fail with detailed message about preferred vs available languages
     assert result.success is False
     assert result.file_modified is False
-    assert result.selected_language is None
+    assert result.translated_content is None
     assert "preferred languages [ko-KR, th-TH, vi-VN]" in result.message
     assert "Available: [en, fr, ja-JP, zh-CN]" in result.message  # Should be sorted
     assert "File unchanged" in result.message
@@ -409,10 +569,24 @@ def test_process_file_multiple_preferred_languages_partial_matches(
     # Mock translator with some matching languages (missing Arabic and Thai)
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
-        "ja-JP": TranslatedContent("日本語タイトル", "日本語の説明", "ja-JP"),
-        "en": TranslatedContent("English Title", "English Description", "en"),
-        "de": TranslatedContent("Deutscher Titel", "Deutsche Beschreibung", "de"),
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        ),
+        "ja-JP": TranslatedContent(
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
+        ),
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
+        ),
+        "de": TranslatedContent(
+            title=TranslatedString(content="Deutscher Titel", language="de"),
+            description=TranslatedString(
+                content="Deutsche Beschreibung", language="de"
+            ),
+        ),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -445,9 +619,22 @@ def test_process_file_single_preferred_language_available(
 
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "fr": TranslatedContent("Titre français", "Description française", "fr"),
-        "en": TranslatedContent("English Title", "English Description", "en"),
-        "de": TranslatedContent("Deutscher Titel", "Deutsche Beschreibung", "de"),
+        "fr": TranslatedContent(
+            title=TranslatedString(content="Titre français", language="fr"),
+            description=TranslatedString(
+                content="Description française", language="fr"
+            ),
+        ),
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
+        ),
+        "de": TranslatedContent(
+            title=TranslatedString(content="Deutscher Titel", language="de"),
+            description=TranslatedString(
+                content="Deutsche Beschreibung", language="de"
+            ),
+        ),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -477,9 +664,20 @@ def test_process_file_single_preferred_language_not_available(
 
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "fr": TranslatedContent("Titre français", "Description française", "fr"),
-        "en": TranslatedContent("English Title", "English Description", "en"),
-        "zh-CN": TranslatedContent("中文标题", "中文描述", "zh-CN"),
+        "fr": TranslatedContent(
+            title=TranslatedString(content="Titre français", language="fr"),
+            description=TranslatedString(
+                content="Description française", language="fr"
+            ),
+        ),
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English Description", language="en"),
+        ),
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        ),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -491,7 +689,7 @@ def test_process_file_single_preferred_language_not_available(
 
     assert result.success is False
     assert result.file_modified is False
-    assert result.selected_language is None
+    assert result.translated_content is None
     assert "preferred languages [ar]" in result.message
     assert "Available: [en, fr, zh-CN]" in result.message
     assert "File unchanged" in result.message
@@ -544,7 +742,8 @@ def test_content_matches_preferred_translation_skips_processing(
     # Mock translator to return the same Chinese translation
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="中文标题", description="中文剧情描述", language="zh-CN"
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文剧情描述", language="zh-CN"),
         )
     }
 
@@ -579,10 +778,12 @@ def test_preference_changed_better_translation_available_reprocesses(
     # Mock translator: Chinese is now available and preferred over Japanese
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="中文标题", description="中文剧情描述", language="zh-CN"
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文剧情描述", language="zh-CN"),
         ),
         "ja-JP": TranslatedContent(
-            title="日本語タイトル", description="日本語の説明", language="ja-JP"
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
         ),
     }
 
@@ -627,7 +828,8 @@ def test_preference_change_no_translation_reverts_to_original_with_backup(
     # Mock translator: No preferred languages available
     mock_translator.get_translations.return_value = {
         "ja-JP": TranslatedContent(
-            title="日本語タイトル", description="日本語の説明", language="ja-JP"
+            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
+            description=TranslatedString(content="日本語の説明", language="ja-JP"),
         )
     }
 
@@ -664,7 +866,8 @@ def test_multiple_rapid_processing_only_first_modifies(
     # Mock translator returns Chinese translation
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="中文标题", description="中文剧情描述", language="zh-CN"
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文剧情描述", language="zh-CN"),
         )
     }
 
@@ -712,7 +915,8 @@ def test_backup_not_overwritten_on_subsequent_processing(
     # Mock translator returns Chinese translation
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="中文标题", description="中文剧情描述", language="zh-CN"
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文剧情描述", language="zh-CN"),
         )
     }
 
@@ -783,14 +987,18 @@ def test_original_language_fallback_selects_original_title(
     # Mock translator with zh-CN having empty title
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="",  # Empty title - this is the problem!
-            description="本剧讲述的是嘉靖与海瑞的故事。",
-            language="zh-CN",
+            title=TranslatedString(
+                content="", language="zh-CN"
+            ),  # Empty title - this is the problem!
+            description=TranslatedString(
+                content="本剧讲述的是嘉靖与海瑞的故事。", language="zh-CN"
+            ),
         ),
         "en-US": TranslatedContent(
-            title="Ming Dynasty in 1566",
-            description="A series based on the events.",
-            language="en-US",
+            title=TranslatedString(content="Ming Dynasty in 1566", language="en-US"),
+            description=TranslatedString(
+                content="A series based on the events.", language="en-US"
+            ),
         ),
     }
 
@@ -843,9 +1051,8 @@ def test_original_language_fallback_does_not_apply_for_different_family(
     # Mock translator with zh-CN having empty title
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="",  # Empty title
-            description="中文描述",
-            language="zh-CN",
+            title=TranslatedString(content="", language="zh-CN"),  # Empty title
+            description=TranslatedString(content="中文描述", language="zh-CN"),
         ),
     }
 
@@ -859,20 +1066,17 @@ def test_original_language_fallback_does_not_apply_for_different_family(
         result,
         expected_success=True,
         expected_file_modified=True,
-        expected_language="zh-CN",
         expected_message_contains="Successfully translated",
     )
-
-    # Verify the file content shows fallback to original .nfo title
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
-    title_elem = root.find("title")
-    plot_elem = root.find("plot")
-
+    assert result.translated_content is not None
     assert (
-        title_elem is not None and title_elem.text == "Breaking Bad"
+        result.translated_content.title.content == "Breaking Bad"
     )  # Original from .nfo
-    assert plot_elem is not None and plot_elem.text == "中文描述"  # Chinese description
+    assert result.translated_content.title.language == "original"
+    assert (
+        result.translated_content.description.content == "中文描述"
+    )  # Chinese description
+    assert result.translated_content.description.language == "zh-CN"
 
 
 def test_process_file_tvdb_id_only_success(
@@ -950,7 +1154,8 @@ def test_process_file_episode_inherits_parent_tvdb_id(
     mock_translator = Mock(spec=Translator)
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+            title=TranslatedString(content="示例剧集", language="zh-CN"),
+            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
         )
     }
     # Mock external ID lookup to return TMDB ID for TVDB lookup
@@ -1034,7 +1239,8 @@ def test_process_file_mixed_id_scenarios(
     mock_translator = Mock(spec=Translator)
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+            title=TranslatedString(content="示例剧集", language="zh-CN"),
+            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
         )
     }
     # Mock external ID lookup to return different TMDB ID
@@ -1081,7 +1287,8 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
     mock_translator = Mock(spec=Translator)
     mock_translator.get_translations.return_value = {
         "zh-CN": TranslatedContent(
-            title="示例剧集", description="这是一个示例描述", language="zh-CN"
+            title=TranslatedString(content="示例剧集", language="zh-CN"),
+            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
         )
     }
     # Mock external ID lookup to return TMDB ID for episode's external ID
