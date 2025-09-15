@@ -5,6 +5,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+from fast_langdetect import (  # type: ignore[import-untyped]
+    DetectError,
+    detect_multilingual,
+)
+
 from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
 from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.series_manager import SeriesManager
@@ -12,6 +17,14 @@ from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.fixtures.subprocess_service_manager import (
     SubprocessServiceManager,
 )
+
+# Language detection confidence threshold
+LANGUAGE_DETECTION_THRESHOLD = 0.7
+
+# Some translations that are correct but not correctly detected
+DETECTION_EXCEPTIONS_BY_LANGUAGE = {
+    "fr": ["Godolkin University"],  # English: "God U."
+}
 
 
 def create_fake_episode_file(
@@ -245,44 +258,118 @@ class ServiceRunner:
         self.service.stop()
 
 
-def verify_translations(nfo_files: list[Path], expect_chinese: bool) -> None:
+def verify_translations(
+    nfo_files: list[Path],
+    expected_language: str,
+    possible_languages: list[str],
+) -> None:
     """Wait for and verify translation results.
 
     Args:
         nfo_files: List of .nfo files to check
-        expect_chinese: True if files should contain Chinese, False if not
+        expected_language: Expected language code (e.g., "zh", "fr", "en")
+        possible_languages: List of possible language codes for post-filtering.
+                           Must include "en" since Sonarr only generates English
+                           metadata files initially, and English text remains if
+                           translation fails.
 
     Raises:
         AssertionError: If files don't match expected state
+        ValueError: If "en" is not included in possible_languages
     """
-    state_desc = "Chinese translations" if expect_chinese else "non-Chinese content"
-    print(f"Waiting for {state_desc} in {len(nfo_files)} files...")
+    # Remove duplicates
+    possible_langs = set(possible_languages)
+
+    # Validate that "en" is included in possible languages
+    if "en" not in possible_languages:
+        raise ValueError(
+            "possible_languages must include 'en' since Sonarr generates English "
+            "metadata files initially and English text remains if translation fails"
+        )
+
+    print(f"Waiting for {expected_language} translations in {len(nfo_files)} files...")
 
     @retry(timeout=15.0, interval=0.5, log_interval=2.0)
     def check_translation_state() -> None:
-        chinese_count = 0
         for nfo_file in nfo_files:
             metadata = parse_nfo_content(nfo_file)
-            # Both title and plot must have Chinese characters for complete translation
-            both_fields_have_chinese = all(
-                any("\u4e00" <= char <= "\u9fff" for char in text)
-                for text in [metadata.get("title", ""), metadata.get("plot", "")]
-            )
-            if both_fields_have_chinese:
-                chinese_count += 1
+            title = metadata.get("title", "").strip()
+            plot = metadata.get("plot", "").strip()
 
-        if expect_chinese:
-            assert chinese_count == len(nfo_files), (
-                f"Expected all {len(nfo_files)} files to have Chinese in both title "
-                f"and plot, but only {chinese_count} do"
-            )
-        else:
-            assert chinese_count == 0, (
-                f"Expected no files to have Chinese in both title and plot, "
-                f"but {chinese_count} out of {len(nfo_files)} still do"
-            )
+            # Ensure we have content to detect
+            assert title, f"NFO file {nfo_file} has no title"
+            assert plot, f"NFO file {nfo_file} has no plot"
+
+            # Helper function to check if content has exceptions
+            def has_exception(content: str) -> bool:
+                if not DETECTION_EXCEPTIONS_BY_LANGUAGE.get(expected_language):
+                    return False
+                return any(
+                    exception.lower() in content.lower()
+                    for exception in DETECTION_EXCEPTIONS_BY_LANGUAGE[expected_language]
+                )
+
+            # Helper function to detect and validate language
+            def check_language(
+                content: str,
+            ) -> tuple[bool, list[dict[str, str]] | None]:
+                if has_exception(content):
+                    return True, None  # Skip detection, treat as matching
+
+                detected_langs = detect_multilingual(content)
+
+                # Post-filter to only include possible languages
+                detected_langs = [
+                    lang for lang in detected_langs if lang["lang"] in possible_langs
+                ]
+
+                # Check if expected language meets threshold
+                threshold_match = any(
+                    lang["lang"] == expected_language
+                    and lang["score"] > LANGUAGE_DETECTION_THRESHOLD
+                    for lang in detected_langs
+                )
+
+                # If threshold not met, check if expected language has highest score
+                if not threshold_match and detected_langs:
+                    highest_score_lang = max(detected_langs, key=lambda x: x["score"])
+                    highest_score_match = (
+                        highest_score_lang["lang"] == expected_language
+                    )
+                    return highest_score_match, detected_langs
+
+                return threshold_match, detected_langs
+
+            # Detect language in title and plot
+            try:
+                title_matches, title_langs = check_language(title)
+                plot_matches, plot_langs = check_language(plot)
+
+                # Both title and plot must match
+                if not (title_matches and plot_matches):
+                    # Show detection results (only for fields that were detected)
+                    error_parts = [
+                        f"Language mismatch in {nfo_file.name}. "
+                        f"Expected {expected_language}"
+                    ]
+
+                    if not title_matches and title_langs is not None:
+                        error_parts.append(f"title_langs={title_langs}")
+                    if not plot_matches and plot_langs is not None:
+                        error_parts.append(f"plot_langs={plot_langs}")
+
+                    error_parts.extend([f"Title: '{title}'", f"Plot: '{plot}'"])
+
+                    raise AssertionError(". ".join(error_parts))
+
+            except DetectError as e:
+                raise AssertionError(
+                    f"Language detection failed for {nfo_file}: {e}. "
+                    f"Title: '{title}', Plot: '{plot}'"
+                ) from e
 
     check_translation_state()
-
-    result_desc = "contain Chinese" if expect_chinese else "contain no Chinese"
-    print(f"✅ All {len(nfo_files)} files verified to {result_desc}")
+    print(
+        f"✅ All {len(nfo_files)} files verified to contain "
+        f"{expected_language} translations"
+    )
