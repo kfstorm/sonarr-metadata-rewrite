@@ -134,23 +134,6 @@ class SonarrClient:
         response = self._make_request("POST", "/api/v3/command", json=command_data)
         return response.status_code in (200, 201)
 
-    def refresh_series(self, series_id: int) -> bool:
-        """Force metadata refresh for a series to regenerate .nfo files.
-
-        Args:
-            series_id: Sonarr series ID
-
-        Returns:
-            True if metadata refresh command was accepted
-        """
-        command_data = {
-            "name": "RefreshSeries",
-            "seriesId": series_id,
-        }
-
-        response = self._make_request("POST", "/api/v3/command", json=command_data)
-        return response.status_code in (200, 201)
-
     def get_episode_files(self, series_id: int) -> list[dict[str, Any]]:
         """Get episode files for a series to verify imports.
 

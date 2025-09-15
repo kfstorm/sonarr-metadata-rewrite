@@ -209,10 +209,7 @@ class SeriesWithNfos:
 
         check_disk_scan_complete()
 
-        # Trigger metadata refresh to ensure .nfo files are generated
-        metadata_success = self.sonarr.refresh_series(self.series.id)
-        if not metadata_success:
-            raise RuntimeError("Failed to trigger metadata refresh")
+        # NFO files are generated automatically during series/episode import
 
         # Wait for .nfo files to be generated
         expected_nfo_count = len(episode_files) + 1  # episodes + series
