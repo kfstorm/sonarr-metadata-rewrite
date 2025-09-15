@@ -1,6 +1,7 @@
 """Unit tests for translator."""
 
 import json
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -9,7 +10,7 @@ import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds
+from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent, TranslatedString
 from sonarr_metadata_rewrite.translator import Translator
 
 
@@ -802,3 +803,99 @@ def test_find_tmdb_id_by_external_id_cache_negative_result(
 
         # Verify only one API call was made
         mock_get.assert_called_once()
+
+
+def test_ensure_new_format_backward_compatibility(translator: Translator) -> None:
+    """Test backward compatibility with old cached TranslatedContent format."""
+
+    # Create mock old format TranslatedContent objects (pre-model change)
+    # These simulate cached data with string fields instead of TranslatedString objects
+    old_format_content_1 = SimpleNamespace(
+        title="旧格式标题",  # str instead of TranslatedString
+        description="旧格式描述",  # str instead of TranslatedString
+        language="zh-CN",  # old format had language field
+    )
+
+    old_format_content_2 = SimpleNamespace(
+        title="Old Format Title", description="Old format description", language="en-US"
+    )
+
+    # Create new format TranslatedContent for mixed testing
+    new_format_content = TranslatedContent(
+        title=TranslatedString(content="新格式标题", language="ja"),
+        description=TranslatedString(content="新格式描述", language="ja"),
+    )
+
+    # Create cached data with mix of old and new formats
+    cached_data = {
+        "zh-CN": old_format_content_1,
+        "en-US": old_format_content_2,
+        "ja": new_format_content,
+    }
+
+    # Test the conversion method
+    converted_data = translator._ensure_new_format(cached_data)  # type: ignore[arg-type]
+
+    # Verify all data is now in new format
+    assert len(converted_data) == 3
+
+    # Check converted old format data
+    zh_cn = converted_data["zh-CN"]
+    assert isinstance(zh_cn, TranslatedContent)
+    assert isinstance(zh_cn.title, TranslatedString)
+    assert isinstance(zh_cn.description, TranslatedString)
+    assert zh_cn.title.content == "旧格式标题"
+    assert zh_cn.title.language == "zh-CN"
+    assert zh_cn.description.content == "旧格式描述"
+    assert zh_cn.description.language == "zh-CN"
+
+    en_us = converted_data["en-US"]
+    assert isinstance(en_us, TranslatedContent)
+    assert isinstance(en_us.title, TranslatedString)
+    assert isinstance(en_us.description, TranslatedString)
+    assert en_us.title.content == "Old Format Title"
+    assert en_us.title.language == "en-US"
+    assert en_us.description.content == "Old format description"
+    assert en_us.description.language == "en-US"
+
+    # Check that already new format data is preserved unchanged
+    ja = converted_data["ja"]
+    assert isinstance(ja, TranslatedContent)
+    assert isinstance(ja.title, TranslatedString)
+    assert isinstance(ja.description, TranslatedString)
+    assert ja.title.content == "新格式标题"
+    assert ja.title.language == "ja"
+    assert ja.description.content == "新格式描述"
+    assert ja.description.language == "ja"
+
+
+def test_get_translations_cache_backward_compatibility_integration(
+    translator: Translator,
+) -> None:
+    """Test cache backward compatibility in real get_translations workflow."""
+
+    # Create old format cached data
+    old_cached_content = SimpleNamespace(
+        title="缓存的旧标题", description="缓存的旧描述", language="zh-CN"
+    )
+
+    # Manually set old format data in cache to simulate pre-upgrade cache
+    tmdb_ids = TmdbIds(series_id=12345)
+    cache_key = f"translations:{tmdb_ids}"
+    translator.cache.set(cache_key, {"zh-CN": old_cached_content})
+
+    # Call get_translations - should convert old format to new format
+    translations = translator.get_translations(tmdb_ids)
+
+    # Verify the cached data was converted properly
+    assert len(translations) == 1
+    assert "zh-CN" in translations
+
+    zh_cn = translations["zh-CN"]
+    assert isinstance(zh_cn, TranslatedContent)
+    assert isinstance(zh_cn.title, TranslatedString)
+    assert isinstance(zh_cn.description, TranslatedString)
+    assert zh_cn.title.content == "缓存的旧标题"
+    assert zh_cn.title.language == "zh-CN"
+    assert zh_cn.description.content == "缓存的旧描述"
+    assert zh_cn.description.language == "zh-CN"
