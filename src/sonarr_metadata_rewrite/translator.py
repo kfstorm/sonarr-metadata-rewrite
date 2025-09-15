@@ -37,7 +37,8 @@ class Translator:
 
         # Check cache first
         if cache_key in self.cache:
-            return self.cache[cache_key]
+            cached_data = self.cache[cache_key]
+            return self._ensure_new_format(cached_data)
 
         # Build endpoint and fetch from API with retry logic
         endpoint = f"/{tmdb_ids}/translations"
@@ -226,6 +227,43 @@ class Translator:
         # Cache negative result to avoid repeated API calls
         self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
         return None
+
+    def _ensure_new_format(
+        self, cached_data: dict[str, TranslatedContent]
+    ) -> dict[str, TranslatedContent]:
+        """Ensure cached data is in new format with TranslatedString objects.
+
+        This handles backward compatibility for cache data from before the
+        model change where TranslatedContent had string fields instead of
+        TranslatedString objects.
+
+        Args:
+            cached_data: Dictionary of cached translation data
+
+        Returns:
+            Dictionary with TranslatedContent objects in new format
+        """
+        converted_data = {}
+
+        for lang_code, content in cached_data.items():
+            if isinstance(content.title, str):
+                # Old format - convert to new format
+                converted_content = TranslatedContent(
+                    title=TranslatedString(
+                        content=content.title,
+                        language=getattr(content, "language", lang_code),
+                    ),
+                    description=TranslatedString(
+                        content=str(content.description),
+                        language=getattr(content, "language", lang_code),
+                    ),
+                )
+                converted_data[lang_code] = converted_content
+            else:
+                # Already in new format
+                converted_data[lang_code] = content
+
+        return converted_data
 
     def close(self) -> None:
         """Close the HTTP client."""
