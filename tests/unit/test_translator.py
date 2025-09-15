@@ -151,23 +151,26 @@ def test_get_translations_series_success(
     # Check Chinese translation
     assert "zh-CN" in translations
     zh_cn = translations["zh-CN"]
-    assert zh_cn.title == "测试剧集"
-    assert zh_cn.description == "这是一个测试剧集的描述"
-    assert zh_cn.language == "zh-CN"
+    assert zh_cn.title.content == "测试剧集"
+    assert zh_cn.description.content == "这是一个测试剧集的描述"
+    assert zh_cn.title.language == "zh-CN"
+    assert zh_cn.description.language == "zh-CN"
 
     # Check English translation
     assert "en-US" in translations
     en_us = translations["en-US"]
-    assert en_us.title == "Test Series"
-    assert en_us.description == "This is a test series description"
-    assert en_us.language == "en-US"
+    assert en_us.title.content == "Test Series"
+    assert en_us.description.content == "This is a test series description"
+    assert en_us.title.language == "en-US"
+    assert en_us.description.language == "en-US"
 
     # Check Japanese translation (no country code)
     assert "ja" in translations
     ja = translations["ja"]
-    assert ja.title == "テストシリーズ"
-    assert ja.description == "これはテストシリーズの説明です"
-    assert ja.language == "ja"
+    assert ja.title.content == "テストシリーズ"
+    assert ja.description.content == "これはテストシリーズの説明です"
+    assert ja.title.language == "ja"
+    assert ja.description.language == "ja"
 
 
 @patch("httpx.Client.get")
@@ -195,9 +198,10 @@ def test_get_translations_episode_success(
     assert "zh-CN" in translations
 
     zh_cn = translations["zh-CN"]
-    assert zh_cn.title == "测试剧集"
-    assert zh_cn.description == "这是一个测试剧集的描述"
-    assert zh_cn.language == "zh-CN"
+    assert zh_cn.title.content == "测试剧集"
+    assert zh_cn.description.content == "这是一个测试剧集的描述"
+    assert zh_cn.title.language == "zh-CN"
+    assert zh_cn.description.language == "zh-CN"
 
 
 @patch("httpx.Client.get")

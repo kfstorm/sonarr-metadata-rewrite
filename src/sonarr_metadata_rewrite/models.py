@@ -22,12 +22,19 @@ class TmdbIds:
 
 
 @dataclass
+class TranslatedString:
+    """A translated string with its source language."""
+
+    content: str
+    language: str
+
+
+@dataclass
 class TranslatedContent:
     """Translated content for TV series or episodes."""
 
-    title: str
-    description: str
-    language: str
+    title: TranslatedString
+    description: TranslatedString
 
 
 @dataclass
@@ -60,7 +67,6 @@ class ProcessResult:
     file_path: Path
     message: str
     tmdb_ids: TmdbIds | None = None
-    translations_found: bool = False
     backup_created: bool = False
     file_modified: bool = False
-    selected_language: str | None = None
+    translated_content: TranslatedContent | None = None

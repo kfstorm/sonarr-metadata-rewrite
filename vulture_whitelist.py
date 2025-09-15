@@ -18,9 +18,8 @@ _.frame
 _.description
 _.file_modified
 _.file_path
-_.selected_language
 _.series_id
-_.translations_found
+_.translated_content
 
 # Event handler methods are called by watchdog
 _.on_created

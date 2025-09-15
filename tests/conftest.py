@@ -232,7 +232,13 @@ def assert_process_result(
         assert result.file_modified == expected_file_modified
 
     if expected_language is not None:
-        assert result.selected_language == expected_language
+        # Check if translated_content has the expected language
+        assert result.translated_content is not None
+        # Check if both title and description are in the expected language
+        assert (
+            result.translated_content.title.language == expected_language
+            and result.translated_content.description.language == expected_language
+        )
 
     if expected_message_contains is not None:
         assert expected_message_contains in result.message

@@ -6,6 +6,7 @@ from sonarr_metadata_rewrite.models import (
     ProcessResult,
     TmdbIds,
     TranslatedContent,
+    TranslatedString,
 )
 
 
@@ -28,34 +29,39 @@ def test_tmdb_ids_episode() -> None:
 def test_translated_content() -> None:
     """Test TranslatedContent creation."""
     content = TranslatedContent(
-        title="示例剧集", description="这是一个示例描述", language="zh-CN"
+        title=TranslatedString(content="示例剧集", language="zh-CN"),
+        description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
     )
-    assert content.title == "示例剧集"
-    assert content.description == "这是一个示例描述"
-    assert content.language == "zh-CN"
+    assert content.title.content == "示例剧集"
+    assert content.description.content == "这是一个示例描述"
+    assert content.title.language == "zh-CN"
+    assert content.description.language == "zh-CN"
 
 
 def test_process_result() -> None:
     """Test ProcessResult creation."""
+    translated_content = TranslatedContent(
+        title=TranslatedString(content="测试标题", language="zh-CN"),
+        description=TranslatedString(content="测试描述", language="zh-CN"),
+    )
     result = ProcessResult(
         success=True,
         file_path=Path("/test/path.nfo"),
         message="Test message",
         tmdb_ids=TmdbIds(series_id=12345),
-        translations_found=True,
         backup_created=True,
         file_modified=True,
-        selected_language="zh-CN",
+        translated_content=translated_content,
     )
     assert result.success is True
     assert result.file_path == Path("/test/path.nfo")
     assert result.message == "Test message"
     assert result.tmdb_ids is not None
     assert result.tmdb_ids.series_id == 12345
-    assert result.translations_found is True
     assert result.backup_created is True
     assert result.file_modified is True
-    assert result.selected_language == "zh-CN"
+    assert result.translated_content is not None
+    assert result.translated_content.title.content == "测试标题"
 
 
 def test_process_result_no_translation() -> None:
@@ -68,17 +74,13 @@ def test_process_result_no_translation() -> None:
             "Available: [en, ja-JP]"
         ),
         tmdb_ids=TmdbIds(series_id=12345),
-        translations_found=True,
         file_modified=False,
-        selected_language=None,
+        translated_content=None,
     )
     assert result.success is False
     assert result.file_path == Path("/test/path.nfo")
     assert "File unchanged" in result.message
     assert "preferred languages" in result.message
     assert result.tmdb_ids is not None
-    assert (
-        result.translations_found is True
-    )  # Translations were found, just not preferred
     assert result.file_modified is False
-    assert result.selected_language is None
+    assert result.translated_content is None

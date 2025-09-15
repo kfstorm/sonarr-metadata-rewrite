@@ -7,7 +7,7 @@ import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent
+from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent, TranslatedString
 
 
 class Translator:
@@ -119,9 +119,10 @@ class Translator:
                 continue
 
             translations[full_language_code] = TranslatedContent(
-                title=title,
-                description=description,
-                language=full_language_code,
+                title=TranslatedString(content=title, language=full_language_code),
+                description=TranslatedString(
+                    content=description, language=full_language_code
+                ),
             )
 
         return translations
