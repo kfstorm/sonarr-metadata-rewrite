@@ -52,11 +52,26 @@ def patch_retry_timeout() -> Generator[None, None, None]:
         def parse_file() -> "ElementTree[ET.Element]":
             try:
                 return ET.parse(nfo_path)
-            except ET.ParseError as e:
-                # Handle multi-episode files like the real implementation
-                if "junk after document element" in str(e):
+            except ET.ParseError:
+                # Try to handle multi-episode files without relying on error message
+                if is_multi_episode_file(nfo_path):
                     return parse_multi_episode_file(nfo_path)
                 raise
+
+        def is_multi_episode_file(nfo_path: Path) -> bool:
+            """Check if NFO file contains multiple episodedetails root elements."""
+            try:
+                with open(nfo_path, encoding="utf-8") as f:
+                    content = f.read().strip()
+
+                # Count occurrences of <episodedetails> opening tags
+                import re
+
+                episode_tags = re.findall(r"<episodedetails\b", content)
+                return len(episode_tags) > 1
+
+            except Exception:
+                return False
 
         def parse_multi_episode_file(nfo_path: Path) -> "ElementTree[ET.Element]":
             """Parse NFO file with multiple <episodedetails> root elements."""
@@ -66,7 +81,7 @@ def patch_retry_timeout() -> Generator[None, None, None]:
                     content = f.read()
 
                 # Wrap multiple root elements in a container for parsing
-                wrapped_content = f"<episodes>{content}</episodes>"
+                wrapped_content = f"<multiepisode>{content}</multiepisode>"
 
                 # Parse the wrapped content
                 root = ET.fromstring(wrapped_content)
@@ -81,11 +96,8 @@ def patch_retry_timeout() -> Generator[None, None, None]:
                         "No episodedetails elements found in multi-episode file"
                     )
 
-                # Use the first episode as the primary element
-                first_episode = episode_elements[0]
-
-                # Create a new tree with just the first episode
-                tree: ElementTree[ET.Element] = ET.ElementTree(first_episode)
+                # Create a new tree with the wrapper as root to preserve all episodes
+                tree: ElementTree[ET.Element] = ET.ElementTree(root)
 
                 return tree
 

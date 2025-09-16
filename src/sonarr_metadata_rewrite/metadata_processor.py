@@ -53,23 +53,48 @@ class MetadataProcessor:
         def parse_file() -> "ElementTree[ET.Element]":
             try:
                 return ET.parse(nfo_path)
-            except ET.ParseError as e:
-                # Check if error is "junk after document element" which indicates
-                # multi-episode file with multiple root elements
-                if "junk after document element" in str(e):
+            except ET.ParseError:
+                # Try to handle multi-episode files without relying on error message
+                if self._is_multi_episode_file(nfo_path):
                     return self._parse_multi_episode_file(nfo_path)
                 raise
 
         return parse_file()
 
+    def _is_multi_episode_file(self, nfo_path: Path) -> bool:
+        """Check if NFO file contains multiple episodedetails root elements.
+
+        Args:
+            nfo_path: Path to .nfo file to check
+
+        Returns:
+            True if file has multiple episodedetails root elements, False otherwise
+        """
+        try:
+            with open(nfo_path, encoding="utf-8") as f:
+                content = f.read().strip()
+
+            # Count occurrences of <episodedetails> opening tags
+            import re
+
+            episode_tags = re.findall(r"<episodedetails\b", content)
+            return len(episode_tags) > 1
+
+        except Exception:
+            return False
+
     def _parse_multi_episode_file(self, nfo_path: Path) -> "ElementTree[ET.Element]":
         """Parse NFO file with multiple <episodedetails> root elements.
+
+        This method preserves the entire multi-episode structure by wrapping
+        all episodes in a container, allowing the metadata writing process to
+        update title and plot fields while keeping everything else intact.
 
         Args:
             nfo_path: Path to .nfo file to parse
 
         Returns:
-            Parsed XML tree with first episode as root
+            Parsed XML tree with all episodes preserved under a wrapper element
 
         Raises:
             ET.ParseError: If file cannot be parsed even with multi-episode handling
@@ -80,7 +105,7 @@ class MetadataProcessor:
                 content = f.read()
 
             # Wrap multiple root elements in a container for parsing
-            wrapped_content = f"<episodes>{content}</episodes>"
+            wrapped_content = f"<multiepisode>{content}</multiepisode>"
 
             # Parse the wrapped content
             root = ET.fromstring(wrapped_content)
@@ -95,11 +120,8 @@ class MetadataProcessor:
                     "No episodedetails elements found in multi-episode file"
                 )
 
-            # Use the first episode as the primary element
-            first_episode = episode_elements[0]
-
-            # Create a new tree with just the first episode
-            tree: ElementTree[ET.Element] = ET.ElementTree(first_episode)
+            # Create a new tree with the wrapper as root to preserve all episodes
+            tree: ElementTree[ET.Element] = ET.ElementTree(root)
 
             return tree
 
@@ -274,12 +296,26 @@ class MetadataProcessor:
         root = tree.getroot()
 
         # Determine file type from root tag
-        file_type = root.tag if root.tag in ("tvshow", "episodedetails") else "unknown"
+        if root.tag == "multiepisode":
+            # Multi-episode file - extract from first episode
+            file_type = "episodedetails"
+            first_episode = root.find("episodedetails")
+            if first_episode is None:
+                file_type = "unknown"
+                extraction_root = root
+            else:
+                extraction_root = first_episode
+        elif root.tag in ("tvshow", "episodedetails"):
+            file_type = root.tag
+            extraction_root = root
+        else:
+            file_type = "unknown"
+            extraction_root = root
 
         info = MetadataInfo(file_type=file_type, xml_tree=tree)  # type: ignore[arg-type]
 
         # Extract all uniqueid elements
-        for uniqueid in root.findall(".//uniqueid"):
+        for uniqueid in extraction_root.findall(".//uniqueid"):
             id_type = uniqueid.get("type", "").lower()
             id_value = uniqueid.text
 
@@ -294,19 +330,19 @@ class MetadataProcessor:
                 info.imdb_id = id_value.strip()
 
         # Extract title
-        title_element = root.find("title")
+        title_element = extraction_root.find("title")
         if title_element is not None and title_element.text:
             info.title = title_element.text.strip()
 
         # Extract plot/description
-        plot_element = root.find("plot")
+        plot_element = extraction_root.find("plot")
         if plot_element is not None and plot_element.text:
             info.description = plot_element.text.strip()
 
         # For episode files, extract season/episode numbers
         if file_type == "episodedetails":
-            season_element = root.find("season")
-            episode_element = root.find("episode")
+            season_element = extraction_root.find("season")
+            episode_element = extraction_root.find("episode")
 
             if season_element is not None and season_element.text:
                 info.season = int(season_element.text.strip())
@@ -614,25 +650,51 @@ class MetadataProcessor:
             raise ValueError("XML tree cannot be None")
 
         root = xml_tree.getroot()
+        if root is None:
+            raise ValueError("XML tree root cannot be None")
 
-        # Update title element
-        title_element = root.find("title")  # type: ignore[union-attr]
-        if title_element is not None:
-            title_element.text = translation.title.content
+        # Handle different file types
+        if root.tag == "multiepisode":
+            # Multi-episode file - update all episodes
+            for episode in root.findall("episodedetails"):
+                title_element = episode.find("title")
+                if title_element is not None:
+                    title_element.text = translation.title.content
 
-        # Update plot/description element
-        plot_element = root.find("plot")  # type: ignore[union-attr]
-        if plot_element is not None:
-            plot_element.text = translation.description.content
+                plot_element = episode.find("plot")
+                if plot_element is not None:
+                    plot_element.text = translation.description.content
+        else:
+            # Single episode or show file
+            title_element = root.find("title")
+            if title_element is not None:
+                title_element.text = translation.title.content
+
+            plot_element = root.find("plot")
+            if plot_element is not None:
+                plot_element.text = translation.description.content
 
         # Write the updated XML back to file atomically
         temp_path = nfo_path.with_suffix(".nfo.tmp")
         try:
-            # Configure XML formatting
-            ET.indent(xml_tree, space="  ", level=0)
-            xml_tree.write(
-                temp_path, encoding="utf-8", xml_declaration=True, method="xml"
-            )
+            if root.tag == "multiepisode":
+                # For multi-episode files, write back original structure without wrapper
+                content_lines = []
+                for episode in root.findall("episodedetails"):
+                    # Format each episode properly
+                    ET.indent(episode, space="  ", level=0)
+                    episode_str = ET.tostring(episode, encoding="unicode", method="xml")
+                    content_lines.append(episode_str)
+
+                # Write without XML declaration for multi-episode files
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    f.write("\n".join(content_lines))
+            else:
+                # Single episode/show - standard XML writing
+                ET.indent(xml_tree, space="  ", level=0)
+                xml_tree.write(
+                    temp_path, encoding="utf-8", xml_declaration=True, method="xml"
+                )
 
             # Atomic replacement
             temp_path.replace(nfo_path)

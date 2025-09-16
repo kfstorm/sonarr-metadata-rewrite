@@ -1362,17 +1362,22 @@ def test_parse_multi_episode_nfo_file(
     tree = processor._parse_nfo_with_retry(multi_episode_path)
     root = tree.getroot()
 
-    # Should get the first episode's data
-    assert root.tag == "episodedetails"
-    title_elem = root.find("title")
-    season_elem = root.find("season")
-    episode_elem = root.find("episode")
+    # Should get the wrapper element for multi-episode files
+    assert root.tag == "multiepisode"
+
+    # Check the first episode's data
+    first_episode = root.find("episodedetails")
+    assert first_episode is not None
+
+    title_elem = first_episode.find("title")
+    season_elem = first_episode.find("season")
+    episode_elem = first_episode.find("episode")
     assert title_elem is not None and title_elem.text == "The One in Barbados (1)"
     assert season_elem is not None and season_elem.text == "9"
     assert episode_elem is not None and episode_elem.text == "23"
 
     # Should have TMDB ID
-    tmdb_uniqueid = root.find(".//uniqueid[@type='tmdb']")
+    tmdb_uniqueid = first_episode.find(".//uniqueid[@type='tmdb']")
     assert tmdb_uniqueid is not None
     assert tmdb_uniqueid.text == "1396"
 
@@ -1424,19 +1429,23 @@ def test_parse_multi_episode_nfo_file_no_episodes(
     settings = create_test_settings(test_data_dir, preferred_languages="zh-CN")
     processor = MetadataProcessor(settings, mock_translator)
 
-    # Create invalid content wrapped as if it were multi-episode
-    invalid_content = """<something>
-  <title>Not an episode</title>
-</something>
-<other>
-  <title>Also not an episode</title>
-</other>"""
+    # Create content that looks like multi-episode but has malformed XML inside
+    invalid_content = """<episodedetails>
+  <title>Valid Episode 1</title>
+  <season>1</season>
+  <episode>1</episode>
+</episodedetails>
+<episodedetails>
+  <title>Valid Episode 2 with <broken>XML</title>
+  <season>1</season>
+  <episode>2</episode>
+</episodedetails>"""
 
     invalid_path = test_data_dir / "invalid_multi_episode.nfo"
     invalid_path.write_text(invalid_content, encoding="utf-8")
 
-    # Should raise ParseError since no episodedetails found
-    with pytest.raises(ET.ParseError, match="No episodedetails elements found"):
+    # Should raise ParseError due to malformed XML
+    with pytest.raises(ET.ParseError):
         processor._parse_nfo_with_retry(invalid_path)
 
 
