@@ -51,9 +51,61 @@ class MetadataProcessor:
             exceptions=(ET.ParseError, OSError),
         )
         def parse_file() -> "ElementTree[ET.Element]":
-            return ET.parse(nfo_path)
+            try:
+                return ET.parse(nfo_path)
+            except ET.ParseError as e:
+                # Check if error is "junk after document element" which indicates
+                # multi-episode file with multiple root elements
+                if "junk after document element" in str(e):
+                    return self._parse_multi_episode_file(nfo_path)
+                raise
 
         return parse_file()
+
+    def _parse_multi_episode_file(self, nfo_path: Path) -> "ElementTree[ET.Element]":
+        """Parse NFO file with multiple <episodedetails> root elements.
+
+        Args:
+            nfo_path: Path to .nfo file to parse
+
+        Returns:
+            Parsed XML tree with first episode as root
+
+        Raises:
+            ET.ParseError: If file cannot be parsed even with multi-episode handling
+        """
+        try:
+            # Read the file content
+            with open(nfo_path, encoding="utf-8") as f:
+                content = f.read()
+
+            # Wrap multiple root elements in a container for parsing
+            wrapped_content = f"<episodes>{content}</episodes>"
+
+            # Parse the wrapped content
+            root = ET.fromstring(wrapped_content)
+            if root is None:
+                raise ET.ParseError("Failed to parse wrapped multi-episode content")
+
+            # Find all episodedetails elements
+            episode_elements = root.findall("episodedetails")
+
+            if not episode_elements:
+                raise ET.ParseError(
+                    "No episodedetails elements found in multi-episode file"
+                )
+
+            # Use the first episode as the primary element
+            first_episode = episode_elements[0]
+
+            # Create a new tree with just the first episode
+            tree: ElementTree[ET.Element] = ET.ElementTree(first_episode)
+
+            return tree
+
+        except Exception as e:
+            # If multi-episode parsing fails, re-raise as ParseError with context
+            raise ET.ParseError(f"Failed to parse multi-episode file: {e}") from e
 
     def process_file(self, nfo_path: Path) -> ProcessResult:
         """Process a single .nfo file with complete translation workflow.

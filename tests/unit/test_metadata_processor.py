@@ -1322,3 +1322,168 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
     # Verify external ID lookup was called for episode's TVDB ID (4499792)
     # Should NOT be called for parent's IDs since episode has its own
     mock_translator.find_tmdb_id_by_external_id.assert_called_with("4499792", "tvdb_id")
+
+
+def test_parse_multi_episode_nfo_file(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test parsing NFO file with multiple <episodedetails> root elements."""
+    # Create processor with test settings
+    settings = create_test_settings(test_data_dir, preferred_languages="zh-CN")
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create multi-episode NFO file content
+    multi_episode_content = """<episodedetails>
+  <title>The One in Barbados (1)</title>
+  <season>9</season>
+  <episode>23</episode>
+  <aired>2003-05-15</aired>
+  <plot>The friends support Ross as he prepares for a keynote address.</plot>
+  <uniqueid type="tvdb" default="true">304038</uniqueid>
+  <uniqueid type="tmdb" default="false">1396</uniqueid>
+  <watched>false</watched>
+</episodedetails>
+<episodedetails>
+  <title>The One in Barbados (2)</title>
+  <season>9</season>
+  <episode>24</episode>
+  <aired>2003-05-15</aired>
+  <plot>Rachel finally tells Joey about her crush on him.</plot>
+  <uniqueid type="tvdb" default="true">304039</uniqueid>
+  <uniqueid type="tmdb" default="false">1396</uniqueid>
+  <watched>false</watched>
+</episodedetails>"""
+
+    # Write multi-episode content to test file
+    multi_episode_path = test_data_dir / "multi_episode.nfo"
+    multi_episode_path.write_text(multi_episode_content, encoding="utf-8")
+
+    # Parse should succeed and return first episode
+    tree = processor._parse_nfo_with_retry(multi_episode_path)
+    root = tree.getroot()
+
+    # Should get the first episode's data
+    assert root.tag == "episodedetails"
+    title_elem = root.find("title")
+    season_elem = root.find("season")
+    episode_elem = root.find("episode")
+    assert title_elem is not None and title_elem.text == "The One in Barbados (1)"
+    assert season_elem is not None and season_elem.text == "9"
+    assert episode_elem is not None and episode_elem.text == "23"
+
+    # Should have TMDB ID
+    tmdb_uniqueid = root.find(".//uniqueid[@type='tmdb']")
+    assert tmdb_uniqueid is not None
+    assert tmdb_uniqueid.text == "1396"
+
+
+def test_parse_multi_episode_nfo_extract_metadata(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test extracting metadata from multi-episode NFO file."""
+    # Create processor with test settings
+    settings = create_test_settings(test_data_dir, preferred_languages="zh-CN")
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create multi-episode NFO file content
+    multi_episode_content = """<episodedetails>
+  <title>Episode 1 Title</title>
+  <season>1</season>
+  <episode>1</episode>
+  <plot>First episode description</plot>
+  <uniqueid type="tmdb" default="true">12345</uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>Episode 2 Title</title>
+  <season>1</season>
+  <episode>2</episode>
+  <plot>Second episode description</plot>
+  <uniqueid type="tmdb" default="true">12345</uniqueid>
+</episodedetails>"""
+
+    # Write multi-episode content to test file
+    multi_episode_path = test_data_dir / "multi_episode_metadata.nfo"
+    multi_episode_path.write_text(multi_episode_content, encoding="utf-8")
+
+    # Extract metadata should work with first episode
+    metadata_info = processor._extract_metadata_info(multi_episode_path)
+
+    assert metadata_info.file_type == "episodedetails"
+    assert metadata_info.title == "Episode 1 Title"
+    assert metadata_info.description == "First episode description"
+    assert metadata_info.season == 1
+    assert metadata_info.episode == 1
+    assert metadata_info.tmdb_id == 12345
+
+
+def test_parse_multi_episode_nfo_file_no_episodes(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test parsing multi-episode file with no valid episodedetails elements."""
+    # Create processor with test settings
+    settings = create_test_settings(test_data_dir, preferred_languages="zh-CN")
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create invalid content wrapped as if it were multi-episode
+    invalid_content = """<something>
+  <title>Not an episode</title>
+</something>
+<other>
+  <title>Also not an episode</title>
+</other>"""
+
+    invalid_path = test_data_dir / "invalid_multi_episode.nfo"
+    invalid_path.write_text(invalid_content, encoding="utf-8")
+
+    # Should raise ParseError since no episodedetails found
+    with pytest.raises(ET.ParseError, match="No episodedetails elements found"):
+        processor._parse_nfo_with_retry(invalid_path)
+
+
+def test_process_file_multi_episode_success(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Test full processing of multi-episode NFO file."""
+    # Create processor with test settings
+    settings = create_test_settings(test_data_dir, preferred_languages="zh-CN")
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create multi-episode NFO file
+    multi_episode_content = """<episodedetails>
+  <title>Breaking Bad S01E01</title>
+  <season>1</season>
+  <episode>1</episode>
+  <plot>Walter White, a high school chemistry teacher...</plot>
+  <uniqueid type="tmdb" default="true">1396</uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>Breaking Bad S01E02</title>
+  <season>1</season>
+  <episode>2</episode>
+  <plot>Walt and Jesse attempt to tie up loose ends...</plot>
+  <uniqueid type="tmdb" default="true">1396</uniqueid>
+</episodedetails>"""
+
+    multi_episode_path = test_data_dir / "breaking_bad_multi.nfo"
+    multi_episode_path.write_text(multi_episode_content, encoding="utf-8")
+
+    # Process the file
+    result = processor.process_file(multi_episode_path)
+
+    # Should successfully process the first episode
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,  # First episode from multi-episode file
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+
+    # Verify translator was called with first episode's data
+    mock_translator.get_translations.assert_called_once()
+    call_args = mock_translator.get_translations.call_args[0][0]
+    assert call_args.series_id == 1396
+    assert call_args.season == 1
+    assert call_args.episode == 1

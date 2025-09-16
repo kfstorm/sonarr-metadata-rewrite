@@ -50,7 +50,48 @@ def patch_retry_timeout() -> Generator[None, None, None]:
             exceptions=(ET.ParseError, OSError),
         )
         def parse_file() -> "ElementTree[ET.Element]":
-            return ET.parse(nfo_path)
+            try:
+                return ET.parse(nfo_path)
+            except ET.ParseError as e:
+                # Handle multi-episode files like the real implementation
+                if "junk after document element" in str(e):
+                    return parse_multi_episode_file(nfo_path)
+                raise
+
+        def parse_multi_episode_file(nfo_path: Path) -> "ElementTree[ET.Element]":
+            """Parse NFO file with multiple <episodedetails> root elements."""
+            try:
+                # Read the file content
+                with open(nfo_path, encoding="utf-8") as f:
+                    content = f.read()
+
+                # Wrap multiple root elements in a container for parsing
+                wrapped_content = f"<episodes>{content}</episodes>"
+
+                # Parse the wrapped content
+                root = ET.fromstring(wrapped_content)
+                if root is None:
+                    raise ET.ParseError("Failed to parse wrapped multi-episode content")
+
+                # Find all episodedetails elements
+                episode_elements = root.findall("episodedetails")
+
+                if not episode_elements:
+                    raise ET.ParseError(
+                        "No episodedetails elements found in multi-episode file"
+                    )
+
+                # Use the first episode as the primary element
+                first_episode = episode_elements[0]
+
+                # Create a new tree with just the first episode
+                tree: ElementTree[ET.Element] = ET.ElementTree(first_episode)
+
+                return tree
+
+            except Exception as e:
+                # If multi-episode parsing fails, re-raise as ParseError with context
+                raise ET.ParseError(f"Failed to parse multi-episode file: {e}") from e
 
         return parse_file()
 
