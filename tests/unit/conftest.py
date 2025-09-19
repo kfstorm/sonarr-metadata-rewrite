@@ -50,7 +50,60 @@ def patch_retry_timeout() -> Generator[None, None, None]:
             exceptions=(ET.ParseError, OSError),
         )
         def parse_file() -> "ElementTree[ET.Element]":
-            return ET.parse(nfo_path)
+            try:
+                return ET.parse(nfo_path)
+            except ET.ParseError:
+                # Try to handle multi-episode files without relying on error message
+                if is_multi_episode_file(nfo_path):
+                    return parse_multi_episode_file(nfo_path)
+                raise
+
+        def is_multi_episode_file(nfo_path: Path) -> bool:
+            """Check if NFO file contains multiple episodedetails root elements."""
+            try:
+                with open(nfo_path, encoding="utf-8") as f:
+                    content = f.read().strip()
+
+                # Count occurrences of <episodedetails> opening tags
+                import re
+
+                episode_tags = re.findall(r"<episodedetails\b", content)
+                return len(episode_tags) > 1
+
+            except Exception:
+                return False
+
+        def parse_multi_episode_file(nfo_path: Path) -> "ElementTree[ET.Element]":
+            """Parse NFO file with multiple <episodedetails> root elements."""
+            try:
+                # Read the file content
+                with open(nfo_path, encoding="utf-8") as f:
+                    content = f.read()
+
+                # Wrap multiple root elements in a container for parsing
+                wrapped_content = f"<multiepisode>{content}</multiepisode>"
+
+                # Parse the wrapped content
+                root = ET.fromstring(wrapped_content)
+                if root is None:
+                    raise ET.ParseError("Failed to parse wrapped multi-episode content")
+
+                # Find all episodedetails elements
+                episode_elements = root.findall("episodedetails")
+
+                if not episode_elements:
+                    raise ET.ParseError(
+                        "No episodedetails elements found in multi-episode file"
+                    )
+
+                # Create a new tree with the wrapper as root to preserve all episodes
+                tree: ElementTree[ET.Element] = ET.ElementTree(root)
+
+                return tree
+
+            except Exception as e:
+                # If multi-episode parsing fails, re-raise as ParseError with context
+                raise ET.ParseError(f"Failed to parse multi-episode file: {e}") from e
 
         return parse_file()
 

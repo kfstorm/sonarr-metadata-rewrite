@@ -1,6 +1,7 @@
 """Complete metadata file processing unit."""
 
 import logging
+import re
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -51,9 +52,81 @@ class MetadataProcessor:
             exceptions=(ET.ParseError, OSError),
         )
         def parse_file() -> "ElementTree[ET.Element]":
-            return ET.parse(nfo_path)
+            try:
+                return ET.parse(nfo_path)
+            except ET.ParseError:
+                # Try to handle multi-episode files without relying on error message
+                if self._is_multi_episode_file(nfo_path):
+                    return self._parse_multi_episode_file(nfo_path)
+                raise
 
         return parse_file()
+
+    def _is_multi_episode_file(self, nfo_path: Path) -> bool:
+        """Check if NFO file contains multiple episodedetails root elements.
+
+        Args:
+            nfo_path: Path to .nfo file to check
+
+        Returns:
+            True if file has multiple episodedetails root elements, False otherwise
+        """
+        try:
+            with open(nfo_path, encoding="utf-8") as f:
+                content = f.read().strip()
+
+            # Count occurrences of <episodedetails> opening tags
+            episode_tags = re.findall(r"<episodedetails\b", content)
+            return len(episode_tags) > 1
+
+        except Exception:
+            return False
+
+    def _parse_multi_episode_file(self, nfo_path: Path) -> "ElementTree[ET.Element]":
+        """Parse NFO file with multiple <episodedetails> root elements.
+
+        This method preserves the entire multi-episode structure by wrapping
+        all episodes in a container, allowing the metadata writing process to
+        update title and plot fields while keeping everything else intact.
+
+        Args:
+            nfo_path: Path to .nfo file to parse
+
+        Returns:
+            Parsed XML tree with all episodes preserved under a wrapper element
+
+        Raises:
+            ET.ParseError: If file cannot be parsed even with multi-episode handling
+        """
+        try:
+            # Read the file content
+            with open(nfo_path, encoding="utf-8") as f:
+                content = f.read()
+
+            # Wrap multiple root elements in a container for parsing
+            wrapped_content = f"<multiepisode>{content}</multiepisode>"
+
+            # Parse the wrapped content
+            root = ET.fromstring(wrapped_content)
+            if root is None:
+                raise ET.ParseError("Failed to parse wrapped multi-episode content")
+
+            # Find all episodedetails elements
+            episode_elements = root.findall("episodedetails")
+
+            if not episode_elements:
+                raise ET.ParseError(
+                    "No episodedetails elements found in multi-episode file"
+                )
+
+            # Create a new tree with the wrapper as root to preserve all episodes
+            tree: ElementTree[ET.Element] = ET.ElementTree(root)
+
+            return tree
+
+        except Exception as e:
+            # If multi-episode parsing fails, re-raise as ParseError with context
+            raise ET.ParseError(f"Failed to parse multi-episode file: {e}") from e
 
     def process_file(self, nfo_path: Path) -> ProcessResult:
         """Process a single .nfo file with complete translation workflow.
@@ -64,6 +137,14 @@ class MetadataProcessor:
         Returns:
             ProcessResult with success status and details
         """
+        # Check if this is a multi-episode file
+        if self._is_multi_episode_file(nfo_path):
+            return self._process_multi_episode_file(nfo_path)
+        else:
+            return self._process_single_episode_file(nfo_path)
+
+    def _process_single_episode_file(self, nfo_path: Path) -> ProcessResult:
+        """Process a single-episode NFO file."""
         tmdb_ids = None
         metadata_info = None
         try:
@@ -210,6 +291,90 @@ class MetadataProcessor:
                 translated_content=None,
             )
 
+    def _process_multi_episode_file(self, nfo_path: Path) -> ProcessResult:
+        """Process a multi-episode NFO file with individual episode translations."""
+        try:
+            # Extract metadata from all episodes
+            all_metadata = self._extract_all_metadata_info(nfo_path)
+
+            if not all_metadata:
+                return ProcessResult(
+                    success=False,
+                    file_path=nfo_path,
+                    message="No episodes found in multi-episode file",
+                    file_modified=False,
+                    translated_content=None,
+                )
+
+            # Process each episode to get its translation
+            episode_translations: list[TranslatedContent | None] = []
+            translated_episodes = 0
+
+            for metadata_info in all_metadata:
+                # Build TMDB IDs for this specific episode
+                tmdb_ids = self._build_tmdb_ids_from_metadata(metadata_info, nfo_path)
+                if not tmdb_ids:
+                    # Skip episodes without TMDB ID
+                    episode_translations.append(None)
+                    continue
+
+                # Get translations for this specific episode
+                all_translations = self.translator.get_translations(tmdb_ids)
+                selected_translation = self._select_preferred_translation(
+                    all_translations
+                )
+
+                if selected_translation:
+                    # Apply fallback logic for empty translation fields
+                    selected_translation = self._apply_fallback_to_translation(
+                        metadata_info, selected_translation
+                    )
+                    translated_episodes += 1
+
+                episode_translations.append(selected_translation)
+
+            if translated_episodes == 0:
+                return ProcessResult(
+                    success=False,
+                    file_path=nfo_path,
+                    message="No translations found for any episode in file",
+                    file_modified=False,
+                    translated_content=None,
+                )
+
+            # Create backup if enabled
+            backup_created = self._backup_original(nfo_path)
+
+            # Write translated metadata for all episodes
+            self._write_multi_episode_metadata(
+                all_metadata[0].xml_tree, nfo_path, episode_translations
+            )
+
+            # Return result with first episode's translation for compatibility
+            first_translation = next((t for t in episode_translations if t), None)
+            episode_count = len(all_metadata)
+            message = (
+                f"Successfully translated {translated_episodes}/{episode_count} eps"
+            )
+            return ProcessResult(
+                success=True,
+                file_path=nfo_path,
+                message=message,
+                tmdb_ids=self._build_tmdb_ids_from_metadata(all_metadata[0], nfo_path),
+                backup_created=backup_created,
+                file_modified=True,
+                translated_content=first_translation,
+            )
+
+        except Exception as e:
+            return ProcessResult(
+                success=False,
+                file_path=nfo_path,
+                message=f"Processing error: {e}",
+                file_modified=False,
+                translated_content=None,
+            )
+
     def _extract_metadata_info(self, nfo_path: Path) -> MetadataInfo:
         """Extract all metadata information from NFO file in single parse.
 
@@ -217,18 +382,66 @@ class MetadataProcessor:
             nfo_path: Path to .nfo file
 
         Returns:
-            MetadataInfo object with all extracted data
+            MetadataInfo object with all extracted data (first episode for multi-ep)
+        """
+        metadata_list = self._extract_all_metadata_info(nfo_path)
+        return metadata_list[0]  # Return first episode for compatibility
+
+    def _extract_all_metadata_info(self, nfo_path: Path) -> list[MetadataInfo]:
+        """Extract metadata information from all episodes in NFO file.
+
+        Args:
+            nfo_path: Path to .nfo file
+
+        Returns:
+            List of MetadataInfo objects (one per episode, or single for non-multi-ep)
         """
         tree = self._parse_nfo_with_retry(nfo_path)
         root = tree.getroot()
 
-        # Determine file type from root tag
-        file_type = root.tag if root.tag in ("tvshow", "episodedetails") else "unknown"
+        if root.tag == "multiepisode":
+            # Multi-episode file - extract from all episodes
+            metadata_list = []
+            episodes = root.findall("episodedetails")
 
-        info = MetadataInfo(file_type=file_type, xml_tree=tree)  # type: ignore[arg-type]
+            for episode_elem in episodes:
+                info = self._extract_metadata_from_element(
+                    episode_elem, "episodedetails", tree
+                )
+                metadata_list.append(info)
+
+            return metadata_list
+
+        elif root.tag in ("tvshow", "episodedetails"):
+            # Single episode or show file
+            info = self._extract_metadata_from_element(root, root.tag, tree)
+            return [info]
+
+        else:
+            # Unknown file type
+            info = self._extract_metadata_from_element(root, "unknown", tree)
+            return [info]
+
+    def _extract_metadata_from_element(
+        self,
+        element: ET.Element,
+        file_type: str,
+        xml_tree: "ElementTree[ET.Element]",
+    ) -> MetadataInfo:
+        """Extract metadata from a single XML element.
+
+        Args:
+            element: XML element to extract from
+            file_type: Type of file ("tvshow", "episodedetails", "unknown")
+            xml_tree: Complete XML tree for writing back
+
+        Returns:
+            MetadataInfo object with extracted data
+        """
+        info = MetadataInfo(file_type=file_type, xml_tree=xml_tree)  # type: ignore[arg-type]
 
         # Extract all uniqueid elements
-        for uniqueid in root.findall(".//uniqueid"):
+        for uniqueid in element.findall(".//uniqueid"):
             id_type = uniqueid.get("type", "").lower()
             id_value = uniqueid.text
 
@@ -243,19 +456,19 @@ class MetadataProcessor:
                 info.imdb_id = id_value.strip()
 
         # Extract title
-        title_element = root.find("title")
+        title_element = element.find("title")
         if title_element is not None and title_element.text:
             info.title = title_element.text.strip()
 
         # Extract plot/description
-        plot_element = root.find("plot")
+        plot_element = element.find("plot")
         if plot_element is not None and plot_element.text:
             info.description = plot_element.text.strip()
 
         # For episode files, extract season/episode numbers
         if file_type == "episodedetails":
-            season_element = root.find("season")
-            episode_element = root.find("episode")
+            season_element = element.find("season")
+            episode_element = element.find("episode")
 
             if season_element is not None and season_element.text:
                 info.season = int(season_element.text.strip())
@@ -563,25 +776,90 @@ class MetadataProcessor:
             raise ValueError("XML tree cannot be None")
 
         root = xml_tree.getroot()
+        if root is None:
+            raise ValueError("XML tree root cannot be None")
 
-        # Update title element
-        title_element = root.find("title")  # type: ignore[union-attr]
+        # Update title and plot elements (for single episode or show files only)
+        title_element = root.find("title")
         if title_element is not None:
             title_element.text = translation.title.content
 
-        # Update plot/description element
-        plot_element = root.find("plot")  # type: ignore[union-attr]
+        plot_element = root.find("plot")
         if plot_element is not None:
             plot_element.text = translation.description.content
 
         # Write the updated XML back to file atomically
         temp_path = nfo_path.with_suffix(".nfo.tmp")
         try:
-            # Configure XML formatting
+            # Standard XML writing (no XML declaration since original files lack it)
             ET.indent(xml_tree, space="  ", level=0)
             xml_tree.write(
-                temp_path, encoding="utf-8", xml_declaration=True, method="xml"
+                temp_path, encoding="utf-8", xml_declaration=False, method="xml"
             )
+
+            # Atomic replacement
+            temp_path.replace(nfo_path)
+
+        except Exception:
+            # Clean up temporary file if something went wrong
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
+
+    def _write_multi_episode_metadata(
+        self,
+        xml_tree: ET.ElementTree | None,
+        nfo_path: Path,
+        episode_translations: list[TranslatedContent | None],
+    ) -> None:
+        """Write translated metadata for multi-episode files.
+
+        Args:
+            xml_tree: Cached XML tree from metadata extraction
+            nfo_path: Path to .nfo file to update
+            episode_translations: List of translations for each episode (None if none)
+
+        Raises:
+            Exception: If write operation fails
+        """
+        if xml_tree is None:
+            raise ValueError("XML tree cannot be None")
+
+        root = xml_tree.getroot()
+        if root is None:
+            raise ValueError("XML tree root cannot be None")
+
+        if root.tag != "multiepisode":
+            raise ValueError("Expected multiepisode root for multi-episode writing")
+
+        episodes = root.findall("episodedetails")
+        if len(episodes) != len(episode_translations):
+            raise ValueError("Number of episodes and translations must match")
+
+        # Update each episode with its specific translation
+        for episode, translation in zip(episodes, episode_translations, strict=False):
+            if translation is not None:
+                title_element = episode.find("title")
+                if title_element is not None:
+                    title_element.text = translation.title.content
+
+                plot_element = episode.find("plot")
+                if plot_element is not None:
+                    plot_element.text = translation.description.content
+
+        # Write back the original structure without wrapper
+        temp_path = nfo_path.with_suffix(".nfo.tmp")
+        try:
+            content_lines = []
+            for episode in episodes:
+                # Format each episode properly
+                ET.indent(episode, space="  ", level=0)
+                episode_str = ET.tostring(episode, encoding="unicode", method="xml")
+                content_lines.append(episode_str)
+
+            # Write without XML declaration for multi-episode files
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(content_lines))
 
             # Atomic replacement
             temp_path.replace(nfo_path)
