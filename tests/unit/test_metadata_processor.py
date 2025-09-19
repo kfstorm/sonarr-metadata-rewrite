@@ -1322,3 +1322,52 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
     # Verify external ID lookup was called for episode's TVDB ID (4499792)
     # Should NOT be called for parent's IDs since episode has its own
     mock_translator.find_tmdb_id_by_external_id.assert_called_with("4499792", "tvdb_id")
+
+
+def test_content_matches_after_fallback_skips_processing(
+    test_data_dir: Path,
+) -> None:
+    """Test that content matching works correctly after fallback fills empty fields."""
+
+    # Create processor with zh-CN as preferred language
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="zh-CN",
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create .nfo file with Chinese content that matches final result after fallback
+    # Current content: Chinese title + Chinese description
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(nfo_path, "示例剧集", "这是一个示例描述")
+
+    # Mock translator: zh-CN translation has Chinese description but empty title
+    # After fallback: title="示例剧集" (from original), description="这是一个示例描述"
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(
+                content="", language="zh-CN"
+            ),  # Empty - will fallback to original
+            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
+        )
+    }
+
+    result = processor.process_file(nfo_path)
+
+    # Should detect content matches final result after fallback and skip processing
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_file_modified=False,  # Key test: should NOT modify file
+        expected_message_contains="already matches preferred translation",
+    )
+
+    # Verify the translated content reflects the fallback result
+    assert result.translated_content is not None
+    assert (
+        result.translated_content.title.content == "示例剧集"
+    )  # From fallback (original)
+    assert result.translated_content.title.language == "original"  # Fallback language
+    assert result.translated_content.description.content == "这是一个示例描述"
+    assert result.translated_content.description.language == "zh-CN"  # From translation
