@@ -87,7 +87,14 @@ class RewriteService:
             if result.success:
                 logger.info(f"✅ {result.message} - {nfo_path}")
             else:
-                logger.warning(f"⚠️ {result.message} - {nfo_path}")
+                if result.exception:
+                    # Actual error occurred - log as error with stack trace
+                    logger.error(
+                        f"❌ {result.message} - {nfo_path}", exc_info=result.exception
+                    )
+                else:
+                    # Business logic failure (no translation available, etc.)
+                    logger.warning(f"⚠️ {result.message} - {nfo_path}")
 
-        except Exception as e:
-            logger.error(f"❌ Failed to process {nfo_path}: {e}")
+        except Exception:
+            logger.exception(f"❌ Failed to process {nfo_path}")

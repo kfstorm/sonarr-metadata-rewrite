@@ -35,9 +35,9 @@ class NFOFileHandler(FileSystemEventHandler):
             if is_nfo_file(file_path):
                 try:
                     self.callback(file_path)
-                except Exception as e:
-                    logger.error(
-                        f"❌ Error in file monitor callback for {file_path}: {e}"
+                except Exception:
+                    logger.exception(
+                        f"❌ Error in file monitor callback for {file_path}"
                     )
 
     def on_created(self, event: FileSystemEvent) -> None:

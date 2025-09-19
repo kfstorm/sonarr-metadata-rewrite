@@ -55,8 +55,8 @@ class FileScanner:
         while self.stop_event is not None and not self.stop_event.is_set():
             try:
                 self._perform_scan()
-            except Exception as e:
-                logger.error(f"Unexpected error during directory scan: {e}")
+            except Exception:
+                logger.exception("Unexpected error during directory scan")
 
             # Wait for next scan interval or stop signal
             if self.stop_event is not None:
@@ -84,12 +84,9 @@ class FileScanner:
                     if self.callback:
                         logger.debug(f"Processing file: {nfo_path}")
                         self.callback(nfo_path)
-                except (OSError, PermissionError) as e:
-                    logger.warning(f"Failed to process file {nfo_path}: {e}")
-                    continue
-                except Exception as e:
-                    logger.error(f"Unexpected error processing file {nfo_path}: {e}")
+                except Exception:
+                    logger.exception(f"Unexpected error processing file {nfo_path}")
                     continue
 
-        except (OSError, PermissionError) as e:
-            logger.error(f"File system error during scan of {root_dir}: {e}")
+        except (OSError, PermissionError):
+            logger.exception(f"File system error during scan of {root_dir}")

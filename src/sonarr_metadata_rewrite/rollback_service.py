@@ -63,8 +63,8 @@ class RollbackService:
                     restored_count += 1
                 else:
                     failed_count += 1
-            except Exception as e:
-                logger.error(f"Failed to restore {backup_file}: {e}")
+            except Exception:
+                logger.exception(f"Failed to restore {backup_file}")
                 failed_count += 1
 
         logger.info(
@@ -102,8 +102,8 @@ class RollbackService:
             logger.info(f"✅ Restored: {relative_path}")
             return True
 
-        except Exception as e:
-            logger.error(f"❌ Failed to restore {backup_file.name}: {e}")
+        except Exception:
+            logger.exception(f"❌ Failed to restore {backup_file.name}")
             return False
 
     def hang_after_completion(self) -> None:
