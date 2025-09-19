@@ -140,3 +140,27 @@ def test_service_integration_processing_exception(
         rewrite_service._process_file(test_path)
 
         mock_logger.exception.assert_called()
+
+
+@patch("sonarr_metadata_rewrite.rewrite_service.logger")
+def test_service_integration_processing_error_with_exception(
+    mock_logger: Mock,
+    rewrite_service: RewriteService,
+    test_data_dir: Path,
+) -> None:
+    """Test integration: service logs error when ProcessResult contains exception."""
+    # Create a corrupted NFO file that will cause an exception during processing
+    corrupted_nfo = test_data_dir / "corrupted.nfo"
+    corrupted_nfo.write_text("CORRUPTED CONTENT")
+
+    rewrite_service._process_file(corrupted_nfo)
+
+    # Verify error was logged with stack trace when exception occurs in processing
+    mock_logger.error.assert_called()
+    # Verify the call includes exc_info parameter
+    call_args = mock_logger.error.call_args
+    assert "exc_info" in call_args[1]
+    assert call_args[1]["exc_info"] is not None
+    # Verify the message format
+    assert "❌" in call_args[0][0]
+    assert "Processing error:" in call_args[0][0]
