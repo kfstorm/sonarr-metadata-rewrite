@@ -86,50 +86,23 @@ class MetadataProcessor:
 
             # Apply language preferences to find best translation
             selected_translation = self._select_preferred_translation(all_translations)
-            if selected_translation:
-                # Check if content matches selected translation (use cached)
-                current_title, current_description = (
-                    metadata_info.title,
-                    metadata_info.description,
-                )
-
-                if (
-                    current_title == selected_translation.title.content
-                    and current_description == selected_translation.description.content
-                ):
-                    return ProcessResult(
-                        success=True,
-                        file_path=nfo_path,
-                        message="Content already matches preferred translation",
-                        tmdb_ids=tmdb_ids,
-                        file_modified=False,
-                        translated_content=selected_translation,
-                    )
 
             if not selected_translation:
                 # No preferred translation found - try to revert to original backup
                 original_metadata = self._get_backup_metadata_info(nfo_path)
                 if original_metadata:
-                    original_title, original_description = (
-                        original_metadata.title,
-                        original_metadata.description,
-                    )
-                    current_title, current_description = (
-                        metadata_info.title,
-                        metadata_info.description,
-                    )
-
                     # Only revert if current content is different from original
                     if (
-                        current_title != original_title
-                        or current_description != original_description
+                        metadata_info.title != original_metadata.title
+                        or metadata_info.description != original_metadata.description
                     ):
                         selected_translation = TranslatedContent(
                             title=TranslatedString(
-                                content=original_title, language="original"
+                                content=original_metadata.title, language="original"
                             ),
                             description=TranslatedString(
-                                content=original_description, language="original"
+                                content=original_metadata.description,
+                                language="original",
                             ),
                         )
                         # Continue to write original content back
@@ -180,6 +153,21 @@ class MetadataProcessor:
             selected_translation = self._apply_fallback_to_translation(
                 metadata_info, selected_translation
             )
+
+            # Check if content matches final translation after fallback
+            if (
+                metadata_info.title == selected_translation.title.content
+                and metadata_info.description
+                == selected_translation.description.content
+            ):
+                return ProcessResult(
+                    success=True,
+                    file_path=nfo_path,
+                    message="Content already matches preferred translation",
+                    tmdb_ids=tmdb_ids,
+                    file_modified=False,
+                    translated_content=selected_translation,
+                )
 
             # Create backup if enabled
             backup_created = self._backup_original(nfo_path)
