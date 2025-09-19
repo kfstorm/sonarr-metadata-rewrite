@@ -204,6 +204,7 @@ class MetadataProcessor:
                 success=False,
                 file_path=nfo_path,
                 message=f"Processing error: {e}",
+                exception=e,
                 tmdb_ids=tmdb_ids,
                 file_modified=False,
                 translated_content=None,
@@ -672,6 +673,8 @@ class MetadataProcessor:
             try:
                 return self._extract_metadata_info(backup_path)
             except Exception as e:
-                logger.warning(f"Failed to read backup file {backup_path}: {e}")
+                logger.warning(
+                    f"Failed to read backup file {backup_path}: {e}", exc_info=True
+                )
                 return None
         return None

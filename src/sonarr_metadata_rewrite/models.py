@@ -66,6 +66,7 @@ class ProcessResult:
     success: bool
     file_path: Path
     message: str
+    exception: Exception | None = None
     tmdb_ids: TmdbIds | None = None
     backup_created: bool = False
     file_modified: bool = False

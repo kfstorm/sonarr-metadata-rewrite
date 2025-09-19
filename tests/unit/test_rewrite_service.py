@@ -139,4 +139,4 @@ def test_service_integration_processing_exception(
     ):
         rewrite_service._process_file(test_path)
 
-        mock_logger.error.assert_called()
+        mock_logger.exception.assert_called()
