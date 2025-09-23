@@ -366,7 +366,7 @@ def test_get_original_details_series_success(
     result = translator.get_original_details(tmdb_ids)
 
     # Verify API call
-    mock_get.assert_called_once_with("/tv/68034")
+    mock_get.assert_called_once_with("/tv/68034", params=None)
 
     # Verify result
     assert result is not None
@@ -386,7 +386,7 @@ def test_get_original_details_episode_success(
 
     # Mock both episode and series responses (episode needs series for
     # original_language)
-    def mock_side_effect(endpoint: str) -> Mock:
+    def mock_side_effect(endpoint: str, params: dict[str, Any] | None = None) -> Mock:
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
         if "season" in endpoint and "episode" in endpoint:
@@ -402,8 +402,12 @@ def test_get_original_details_episode_success(
 
     # Verify both API calls were made
     assert mock_get.call_count == 2
-    mock_get.assert_any_call("/tv/12345/season/1/episode/1")  # Episode details
-    mock_get.assert_any_call("/tv/12345")  # Series details for original_language
+    mock_get.assert_any_call(
+        "/tv/12345/season/1/episode/1", params=None
+    )  # Episode details
+    mock_get.assert_any_call(
+        "/tv/12345", params=None
+    )  # Series details for original_language
 
     # Verify result combines episode name with series original language
     assert result is not None
@@ -421,10 +425,10 @@ def test_get_original_details_http_error(
     mock_get.side_effect = httpx.HTTPError("API error")
 
     tmdb_ids = TmdbIds(series_id=12345)
-    result = translator.get_original_details(tmdb_ids)
 
-    # Should return None on error (graceful failure)
-    assert result is None
+    # Should raise the HTTP error (fail-fast behavior with new implementation)
+    with pytest.raises(httpx.HTTPError, match="API error"):
+        translator.get_original_details(tmdb_ids)
 
 
 @patch("httpx.Client.get")
@@ -744,11 +748,9 @@ def test_find_tmdb_id_by_external_id_api_error(translator: Translator) -> None:
         # Mock API error
         mock_get.side_effect = httpx.HTTPError("API Error")
 
-        # Call the method
-        result = translator.find_tmdb_id_by_external_id("12345", "tvdb_id")
-
-        # Verify result is None
-        assert result is None
+        # Call the method - should raise the HTTP error (fail-fast behavior)
+        with pytest.raises(httpx.HTTPError, match="API Error"):
+            translator.find_tmdb_id_by_external_id("12345", "tvdb_id")
 
 
 def test_find_tmdb_id_by_external_id_caching(
@@ -899,3 +901,147 @@ def test_get_translations_cache_backward_compatibility_integration(
     assert zh_cn.title.language == "zh-CN"
     assert zh_cn.description.content == "缓存的旧描述"
     assert zh_cn.description.language == "zh-CN"
+
+
+@patch("httpx.Client.get")
+def test_get_with_cache_404_caching(mock_get: Mock, translator: Translator) -> None:
+    """Test that _get_with_cache properly caches 404 responses."""
+    # Mock 404 HTTP error
+    not_found_response = Mock()
+    not_found_response.status_code = 404
+    not_found_error = httpx.HTTPStatusError(
+        "Not Found", request=Mock(), response=not_found_response
+    )
+    mock_get.side_effect = not_found_error
+
+    # Define a simple fetch function that calls _fetch_with_retry
+    def fetch_func() -> dict[str, Any]:
+        return translator._fetch_with_retry("/test/endpoint")
+
+    cache_key = "test_404_cache"
+    default_value = {"test": "default"}
+
+    # First call should hit API and cache the default value
+    result1 = translator._get_with_cache(cache_key, fetch_func, default_value)
+    assert result1 == default_value
+    assert mock_get.call_count == 1
+
+    # Verify the default value was cached
+    assert cache_key in translator.cache
+    assert translator.cache[cache_key] == default_value
+
+    # Second call should use cache (no additional API calls)
+    result2 = translator._get_with_cache(cache_key, fetch_func, default_value)
+    assert result2 == default_value
+    assert mock_get.call_count == 1  # Still only 1 call
+
+    # Results should be identical
+    assert result1 == result2
+
+
+@patch("httpx.Client.get")
+def test_get_translations_404_cached(mock_get: Mock, translator: Translator) -> None:
+    """Test that get_translations properly caches 404 responses as empty dict."""
+    # Mock 404 HTTP error
+    not_found_response = Mock()
+    not_found_response.status_code = 404
+    not_found_error = httpx.HTTPStatusError(
+        "Not Found", request=Mock(), response=not_found_response
+    )
+    mock_get.side_effect = not_found_error
+
+    tmdb_ids = TmdbIds(series_id=99999)  # Non-existent series
+    cache_key = f"translations:{tmdb_ids}"
+
+    # Verify cache starts empty
+    assert cache_key not in translator.cache
+
+    # First call should hit API and return empty dict
+    translations1 = translator.get_translations(tmdb_ids)
+    assert translations1 == {}
+    assert mock_get.call_count == 1
+
+    # Verify empty dict was cached
+    assert cache_key in translator.cache
+    assert translator.cache[cache_key] == {}
+
+    # Second call should use cache (no additional API calls)
+    translations2 = translator.get_translations(tmdb_ids)
+    assert translations2 == {}
+    assert mock_get.call_count == 1  # Still only 1 call
+
+    # Results should be identical
+    assert translations1 == translations2
+
+
+@patch("httpx.Client.get")
+def test_get_original_details_404_cached(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that get_original_details properly caches 404 responses as None."""
+    # Mock 404 HTTP error
+    not_found_response = Mock()
+    not_found_response.status_code = 404
+    not_found_error = httpx.HTTPStatusError(
+        "Not Found", request=Mock(), response=not_found_response
+    )
+    mock_get.side_effect = not_found_error
+
+    tmdb_ids = TmdbIds(series_id=99999)  # Non-existent series
+    cache_key = f"original_details:{tmdb_ids}"
+
+    # Verify cache starts empty
+    assert cache_key not in translator.cache
+
+    # First call should hit API and return None
+    details1 = translator.get_original_details(tmdb_ids)
+    assert details1 is None
+    assert mock_get.call_count == 1
+
+    # Verify None was cached
+    assert cache_key in translator.cache
+    assert translator.cache[cache_key] is None
+
+    # Second call should use cache (no additional API calls)
+    details2 = translator.get_original_details(tmdb_ids)
+    assert details2 is None
+    assert mock_get.call_count == 1  # Still only 1 call
+
+    # Results should be identical
+    assert details1 == details2
+
+
+@patch("httpx.Client.get")
+def test_find_tmdb_id_404_cached(mock_get: Mock, translator: Translator) -> None:
+    """Test that find_tmdb_id_by_external_id properly caches 404 responses as None."""
+    # Mock 404 HTTP error
+    not_found_response = Mock()
+    not_found_response.status_code = 404
+    not_found_error = httpx.HTTPStatusError(
+        "Not Found", request=Mock(), response=not_found_response
+    )
+    mock_get.side_effect = not_found_error
+
+    external_id = "99999"
+    external_source = "tvdb_id"
+    cache_key = f"external_find:{external_source}:{external_id}"
+
+    # Verify cache starts empty
+    assert cache_key not in translator.cache
+
+    # First call should hit API and return None
+    result1 = translator.find_tmdb_id_by_external_id(external_id, external_source)
+    assert result1 is None
+    assert mock_get.call_count == 1
+
+    # Verify None was cached
+    assert cache_key in translator.cache
+    assert translator.cache[cache_key] is None
+
+    # Second call should use cache (no additional API calls)
+    result2 = translator.find_tmdb_id_by_external_id(external_id, external_source)
+    assert result2 is None
+    assert mock_get.call_count == 1  # Still only 1 call
+
+    # Results should be identical
+    assert result1 == result2

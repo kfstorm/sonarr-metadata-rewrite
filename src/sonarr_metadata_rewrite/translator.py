@@ -1,6 +1,7 @@
 """TMDB API client with translation caching."""
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -35,22 +36,15 @@ class Translator:
         """
         cache_key = f"translations:{tmdb_ids}"
 
-        # Check cache first
-        if cache_key in self.cache:
-            cached_data = self.cache[cache_key]
-            return self._ensure_new_format(cached_data)
+        def fetch_translations() -> dict[str, TranslatedContent]:
+            endpoint = f"/{tmdb_ids}/translations"
+            api_data = self._fetch_with_retry(endpoint)
+            return self._parse_api_translations(api_data)
 
-        # Build endpoint and fetch from API with retry logic
-        endpoint = f"/{tmdb_ids}/translations"
-        api_data = self._fetch_with_retry(endpoint)
-
-        # Parse translations
-        translations = self._parse_api_translations(api_data)
-
-        # Store in cache with expiration
-        self.cache.set(cache_key, translations, expire=self.cache_expire_seconds)
-
-        return translations
+        translations = self._get_with_cache(
+            cache_key, fetch_translations, default_on_404={}
+        )
+        return self._ensure_new_format(translations)
 
     def _fetch_with_retry(
         self, endpoint: str, params: dict[str, Any] | None = None
@@ -91,6 +85,42 @@ class Translator:
 
         # This should never be reached due to the logic above
         raise RuntimeError("Unexpected code path in _fetch_with_retry")
+
+    def _get_with_cache(
+        self,
+        cache_key: str,
+        fetch_func: Callable[[], Any],
+        default_on_404: Any = None,
+    ) -> Any:
+        """Generic cache wrapper that handles 404 caching.
+
+        Args:
+            cache_key: Cache key to use
+            fetch_func: Function that performs the API fetch
+            default_on_404: Value to cache and return on 404 errors
+
+        Returns:
+            Cached or fetched data, or default_on_404 for 404 responses
+        """
+        # Check cache first
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        try:
+            # Execute the fetch function
+            result = fetch_func()
+            # Cache successful result
+            self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
+            return result
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Cache 404 with default value
+                self.cache.set(
+                    cache_key, default_on_404, expire=self.cache_expire_seconds
+                )
+                return default_on_404
+            # Re-raise other HTTP errors
+            raise
 
     def _parse_api_translations(
         self, api_data: dict[str, Any]
@@ -139,11 +169,7 @@ class Translator:
         """
         cache_key = f"original_details:{tmdb_ids}"
 
-        # Check cache first
-        if cache_key in self.cache:
-            return self.cache[cache_key]
-
-        try:
+        def fetch_details() -> tuple[str, str] | None:
             # For episodes, we need both episode name and series original language
             if tmdb_ids.season is not None and tmdb_ids.episode is not None:
                 # Get episode details for the name
@@ -151,39 +177,28 @@ class Translator:
                     f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}"
                     f"/episode/{tmdb_ids.episode}"
                 )
-                episode_response = self.client.get(episode_endpoint)
-                episode_response.raise_for_status()
-                episode_data = episode_response.json()
+                episode_data = self._fetch_with_retry(episode_endpoint)
 
                 # Get series details for the original language
                 series_endpoint = f"/tv/{tmdb_ids.series_id}"
-                series_response = self.client.get(series_endpoint)
-                series_response.raise_for_status()
-                series_data = series_response.json()
+                series_data = self._fetch_with_retry(series_endpoint)
 
                 original_language = series_data.get("original_language", "")
                 original_title = episode_data.get("name", "")
             else:
                 # Series details endpoint
                 endpoint = f"/tv/{tmdb_ids.series_id}"
-                response = self.client.get(endpoint)
-                response.raise_for_status()
-                api_data = response.json()
+                api_data = self._fetch_with_retry(endpoint)
 
                 original_language = api_data.get("original_language", "")
                 original_title = api_data.get("original_name", "")
 
             if original_language and original_title:
-                result = (original_language, original_title.strip())
-                # Store in cache with expiration
-                self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
-                return result
+                return (original_language, original_title.strip())
 
-        except Exception:
-            # If API call fails, return None (will fall back to existing logic)
-            pass
+            return None
 
-        return None
+        return self._get_with_cache(cache_key, fetch_details, default_on_404=None)
 
     def find_tmdb_id_by_external_id(
         self, external_id: str, external_source: str
@@ -199,11 +214,7 @@ class Translator:
         """
         cache_key = f"external_find:{external_source}:{external_id}"
 
-        # Check cache first
-        if cache_key in self.cache:
-            return self.cache[cache_key]
-
-        try:
+        def fetch_external_id() -> int | None:
             # Use TMDB's find endpoint with external source
             endpoint = f"/find/{external_id}"
             params = {"external_source": external_source}
@@ -215,18 +226,11 @@ class Translator:
             if tv_results:
                 tmdb_id = tv_results[0].get("id")
                 if tmdb_id:
-                    result = int(tmdb_id)
-                    # Store in cache with expiration
-                    self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
-                    return result
+                    return int(tmdb_id)
 
-        except Exception:
-            # If API call fails, return None
-            pass
+            return None
 
-        # Cache negative result to avoid repeated API calls
-        self.cache.set(cache_key, None, expire=self.cache_expire_seconds)
-        return None
+        return self._get_with_cache(cache_key, fetch_external_id, default_on_404=None)
 
     def _ensure_new_format(
         self, cached_data: dict[str, TranslatedContent]
