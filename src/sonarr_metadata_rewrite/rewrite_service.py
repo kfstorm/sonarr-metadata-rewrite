@@ -1,6 +1,7 @@
 """Main orchestrator service for metadata rewriting."""
 
 import logging
+import sqlite3
 from pathlib import Path
 
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -19,7 +20,14 @@ class RewriteService:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.cache = Cache(str(settings.cache_dir))
+        try:
+            self.cache = Cache(str(settings.cache_dir))
+        except sqlite3.OperationalError as e:
+            raise RuntimeError(
+                f"Failed to initialize cache at '{settings.cache_dir}'. "
+                f"The directory may not be accessible or writable. "
+                f"Error: {e}"
+            ) from e
         self.translator = Translator(settings, self.cache)
         self.metadata_processor = MetadataProcessor(settings, self.translator)
         self.file_monitor = FileMonitor(settings)

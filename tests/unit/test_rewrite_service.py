@@ -164,3 +164,25 @@ def test_service_integration_processing_error_with_exception(
     # Verify the message format
     assert "❌" in call_args[0][0]
     assert "Processing error:" in call_args[0][0]
+
+
+def test_cache_initialization_error(test_settings: Settings) -> None:
+    """Test cache initialization errors are handled with clear messages."""
+    import sqlite3
+
+    # Mock Cache to raise sqlite3.OperationalError
+    with patch("sonarr_metadata_rewrite.rewrite_service.Cache") as mock_cache:
+        mock_cache.side_effect = sqlite3.OperationalError(
+            "unable to open database file"
+        )
+
+        # Verify that RuntimeError is raised with clear message
+        with pytest.raises(RuntimeError) as exc_info:
+            RewriteService(test_settings)
+
+        # Verify error message includes the cache directory path
+        error_message = str(exc_info.value)
+        assert "Failed to initialize cache" in error_message
+        assert str(test_settings.cache_dir) in error_message
+        assert "not be accessible or writable" in error_message
+        assert "unable to open database file" in error_message

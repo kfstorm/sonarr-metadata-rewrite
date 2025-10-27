@@ -147,3 +147,33 @@ class TestCli:
                 "❌ Rollback failed: Backup directory not configured" in result.output
             )
             assert result.exit_code == 1
+
+    def test_cli_cache_initialization_error(self) -> None:
+        """Test CLI with cache initialization error."""
+        test_key = "test_api_key_1234567890abcdef"
+        runner = CliRunner()
+
+        with runner.isolated_filesystem():
+            env_vars = {
+                "TMDB_API_KEY": test_key,
+                "REWRITE_ROOT_DIR": "/tmp/test",
+                "PREFERRED_LANGUAGES": "zh-CN",
+            }
+            with patch.dict(os.environ, env_vars):
+                # Mock RewriteService to raise RuntimeError
+                with patch(
+                    "sonarr_metadata_rewrite.main.RewriteService"
+                ) as mock_service:
+                    mock_service.side_effect = RuntimeError(
+                        "Failed to initialize cache at '/some/path'. "
+                        "The directory may not be accessible or writable. "
+                        "Error: unable to open database file"
+                    )
+
+                    result = runner.invoke(cli)
+
+            # Check the output
+            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
+            assert "❌ Failed to initialize cache" in result.output
+            assert "not be accessible or writable" in result.output
+            assert result.exit_code == 1
