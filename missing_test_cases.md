@@ -6,7 +6,6 @@ This document lists all missing test cases identified from the git diff analysis
 
 - **Current Status**: 147 passing tests (67% coverage)
 - **Missing Tests**: ~68 test cases
-- **Target Coverage**: 85-90%
 - **Priority Areas**: ImageProcessor (with error scenarios), image_utils, Translator.select_best_image()
 - **Integration Tests**: Extend existing 3 tests instead of creating 11 new ones
 
@@ -190,29 +189,29 @@ This document lists all missing test cases identified from the git diff analysis
 #### Error Scenarios (5 tests)
 
 1. **test_process_network_failure_during_tmdb_download**
-    - Setup: Mock HTTP client to raise httpx.NetworkError on image download
-    - Action: Call process(poster.jpg)
-    - Expected: ImageProcessResult with success=False, exception set, no partial files
+   - Setup: Mock HTTP client to raise httpx.NetworkError on image download
+   - Action: Call process(poster.jpg)
+   - Expected: ImageProcessResult with success=False, exception set, no partial files
 
 2. **test_process_corrupted_image_response**
-    - Setup: Mock TMDB API to return invalid image bytes
-    - Action: Call process(poster.jpg)
-    - Expected: ImageProcessResult with success=False, original file intact
+   - Setup: Mock TMDB API to return invalid image bytes
+   - Action: Call process(poster.jpg)
+   - Expected: ImageProcessResult with success=False, original file intact
 
 3. **test_process_permission_error_on_backup**
-    - Setup: Mock backup directory to raise PermissionError
-    - Action: Call process(poster.jpg)
-    - Expected: ImageProcessResult with success=False, backup_created=False
+   - Setup: Mock backup directory to raise PermissionError
+   - Action: Call process(poster.jpg)
+   - Expected: ImageProcessResult with success=False, backup_created=False
 
 4. **test_process_disk_full_during_write**
-    - Setup: Mock file write to raise OSError (disk full)
-    - Action: Call process(poster.jpg)
-    - Expected: ImageProcessResult with success=False, original file intact
+   - Setup: Mock file write to raise OSError (disk full)
+   - Action: Call process(poster.jpg)
+   - Expected: ImageProcessResult with success=False, original file intact
 
 5. **test_process_file_deleted_during_processing**
-    - Setup: Mock NFO file to exist initially, then be deleted
-    - Action: Call process(poster.jpg)
-    - Expected: ImageProcessResult with success=False, graceful handling
+   - Setup: Mock NFO file to exist initially, then be deleted
+   - Action: Call process(poster.jpg)
+   - Expected: ImageProcessResult with success=False, graceful handling
 
 ---
 
@@ -493,32 +492,6 @@ Instead of creating new integration tests, extend existing ones to verify image 
    - Return tuple of (nfo_files, image_files) instead of just nfo_files
 
 ---
-
-## Test Implementation Priority
-
-### Priority 1 - Critical (Implement First)
-
-- ImageProcessor tests with error scenarios (23 tests)
-- image_utils tests (10 tests)
-- Translator.select_best_image() tests (12 tests)
-
-**Total**: 45 tests | **Estimated Time**: 5-7 hours
-
-### Priority 2 - Important (Implement Second)
-
-- RollbackService image tests (5 tests)
-- RewriteService routing tests (5 tests)
-- Models tests (4 tests)
-- FileMonitor/FileScanner additions (6 tests)
-
-**Total**: 20 tests | **Estimated Time**: 2-3 hours
-
-### Priority 3 - Nice to Have (Implement Third)
-
-- Extend integration tests for image processing (3 tests)
-
-**Total**: 3 tests | **Estimated Time**: 2-3 hours
-
 ---
 
 ## Expected Outcome
@@ -526,7 +499,6 @@ Instead of creating new integration tests, extend existing ones to verify image 
 After implementing all missing tests:
 
 - **Total Tests**: ~215 tests (up from 147)
-- **Expected Coverage**: 85-90% (up from 67%)
 - **Confidence Level**: High for production deployment
 - **Areas Fully Covered**:
   - Image processing workflow

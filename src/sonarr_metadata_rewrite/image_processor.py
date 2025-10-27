@@ -106,8 +106,7 @@ class ImageProcessor:
                         success=True,
                         file_path=image_path,
                         message=(
-                            f"{kind.capitalize()} already matches "
-                            f"selected candidate"
+                            f"{kind.capitalize()} already matches selected candidate"
                         ),
                         kind=kind,
                         selected_language=lang_str,

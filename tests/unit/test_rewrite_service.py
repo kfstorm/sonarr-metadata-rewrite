@@ -40,7 +40,6 @@ async def test_service_start_stop(
         patch.object(rewrite_service.translator, "close") as mock_translator_close,
         patch.object(rewrite_service.cache, "close") as mock_cache_close,
     ):
-
         # Test start
         await rewrite_service.start()
         mock_monitor_start.assert_called_once()
@@ -166,3 +165,151 @@ def test_service_integration_processing_error_with_exception(
     # Verify the message format
     assert "❌" in call_args[0][0]
     assert "Processing error:" in call_args[0][0]
+
+
+# Image-specific RewriteService tests
+
+
+def test_process_file_routes_image_to_image_processor(
+    rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """Test that image files are routed to ImageProcessor."""
+    poster_path = tmp_path / "poster.jpg"
+    poster_path.write_bytes(b"fake image")
+
+    with (
+        patch.object(rewrite_service.image_processor, "process") as mock_image_process,
+        patch.object(
+            rewrite_service.metadata_processor, "process_file"
+        ) as mock_metadata_process,
+    ):
+        rewrite_service._process_file(poster_path)
+
+        # ImageProcessor should be called
+        mock_image_process.assert_called_once_with(poster_path)
+        # MetadataProcessor should NOT be called
+        mock_metadata_process.assert_not_called()
+
+
+def test_process_file_routes_nfo_to_metadata_processor(
+    rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """Test that NFO files are routed to MetadataProcessor."""
+    nfo_path = tmp_path / "tvshow.nfo"
+    nfo_path.write_text("<tvshow><title>Test</title></tvshow>")
+
+    with (
+        patch.object(rewrite_service.image_processor, "process") as mock_image_process,
+        patch.object(
+            rewrite_service.metadata_processor, "process_file"
+        ) as mock_metadata_process,
+    ):
+        rewrite_service._process_file(nfo_path)
+
+        # MetadataProcessor should be called
+        mock_metadata_process.assert_called_once_with(nfo_path)
+        # ImageProcessor should NOT be called
+        mock_image_process.assert_not_called()
+
+
+@patch("sonarr_metadata_rewrite.rewrite_service.logger")
+def test_process_file_callback_logs_image_success(
+    mock_logger: Mock, rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """Test callback logs success for image processing."""
+    poster_path = tmp_path / "poster.jpg"
+    poster_path.write_bytes(b"fake image")
+
+    with patch.object(rewrite_service.image_processor, "process") as mock_image_process:
+        from sonarr_metadata_rewrite.models import ImageProcessResult
+
+        # Mock successful image processing
+        mock_image_process.return_value = ImageProcessResult(
+            success=True,
+            file_path=poster_path,
+            message="Poster rewritten successfully",
+            kind="poster",
+            file_modified=True,
+        )
+
+        rewrite_service._process_file_callback(poster_path)
+
+        # Verify success was logged
+        mock_logger.info.assert_called()
+        log_calls = [call[0][0] for call in mock_logger.info.call_args_list]
+        assert any("✅" in call for call in log_calls)
+
+
+@patch("sonarr_metadata_rewrite.rewrite_service.logger")
+def test_process_file_callback_logs_image_failure(
+    mock_logger: Mock, rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """Test callback logs failure for image processing."""
+    logo_path = tmp_path / "logo.png"
+    logo_path.write_bytes(b"fake image")
+
+    with patch.object(rewrite_service.image_processor, "process") as mock_image_process:
+        from sonarr_metadata_rewrite.models import ImageProcessResult
+
+        # Mock failed image processing
+        mock_image_process.return_value = ImageProcessResult(
+            success=False,
+            file_path=logo_path,
+            message="No logo available in preferred languages",
+            kind="logo",
+        )
+
+        rewrite_service._process_file_callback(logo_path)
+
+        # Verify warning was logged
+        mock_logger.warning.assert_called()
+        log_calls = [call[0][0] for call in mock_logger.warning.call_args_list]
+        assert any("⚠️" in call for call in log_calls)
+
+
+def test_integration_both_processors_working(
+    rewrite_service: RewriteService,
+    tmp_path: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test both MetadataProcessor and ImageProcessor work together."""
+    # Create NFO file
+    nfo_path = create_test_files("tvshow.nfo", tmp_path / "tvshow.nfo")
+
+    # Create poster file
+    poster_path = tmp_path / "poster.jpg"
+    poster_path.write_bytes(b"fake image")
+
+    with (
+        patch.object(
+            rewrite_service.metadata_processor, "process_file"
+        ) as mock_metadata,
+        patch.object(rewrite_service.image_processor, "process") as mock_image,
+    ):
+        from sonarr_metadata_rewrite.models import ImageProcessResult, ProcessResult
+
+        # Mock successful NFO processing
+        mock_metadata.return_value = ProcessResult(
+            success=True, file_path=nfo_path, message="NFO processed"
+        )
+
+        # Mock successful image processing
+        mock_image.return_value = ImageProcessResult(
+            success=True,
+            file_path=poster_path,
+            message="Poster processed",
+            kind="poster",
+            file_modified=True,
+        )
+
+        # Process both files
+        result_nfo = rewrite_service._process_file(nfo_path)
+        result_image = rewrite_service._process_file(poster_path)
+
+        # Verify both processors were called appropriately
+        mock_metadata.assert_called_once_with(nfo_path)
+        mock_image.assert_called_once_with(poster_path)
+
+        # Verify results
+        assert result_nfo.success is True
+        assert result_image.success is True

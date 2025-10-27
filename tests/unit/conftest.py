@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
+from diskcache import Cache  # type: ignore[import-untyped]
 
 import sonarr_metadata_rewrite.metadata_processor
 import sonarr_metadata_rewrite.translator
 from sonarr_metadata_rewrite.retry_utils import retry
+from sonarr_metadata_rewrite.translator import Translator
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import ElementTree
@@ -62,6 +64,35 @@ def patch_retry_timeout() -> Generator[None, None, None]:
         yield
 
 
+@pytest.fixture(autouse=True)
+def patch_image_download_retry() -> Generator[None, None, None]:
+    """Patch retry decorator in image processor to use minimal timeout for tests."""
+    import sonarr_metadata_rewrite.image_processor
+
+    original_retry = sonarr_metadata_rewrite.image_processor.retry
+
+    def fast_retry(
+        timeout: float = 15.0,
+        interval: float = 0.5,
+        log_interval: float = 2.0,
+        exceptions: tuple[type[Exception], ...] = (Exception,),
+    ):
+        """Fast retry for tests with minimal timeout."""
+        return original_retry(
+            timeout=0.1,  # Very short timeout for unit tests
+            interval=0.01,  # Very short interval
+            log_interval=0.05,
+            exceptions=exceptions,
+        )
+
+    with patch.object(
+        sonarr_metadata_rewrite.image_processor,
+        "retry",
+        fast_retry,
+    ):
+        yield
+
+
 @pytest.fixture
 def patch_fetch_with_retry() -> Generator[None, None, None]:
     """Mock _fetch_with_retry to avoid real HTTP requests in integration tests.
@@ -92,3 +123,10 @@ def patch_fetch_with_retry() -> Generator[None, None, None]:
         mock_fetch_with_retry,
     ):
         yield
+
+
+@pytest.fixture
+def translator(test_settings, tmp_path) -> Translator:
+    """Create a Translator instance with a temporary cache for testing."""
+    cache = Cache(tmp_path / "cache")
+    return Translator(test_settings, cache)

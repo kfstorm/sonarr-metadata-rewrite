@@ -136,3 +136,48 @@ def test_monitor_start_stop(file_monitor: FileMonitor) -> None:
     assert file_monitor.observer is None
     assert file_monitor.handler is None
     assert not file_monitor.is_running()
+
+
+# Additional image-specific tests
+
+
+def test_media_file_handler_detects_poster_creation() -> None:
+    """Test handler detects poster.jpg creation events."""
+    callback = Mock()
+    handler = MediaFileHandler(callback)
+
+    mock_event = Mock()
+    mock_event.is_directory = False
+    mock_event.src_path = "/test/Series/Season 1/poster.jpg"
+
+    handler.on_created(mock_event)
+    callback.assert_called_once_with(Path("/test/Series/Season 1/poster.jpg"))
+
+
+def test_media_file_handler_detects_logo_modification() -> None:
+    """Test handler detects logo.png modification events."""
+    callback = Mock()
+    handler = MediaFileHandler(callback)
+
+    mock_event = Mock()
+    mock_event.is_directory = False
+    mock_event.src_path = "/test/Series/logo.png"
+
+    handler.on_modified(mock_event)
+    callback.assert_called_once_with(Path("/test/Series/logo.png"))
+
+
+def test_media_file_handler_ignores_banner() -> None:
+    """Test handler ignores banner.jpg files."""
+    callback = Mock()
+    handler = MediaFileHandler(callback)
+
+    mock_event = Mock()
+    mock_event.is_directory = False
+    mock_event.src_path = "/test/Series/banner.jpg"
+
+    handler.on_created(mock_event)
+    callback.assert_not_called()
+
+    handler.on_modified(mock_event)
+    callback.assert_not_called()

@@ -8,6 +8,7 @@ from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.test_helpers import (
     SeriesWithNfos,
     ServiceRunner,
+    verify_images,
     verify_translations,
 )
 
@@ -24,10 +25,10 @@ def test_file_monitor_workflow(
     temp_media_root: Path,
     configured_sonarr_container: SonarrClient,
 ) -> None:
-    """Test file monitor-only workflow with real-time NFO file processing.
+    """Test file monitor-only workflow with real-time NFO and image processing.
 
     This test verifies that the file monitor component can detect and process
-    NFO files in real-time when they are created by Sonarr.
+    NFO files and images in real-time when they are created by Sonarr.
     """
     with ServiceRunner(
         temp_media_root,
@@ -36,11 +37,15 @@ def test_file_monitor_workflow(
     ):
         # Service startup waits for "File monitor started" log, so no sleep needed
         with SeriesWithNfos(
-            configured_sonarr_container, temp_media_root, BREAKING_BAD_TVDB_ID
-        ) as nfo_files:
+            configured_sonarr_container,
+            temp_media_root,
+            BREAKING_BAD_TVDB_ID,
+            create_images=True,
+        ) as (nfo_files, image_files):
             verify_translations(
                 nfo_files, expected_language="zh", possible_languages=["zh", "en"]
             )
+            verify_images(image_files, expected_language="zh-CN")
 
 
 @pytest.mark.integration
@@ -52,15 +57,19 @@ def test_file_scanner_workflow(
     """Test file scanner-only workflow with periodic directory scanning.
 
     This test verifies that the file scanner component can discover and process
-    existing NFO files through periodic directory scanning.
+    existing NFO files and images through periodic directory scanning.
     """
     with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, BREAKING_BAD_TVDB_ID
-    ) as nfo_files:
+        configured_sonarr_container,
+        temp_media_root,
+        BREAKING_BAD_TVDB_ID,
+        create_images=True,
+    ) as (nfo_files, image_files):
         with ServiceRunner(temp_media_root, {"ENABLE_FILE_MONITOR": "false"}):
             verify_translations(
                 nfo_files, expected_language="zh", possible_languages=["zh", "en"]
             )
+            verify_images(image_files, expected_language="zh-CN")
 
 
 @pytest.mark.integration
@@ -70,18 +79,21 @@ def test_rollback_service_mode(
     configured_sonarr_container: SonarrClient,
     tmp_path: Path,
 ) -> None:
-    """Test rollback service mode that restores original NFO files.
+    """Test rollback service mode that restores original NFO files and images.
 
     This test verifies that the rollback service mode can restore original
-    NFO content after files have been translated to Chinese.
+    NFO content and images after files have been translated to Chinese.
     """
     # Create backup directory outside media root to avoid interference
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir(exist_ok=True)
 
     with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, BREAKING_BAD_TVDB_ID
-    ) as nfo_files:
+        configured_sonarr_container,
+        temp_media_root,
+        BREAKING_BAD_TVDB_ID,
+        create_images=True,
+    ) as (nfo_files, image_files):
         # First, translate files to Chinese using rewrite mode with backups enabled
         with ServiceRunner(
             temp_media_root,
@@ -92,6 +104,12 @@ def test_rollback_service_mode(
             verify_translations(
                 nfo_files, expected_language="zh", possible_languages=["zh", "en"]
             )
+            verify_images(
+                image_files,
+                expected_language="zh-CN",
+                expect_backup=True,
+                backup_dir=backup_dir,
+            )
 
         # Then, rollback using rollback service mode
         with ServiceRunner(
@@ -101,6 +119,8 @@ def test_rollback_service_mode(
             verify_translations(
                 nfo_files, expected_language="en", possible_languages=["zh", "en"]
             )
+            # After rollback, images should not have markers
+            verify_images(image_files, expected_language="zh-CN", expect_marker=False)
 
 
 @pytest.mark.integration
@@ -143,9 +163,10 @@ def test_advanced_translation_scenarios(
     else:
         possible_languages.add("zh")
 
-    with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, tvdb_id
-    ) as nfo_files:
+    with SeriesWithNfos(configured_sonarr_container, temp_media_root, tvdb_id) as (
+        nfo_files,
+        _,
+    ):
         with ServiceRunner(temp_media_root, service_config):
             verify_translations(
                 nfo_files,

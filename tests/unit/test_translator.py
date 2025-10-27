@@ -1045,3 +1045,366 @@ def test_find_tmdb_id_404_cached(mock_get: Mock, translator: Translator) -> None
 
     # Results should be identical
     assert result1 == result2
+
+
+class TestSelectBestImage:
+    """Tests for Translator.select_best_image() method."""
+
+    @pytest.fixture
+    def mock_images_response_posters(self) -> dict[str, Any]:
+        """Mock TMDB images API response with posters."""
+        return {
+            "id": 12345,
+            "posters": [
+                {
+                    "file_path": "/poster_en_us.jpg",
+                    "iso_639_1": "en",
+                    "iso_3166_1": "US",
+                    "vote_average": 5.5,
+                },
+                {
+                    "file_path": "/poster_ja_jp.jpg",
+                    "iso_639_1": "ja",
+                    "iso_3166_1": "JP",
+                    "vote_average": 5.8,
+                },
+                {
+                    "file_path": "/poster_zh_cn.jpg",
+                    "iso_639_1": "zh",
+                    "iso_3166_1": "CN",
+                    "vote_average": 6.0,
+                },
+            ],
+            "logos": [],
+        }
+
+    @pytest.fixture
+    def mock_images_response_logos(self) -> dict[str, Any]:
+        """Mock TMDB images API response with logos."""
+        return {
+            "id": 67890,
+            "posters": [],
+            "logos": [
+                {
+                    "file_path": "/logo_en.jpg",
+                    "iso_639_1": "en",
+                    "iso_3166_1": "US",
+                    "vote_average": 5.0,
+                },
+                {
+                    "file_path": "/logo_ja.jpg",
+                    "iso_639_1": "ja",
+                    "iso_3166_1": "JP",
+                    "vote_average": 5.5,
+                },
+            ],
+        }
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_poster_exact_match(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_posters: dict[str, Any],
+    ) -> None:
+        """Test selecting poster with exact language-country match."""
+        mock_get.return_value.json.return_value = mock_images_response_posters
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+
+        assert result is not None
+        assert result.file_path == "/poster_en_us.jpg"
+        assert result.iso_639_1 == "en"
+        assert result.iso_3166_1 == "US"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_logo_exact_match(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_logos: dict[str, Any],
+    ) -> None:
+        """Test selecting logo with exact language-country match."""
+        mock_get.return_value.json.return_value = mock_images_response_logos
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=67890, season=None, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["ja-JP"], kind="logo")
+
+        assert result is not None
+        assert result.file_path == "/logo_ja.jpg"
+        assert result.iso_639_1 == "ja"
+        assert result.iso_3166_1 == "JP"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_season_poster(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+    ) -> None:
+        """Test selecting season poster calls correct endpoint."""
+        season_response = {
+            "id": 12345,
+            "posters": [
+                {
+                    "file_path": "/season1_poster.jpg",
+                    "iso_639_1": "en",
+                    "iso_3166_1": "US",
+                    "vote_average": 5.5,
+                }
+            ],
+            "logos": [],
+        }
+        mock_get.return_value.json.return_value = season_response
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=1, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+
+        # Verify correct endpoint was called
+        assert mock_get.called
+        call_url = mock_get.call_args[0][0]
+        assert "/tv/12345/season/1/images" in call_url
+
+        assert result is not None
+        assert result.file_path == "/season1_poster.jpg"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_preference_order(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_posters: dict[str, Any],
+    ) -> None:
+        """Test that first preferred language match is returned."""
+        mock_get.return_value.json.return_value = mock_images_response_posters
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        # Prefer en-US first, then ja-JP
+        result = translator.select_best_image(
+            tmdb_ids, ["en-US", "ja-JP", "zh-CN"], kind="poster"
+        )
+
+        assert result is not None
+        # Should return en-US since it's first in preferences
+        assert result.file_path == "/poster_en_us.jpg"
+        assert result.iso_639_1 == "en"
+        assert result.iso_3166_1 == "US"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_no_match_returns_none(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_posters: dict[str, Any],
+    ) -> None:
+        """Test that no match returns None."""
+        mock_get.return_value.json.return_value = mock_images_response_posters
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        # Request fr-FR which doesn't exist in response
+        result = translator.select_best_image(tmdb_ids, ["fr-FR"], kind="poster")
+
+        assert result is None
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_skips_null_language(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+    ) -> None:
+        """Test that images with null language codes are skipped."""
+        response_with_nulls = {
+            "id": 12345,
+            "posters": [
+                {
+                    "file_path": "/poster_null.jpg",
+                    "iso_639_1": None,
+                    "iso_3166_1": None,
+                    "vote_average": 6.0,
+                },
+                {
+                    "file_path": "/poster_en.jpg",
+                    "iso_639_1": "en",
+                    "iso_3166_1": "US",
+                    "vote_average": 5.5,
+                },
+            ],
+            "logos": [],
+        }
+        mock_get.return_value.json.return_value = response_with_nulls
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+
+        assert result is not None
+        # Should skip null and return en-US
+        assert result.file_path == "/poster_en.jpg"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_skips_malformed_language_codes(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_posters: dict[str, Any],
+    ) -> None:
+        """Test that malformed language codes without hyphen are skipped."""
+        mock_get.return_value.json.return_value = mock_images_response_posters
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        # Malformed codes without hyphen should be skipped
+        result = translator.select_best_image(
+            tmdb_ids, ["en", "US", "en-US"], kind="poster"
+        )
+
+        assert result is not None
+        # Should skip "en" and "US", use "en-US"
+        assert result.iso_639_1 == "en"
+        assert result.iso_3166_1 == "US"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_handles_404(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+    ) -> None:
+        """Test that 404 response returns None."""
+        not_found_response = Mock()
+        not_found_response.status_code = 404
+        not_found_error = httpx.HTTPStatusError(
+            "Not Found", request=Mock(), response=not_found_response
+        )
+        mock_get.side_effect = not_found_error
+
+        tmdb_ids = TmdbIds(series_id=99999, season=None, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+
+        assert result is None
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_caching(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_posters: dict[str, Any],
+    ) -> None:
+        """Test that image selection results are cached."""
+        mock_get.return_value.json.return_value = mock_images_response_posters
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+
+        # First call
+        result1 = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+        assert mock_get.call_count == 1
+
+        # Second call with same parameters should use cache
+        result2 = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+        assert mock_get.call_count == 1  # No additional API call
+
+        assert result1 == result2
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_empty_array(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+    ) -> None:
+        """Test that empty posters/logos array returns None."""
+        empty_response = {"id": 12345, "posters": [], "logos": []}
+        mock_get.return_value.json.return_value = empty_response
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
+
+        assert result is None
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_different_language_combinations(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+    ) -> None:
+        """Test various language-country combinations."""
+        # Test en-GB
+        response_en_gb = {
+            "id": 12345,
+            "posters": [
+                {"file_path": "/path1.jpg", "iso_639_1": "en", "iso_3166_1": "GB"}
+            ],
+        }
+        mock_get.return_value.json.return_value = response_en_gb
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        result = translator.select_best_image(tmdb_ids, ["en-GB"], kind="poster")
+        assert result is not None
+        assert result.iso_639_1 == "en"
+        assert result.iso_3166_1 == "GB"
+
+        # Test pt-BR
+        response_pt_br = {
+            "id": 12345,
+            "posters": [
+                {"file_path": "/path2.jpg", "iso_639_1": "pt", "iso_3166_1": "BR"}
+            ],
+        }
+        mock_get.return_value.json.return_value = response_pt_br
+        result = translator.select_best_image(tmdb_ids, ["pt-BR"], kind="poster")
+        assert result is not None
+        assert result.iso_639_1 == "pt"
+        assert result.iso_3166_1 == "BR"
+
+        # Test zh-CN
+        response_zh_cn = {
+            "id": 12345,
+            "logos": [
+                {"file_path": "/path3.png", "iso_639_1": "zh", "iso_3166_1": "CN"}
+            ],
+        }
+        mock_get.return_value.json.return_value = response_zh_cn
+        result = translator.select_best_image(tmdb_ids, ["zh-CN"], kind="logo")
+        assert result is not None
+        assert result.iso_639_1 == "zh"
+        assert result.iso_3166_1 == "CN"
+
+        # Test es-MX
+        response_es_mx = {
+            "id": 12345,
+            "posters": [
+                {"file_path": "/path4.jpg", "iso_639_1": "es", "iso_3166_1": "MX"}
+            ],
+        }
+        mock_get.return_value.json.return_value = response_es_mx
+        result = translator.select_best_image(tmdb_ids, ["es-MX"], kind="poster")
+        assert result is not None
+        assert result.iso_639_1 == "es"
+        assert result.iso_3166_1 == "MX"
+
+    @patch("httpx.Client.get")
+    def test_select_best_image_invalid_kind(
+        self,
+        mock_get: Mock,
+        translator: Translator,
+        mock_images_response_posters: dict[str, Any],
+    ) -> None:
+        """Test that invalid kind returns None."""
+        mock_get.return_value.json.return_value = mock_images_response_posters
+        mock_get.return_value.raise_for_status = Mock()
+
+        tmdb_ids = TmdbIds(series_id=12345, season=None, episode=None)
+        # "banner" is not a valid kind
+        result = translator.select_best_image(
+            tmdb_ids,
+            ["en-US"],
+            kind="banner",  # type: ignore[arg-type]
+        )
+
+        assert result is None

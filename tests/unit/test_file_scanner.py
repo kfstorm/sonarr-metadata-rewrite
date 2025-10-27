@@ -156,3 +156,115 @@ def test_scanner_missing_directory_handling(
         callback_tracker.assert_not_called()
     finally:
         file_scanner.settings.rewrite_root_dir = original_root
+
+
+# Image-specific scanner tests
+
+
+def test_scanner_finds_both_nfo_and_images(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test scanner finds both NFO and image files, ignoring non-supported images."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_mixed_scan"
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        test_files = [
+            test_dir / "tvshow.nfo",
+            test_dir / "poster.jpg",
+            test_dir / "logo.png",
+            test_dir / "banner.jpg",  # Should be ignored
+        ]
+
+        for test_file in test_files:
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            test_file.touch()
+
+        file_scanner.start(callback_tracker)
+        time.sleep(0.1)
+        file_scanner.stop()
+
+        # Should process tvshow.nfo, poster.jpg, logo.png (not banner.jpg)
+        assert callback_tracker.call_count == 3
+        called_paths = {call[0][0] for call in callback_tracker.call_args_list}
+        assert test_dir / "tvshow.nfo" in called_paths
+        assert test_dir / "poster.jpg" in called_paths
+        assert test_dir / "logo.png" in called_paths
+        assert test_dir / "banner.jpg" not in called_paths
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
+
+
+def test_scanner_processes_images_after_nfo(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test scanner processes NFO files before image files."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_order_scan"
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        test_files = [
+            test_dir / "poster.jpg",
+            test_dir / "tvshow.nfo",
+            test_dir / "logo.png",
+        ]
+
+        for test_file in test_files:
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            test_file.touch()
+
+        file_scanner.start(callback_tracker)
+        time.sleep(0.1)
+        file_scanner.stop()
+
+        assert callback_tracker.call_count == 3
+        called_paths = [call[0][0] for call in callback_tracker.call_args_list]
+
+        # NFO should be processed before images
+        nfo_index = called_paths.index(test_dir / "tvshow.nfo")
+        poster_index = called_paths.index(test_dir / "poster.jpg")
+        logo_index = called_paths.index(test_dir / "logo.png")
+
+        assert nfo_index < poster_index
+        assert nfo_index < logo_index
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
+
+
+def test_scanner_image_only_directory(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test scanner processes image-only directories successfully."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_images_only"
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        test_files = [
+            test_dir / "poster.jpg",
+            test_dir / "logo.png",
+        ]
+
+        for test_file in test_files:
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            test_file.touch()
+
+        file_scanner.start(callback_tracker)
+        time.sleep(0.1)
+        file_scanner.stop()
+
+        # Both images should be processed
+        assert callback_tracker.call_count == 2
+        called_paths = {call[0][0] for call in callback_tracker.call_args_list}
+        assert test_dir / "poster.jpg" in called_paths
+        assert test_dir / "logo.png" in called_paths
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
