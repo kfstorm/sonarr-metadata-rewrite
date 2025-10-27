@@ -170,7 +170,7 @@ def test_cache_initialization_error(test_settings: Settings) -> None:
     """Test cache initialization errors are handled with clear messages."""
     import sqlite3
 
-    # Mock Cache to raise sqlite3.OperationalError
+    # Test with sqlite3.OperationalError
     with patch("sonarr_metadata_rewrite.rewrite_service.Cache") as mock_cache:
         mock_cache.side_effect = sqlite3.OperationalError(
             "unable to open database file"
@@ -186,3 +186,22 @@ def test_cache_initialization_error(test_settings: Settings) -> None:
         assert str(test_settings.cache_dir) in error_message
         assert "not be accessible or writable" in error_message
         assert "unable to open database file" in error_message
+
+
+def test_cache_initialization_permission_error(test_settings: Settings) -> None:
+    """Test cache initialization with permission errors."""
+    # Test with PermissionError
+    with patch("sonarr_metadata_rewrite.rewrite_service.Cache") as mock_cache:
+        mock_cache.side_effect = PermissionError(
+            "[Errno 13] Cache directory does not exist and could not be created"
+        )
+
+        # Verify that RuntimeError is raised with clear message
+        with pytest.raises(RuntimeError) as exc_info:
+            RewriteService(test_settings)
+
+        # Verify error message includes the cache directory path
+        error_message = str(exc_info.value)
+        assert "Failed to initialize cache" in error_message
+        assert str(test_settings.cache_dir) in error_message
+        assert "not be accessible or writable" in error_message

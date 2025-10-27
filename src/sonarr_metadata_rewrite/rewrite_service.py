@@ -22,7 +22,7 @@ class RewriteService:
         self.settings = settings
         try:
             self.cache = Cache(str(settings.cache_dir))
-        except sqlite3.OperationalError as e:
+        except (sqlite3.OperationalError, PermissionError, OSError) as e:
             raise RuntimeError(
                 f"Failed to initialize cache at '{settings.cache_dir}'. "
                 f"The directory may not be accessible or writable. "
