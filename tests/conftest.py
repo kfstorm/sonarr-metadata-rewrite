@@ -155,7 +155,7 @@ def create_test_settings(test_data_dir: Path, **kwargs: Any) -> Settings:
     params = {
         "tmdb_api_key": kwargs.get("tmdb_api_key", "test_key_12345"),
         "rewrite_root_dir": kwargs.get("rewrite_root_dir", test_data_dir),
-        "preferred_languages": kwargs.get("preferred_languages", ["zh-CN"]),
+        "preferred_languages": kwargs.get("preferred_languages", "zh-CN"),
         "periodic_scan_interval_seconds": kwargs.get(
             "periodic_scan_interval_seconds", 1
         ),

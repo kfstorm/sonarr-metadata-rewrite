@@ -9,7 +9,6 @@ import pytest
 from PIL import Image, PngImagePlugin
 
 from sonarr_metadata_rewrite.image_utils import (
-    PIEXIF_AVAILABLE,
     embed_marker_and_atomic_write,
     read_embedded_marker,
 )
@@ -46,7 +45,6 @@ class TestReadEmbeddedMarker:
 
         assert result == marker_data
 
-    @pytest.mark.skipif(not PIEXIF_AVAILABLE, reason="piexif not available")
     def test_read_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test reading marker from JPEG with EXIF UserComment."""
         import piexif
@@ -130,7 +128,6 @@ class TestEmbedMarkerAndAtomicWrite:
         result = read_embedded_marker(dst)
         assert result == marker_data
 
-    @pytest.mark.skipif(not PIEXIF_AVAILABLE, reason="piexif not available")
     def test_embed_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test embedding marker in JPEG via EXIF UserComment."""
         marker_data = {
@@ -151,22 +148,6 @@ class TestEmbedMarkerAndAtomicWrite:
         # Verify marker can be read back
         result = read_embedded_marker(dst)
         assert result == marker_data
-
-    @pytest.mark.skipif(PIEXIF_AVAILABLE, reason="piexif is available")
-    def test_embed_jpeg_without_piexif(self, tmp_path: Path) -> None:
-        """Test JPEG embedding when piexif is not available."""
-        marker_data = {"rewritten_by": "test", "tmdb_id": 33333}
-        dst = tmp_path / "output.jpg"
-
-        raw_bytes = _create_image_bytes((40, 40), "cyan", "JPEG")
-
-        # Should write JPEG without EXIF marker
-        embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
-
-        assert dst.exists()
-        # Marker won't be present since piexif is not available
-        result = read_embedded_marker(dst)
-        assert result is None
 
     def test_atomic_write_uses_temp_file(self, tmp_path: Path) -> None:
         """Test that atomic write uses temporary file and os.replace()."""

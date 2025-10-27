@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
 
     # Translation preferences
-    preferred_languages: list[str] = Field(
+    preferred_languages: str = Field(
         description="Preferred languages in priority order (comma-separated)"
     )
 
@@ -70,21 +70,16 @@ class Settings(BaseSettings):
         default=True, description="Enable periodic directory scanning"
     )
 
-    @field_validator("preferred_languages", mode="before")
+    @field_validator("preferred_languages")
     @classmethod
-    def parse_preferred_languages(cls, v: str | list[str]) -> list[str]:
-        """Parse preferred languages from comma-separated string or list."""
-        if isinstance(v, list):
-            # Already a list, validate it's not empty
-            if not v:
-                raise ValueError("preferred_languages cannot be empty")
-            return v
+    def parse_preferred_languages(cls, v: str) -> list[str]:
+        """Parse preferred languages from comma-separated string."""
         if isinstance(v, str):
             languages = [lang.strip() for lang in v.split(",") if lang.strip()]
             if not languages:
                 raise ValueError("preferred_languages cannot be empty")
             return languages
-        raise ValueError("preferred_languages must be a comma-separated string or list")
+        raise ValueError("preferred_languages must be a comma-separated string")
 
     @field_validator("service_mode")
     @classmethod

@@ -6,15 +6,8 @@ import tempfile
 from io import BytesIO
 from pathlib import Path
 
+import piexif  # type: ignore[import-untyped]
 from PIL import Image, PngImagePlugin
-
-try:
-    import piexif  # type: ignore[import-untyped]
-
-    PIEXIF_AVAILABLE = True
-except ImportError:
-    PIEXIF_AVAILABLE = False
-    piexif = None
 
 
 def read_embedded_marker(path: Path) -> dict[str, str] | None:
@@ -39,8 +32,7 @@ def read_embedded_marker(path: Path) -> dict[str, str] | None:
 
             elif img.format == "JPEG":
                 # Check EXIF UserComment
-                if PIEXIF_AVAILABLE and "exif" in img.info:
-                    assert piexif is not None
+                if "exif" in img.info:
                     exif_dict = piexif.load(img.info["exif"])
                     user_comment = exif_dict.get("Exif", {}).get(
                         piexif.ExifIFD.UserComment
@@ -91,15 +83,10 @@ def embed_marker_and_atomic_write(
 
     elif img.format in ("JPEG", "JPG"):
         # Add EXIF UserComment
-        if PIEXIF_AVAILABLE:
-            assert piexif is not None
-            # Create or update EXIF data
-            exif_dict = {"Exif": {piexif.ExifIFD.UserComment: marker_json.encode()}}
-            exif_bytes = piexif.dump(exif_dict)
-            img.save(output, format="JPEG", exif=exif_bytes, quality=95)
-        else:
-            # Fallback: save without EXIF if piexif not available
-            img.save(output, format="JPEG", quality=95)
+        # Create or update EXIF data
+        exif_dict = {"Exif": {piexif.ExifIFD.UserComment: marker_json.encode()}}
+        exif_bytes = piexif.dump(exif_dict)
+        img.save(output, format="JPEG", exif=exif_bytes, quality=95)
     else:
         # Unsupported format, save as-is
         img.save(output, format=img.format)
