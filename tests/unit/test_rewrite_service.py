@@ -28,7 +28,9 @@ def test_rewrite_service_initialization(rewrite_service: RewriteService) -> None
 
 
 @patch("sonarr_metadata_rewrite.rewrite_service.logger")
-def test_service_start_stop(mock_logger: Mock, rewrite_service: RewriteService) -> None:
+async def test_service_start_stop(
+    mock_logger: Mock, rewrite_service: RewriteService
+) -> None:
     """Test service start/stop functionality."""
     with (
         patch.object(rewrite_service.file_monitor, "start") as mock_monitor_start,
@@ -40,7 +42,7 @@ def test_service_start_stop(mock_logger: Mock, rewrite_service: RewriteService) 
     ):
 
         # Test start
-        rewrite_service.start()
+        await rewrite_service.start()
         mock_monitor_start.assert_called_once()
         mock_scanner_start.assert_called_once()
 
@@ -95,7 +97,7 @@ def test_service_integration_successful_processing(
         }
 
         # Directly call the callback (simulating file monitor/scanner trigger)
-        rewrite_service._process_file(test_path)
+        rewrite_service._process_file_callback(test_path)
 
         # Verify successful processing was logged
         mock_logger.info.assert_called()
@@ -116,7 +118,7 @@ def test_service_integration_processing_failure(
     test_path = create_test_files("no_tmdb_id.nfo", test_data_dir / "failure_test.nfo")
 
     # Directly call the callback (simulating file monitor/scanner trigger)
-    rewrite_service._process_file(test_path)
+    rewrite_service._process_file_callback(test_path)
 
     # Verify failure was logged with warning
     mock_logger.warning.assert_called()
@@ -137,7 +139,7 @@ def test_service_integration_processing_exception(
         "process_file",
         side_effect=Exception("Test error"),
     ):
-        rewrite_service._process_file(test_path)
+        rewrite_service._process_file_callback(test_path)
 
         mock_logger.exception.assert_called()
 
@@ -153,7 +155,7 @@ def test_service_integration_processing_error_with_exception(
     corrupted_nfo = test_data_dir / "corrupted.nfo"
     corrupted_nfo.write_text("CORRUPTED CONTENT")
 
-    rewrite_service._process_file(corrupted_nfo)
+    rewrite_service._process_file_callback(corrupted_nfo)
 
     # Verify error was logged with stack trace when exception occurs in processing
     mock_logger.error.assert_called()

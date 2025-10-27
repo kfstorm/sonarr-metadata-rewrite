@@ -75,8 +75,10 @@ def cli() -> None:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Start the service
-        service.start()
+        # Start the service (requires async context)
+        import asyncio
+
+        asyncio.run(service.start())
         click.echo("✅ Service started successfully")
         click.echo("Press Ctrl+C to stop the service")
 

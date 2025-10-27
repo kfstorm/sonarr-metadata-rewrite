@@ -6,7 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
+from sonarr_metadata_rewrite.nfo_utils import (
+    find_nfo_files,
+    find_rewritable_images,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,20 @@ class FileScanner:
                         self.callback(nfo_path)
                 except Exception:
                     logger.exception(f"Unexpected error processing file {nfo_path}")
+                    continue
+
+            # Scan for rewritable image files
+            image_files = find_rewritable_images(root_dir)
+            for image_path in image_files:
+                if self.stop_event is not None and self.stop_event.is_set():
+                    break
+
+                try:
+                    if self.callback:
+                        logger.debug(f"Processing file: {image_path}")
+                        self.callback(image_path)
+                except Exception:
+                    logger.exception(f"Unexpected error processing file {image_path}")
                     continue
 
         except (OSError, PermissionError):

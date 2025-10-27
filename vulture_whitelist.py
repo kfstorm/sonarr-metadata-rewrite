@@ -20,6 +20,23 @@ _.file_modified
 _.file_path
 _.series_id
 _.translated_content
+_.iso_639_1
+_.iso_3166_1
+_.kind
+_.selected_language
+_.selected_file_path
+_.message
+
+# Model classes and functions that will be used in future implementation
+ImageCandidate
+ImageProcessResult
+ImageProcessor
+_.process
+is_image_file
+is_rewritable_image
+find_rewritable_images
+MediaFileHandler
+_._handle_file_event
 
 # Event handler methods are called by watchdog
 _.on_created

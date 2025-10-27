@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from sonarr_metadata_rewrite.models import (
-    ProcessResult,
+    MetadataProcessResult,
     TmdbIds,
     TranslatedContent,
     TranslatedString,
@@ -39,12 +39,12 @@ def test_translated_content() -> None:
 
 
 def test_process_result() -> None:
-    """Test ProcessResult creation."""
+    """Test MetadataProcessResult creation."""
     translated_content = TranslatedContent(
         title=TranslatedString(content="测试标题", language="zh-CN"),
         description=TranslatedString(content="测试描述", language="zh-CN"),
     )
-    result = ProcessResult(
+    result = MetadataProcessResult(
         success=True,
         file_path=Path("/test/path.nfo"),
         message="Test message",
@@ -65,8 +65,8 @@ def test_process_result() -> None:
 
 
 def test_process_result_no_translation() -> None:
-    """Test ProcessResult for cases with no preferred translation."""
-    result = ProcessResult(
+    """Test MetadataProcessResult for cases with no preferred translation."""
+    result = MetadataProcessResult(
         success=False,
         file_path=Path("/test/path.nfo"),
         message=(

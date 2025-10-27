@@ -69,7 +69,7 @@ def test_execute_rollback_no_backup_files(
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
 
-    assert "No .nfo/.NFO backup files found" in caplog.text
+    assert "No backup files found" in caplog.text
     assert "rollback completed with no files to restore" in caplog.text
 
 

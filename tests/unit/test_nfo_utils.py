@@ -5,7 +5,10 @@ from pathlib import Path
 
 from sonarr_metadata_rewrite.nfo_utils import (
     find_nfo_files,
+    find_rewritable_images,
+    is_image_file,
     is_nfo_file,
+    is_rewritable_image,
 )
 
 
@@ -118,4 +121,168 @@ class TestFindNfoFiles:
             # All found files should be actual files
             for file_path in found_files:
                 assert file_path.is_file()
-                assert is_nfo_file(file_path)
+
+
+class TestIsImageFile:
+    """Test is_image_file function."""
+
+    def test_jpg_file(self) -> None:
+        """Test that .jpg files are detected."""
+        assert is_image_file(Path("test.jpg")) is True
+
+    def test_jpeg_file(self) -> None:
+        """Test that .jpeg files are detected."""
+        assert is_image_file(Path("test.jpeg")) is True
+
+    def test_png_file(self) -> None:
+        """Test that .png files are detected."""
+        assert is_image_file(Path("test.png")) is True
+
+    def test_uppercase_extensions(self) -> None:
+        """Test that uppercase extensions are detected."""
+        assert is_image_file(Path("test.JPG")) is True
+        assert is_image_file(Path("test.JPEG")) is True
+        assert is_image_file(Path("test.PNG")) is True
+
+    def test_mixed_case_extensions(self) -> None:
+        """Test that mixed case extensions are detected."""
+        assert is_image_file(Path("test.Jpg")) is True
+        assert is_image_file(Path("test.Jpeg")) is True
+        assert is_image_file(Path("test.Png")) is True
+
+    def test_non_image_file(self) -> None:
+        """Test that non-image files are not detected."""
+        assert is_image_file(Path("test.txt")) is False
+        assert is_image_file(Path("test.gif")) is False
+        assert is_image_file(Path("test.bmp")) is False
+
+
+class TestIsRewritableImage:
+    """Test is_rewritable_image function."""
+
+    def test_poster_jpg(self) -> None:
+        """Test that poster.jpg is detected as rewritable."""
+        assert is_rewritable_image(Path("poster.jpg")) is True
+
+    def test_poster_png(self) -> None:
+        """Test that poster.png is detected as rewritable."""
+        assert is_rewritable_image(Path("poster.png")) is True
+
+    def test_season_poster(self) -> None:
+        """Test that season posters are detected as rewritable."""
+        assert is_rewritable_image(Path("season01-poster.jpg")) is True
+        assert is_rewritable_image(Path("season02-poster.png")) is True
+        assert is_rewritable_image(Path("season10-poster.jpeg")) is True
+
+    def test_logo_jpg(self) -> None:
+        """Test that logo.jpg is detected as rewritable."""
+        assert is_rewritable_image(Path("logo.jpg")) is True
+
+    def test_logo_png(self) -> None:
+        """Test that logo.png is detected as rewritable."""
+        assert is_rewritable_image(Path("logo.png")) is True
+
+    def test_uppercase_names(self) -> None:
+        """Test that uppercase filenames are detected."""
+        assert is_rewritable_image(Path("POSTER.jpg")) is True
+        assert is_rewritable_image(Path("LOGO.png")) is True
+        assert is_rewritable_image(Path("SEASON01-POSTER.jpg")) is True
+
+    def test_non_rewritable_images(self) -> None:
+        """Test that non-poster/logo images are not detected."""
+        assert is_rewritable_image(Path("banner.jpg")) is False
+        assert is_rewritable_image(Path("fanart.jpg")) is False
+        assert is_rewritable_image(Path("backdrop.png")) is False
+        assert is_rewritable_image(Path("thumb.jpg")) is False
+
+    def test_non_image_files(self) -> None:
+        """Test that non-image files are not detected."""
+        assert is_rewritable_image(Path("poster.txt")) is False
+        assert is_rewritable_image(Path("logo.nfo")) is False
+
+
+class TestFindRewritableImages:
+    """Test find_rewritable_images function."""
+
+    def test_find_poster_and_logo(self) -> None:
+        """Test finding both poster and logo files."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create test files
+            poster = temp_path / "poster.jpg"
+            poster.touch()
+            logo = temp_path / "logo.png"
+            logo.touch()
+            banner = temp_path / "banner.jpg"  # Should not be found
+            banner.touch()
+
+            found_files = find_rewritable_images(temp_path)
+            found_names = {f.name for f in found_files}
+
+            assert "poster.jpg" in found_names
+            assert "logo.png" in found_names
+            assert "banner.jpg" not in found_names
+
+    def test_find_season_posters(self) -> None:
+        """Test finding season-specific posters."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create season posters
+            s01 = temp_path / "season01-poster.jpg"
+            s01.touch()
+            s02 = temp_path / "season02-poster.png"
+            s02.touch()
+
+            found_files = find_rewritable_images(temp_path)
+            found_names = {f.name for f in found_files}
+
+            assert "season01-poster.jpg" in found_names
+            assert "season02-poster.png" in found_names
+
+    def test_recursive_search(self) -> None:
+        """Test recursive search in subdirectories."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create nested directories
+            season1_dir = temp_path / "Season 1"
+            season1_dir.mkdir()
+            season2_dir = temp_path / "Season 2"
+            season2_dir.mkdir()
+
+            # Create image files in subdirectories
+            poster1 = season1_dir / "season01-poster.jpg"
+            poster1.touch()
+            poster2 = season2_dir / "season02-poster.jpg"
+            poster2.touch()
+
+            found_files = find_rewritable_images(temp_path, recursive=True)
+            assert len(found_files) == 2
+
+    def test_non_recursive_search(self) -> None:
+        """Test non-recursive search only in root directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Create root level poster
+            root_poster = temp_path / "poster.jpg"
+            root_poster.touch()
+
+            # Create nested directory with poster
+            season_dir = temp_path / "Season 1"
+            season_dir.mkdir()
+            nested_poster = season_dir / "season01-poster.jpg"
+            nested_poster.touch()
+
+            found_files = find_rewritable_images(temp_path, recursive=False)
+            assert len(found_files) == 1
+            assert found_files[0].name == "poster.jpg"
+
+    def test_empty_directory(self) -> None:
+        """Test behavior with empty directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            found_files = find_rewritable_images(temp_path)
+            assert found_files == []

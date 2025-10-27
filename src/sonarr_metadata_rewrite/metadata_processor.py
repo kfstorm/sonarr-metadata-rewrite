@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
     MetadataInfo,
-    ProcessResult,
+    MetadataProcessResult,
     TmdbIds,
     TranslatedContent,
     TranslatedString,
@@ -55,14 +55,14 @@ class MetadataProcessor:
 
         return parse_file()
 
-    def process_file(self, nfo_path: Path) -> ProcessResult:
+    def process_file(self, nfo_path: Path) -> MetadataProcessResult:
         """Process a single .nfo file with complete translation workflow.
 
         Args:
             nfo_path: Path to .nfo file to process
 
         Returns:
-            ProcessResult with success status and details
+            MetadataProcessResult with success status and details
         """
         tmdb_ids = None
         metadata_info = None
@@ -73,7 +73,7 @@ class MetadataProcessor:
             # Build TMDB IDs from parsed metadata using hierarchical resolution
             tmdb_ids = self._build_tmdb_ids_from_metadata(metadata_info, nfo_path)
             if not tmdb_ids:
-                return ProcessResult(
+                return MetadataProcessResult(
                     success=False,
                     file_path=nfo_path,
                     message="No TMDB ID found in .nfo file",
@@ -114,7 +114,7 @@ class MetadataProcessor:
                             if all_translations
                             else "none"
                         )
-                        return ProcessResult(
+                        return MetadataProcessResult(
                             success=False,
                             file_path=nfo_path,
                             message=(
@@ -136,7 +136,7 @@ class MetadataProcessor:
                         if all_translations
                         else "none"
                     )
-                    return ProcessResult(
+                    return MetadataProcessResult(
                         success=False,
                         file_path=nfo_path,
                         message=(
@@ -160,7 +160,7 @@ class MetadataProcessor:
                 and metadata_info.description
                 == selected_translation.description.content
             ):
-                return ProcessResult(
+                return MetadataProcessResult(
                     success=True,
                     file_path=nfo_path,
                     message="Content already matches preferred translation",
@@ -177,7 +177,7 @@ class MetadataProcessor:
                 metadata_info.xml_tree, nfo_path, selected_translation
             )
 
-            return ProcessResult(
+            return MetadataProcessResult(
                 success=True,
                 file_path=nfo_path,
                 message=self._build_success_message(selected_translation),
@@ -188,7 +188,7 @@ class MetadataProcessor:
             )
 
         except Exception as e:
-            return ProcessResult(
+            return MetadataProcessResult(
                 success=False,
                 file_path=nfo_path,
                 message=f"Processing error: {e}",

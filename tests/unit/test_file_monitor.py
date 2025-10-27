@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.file_monitor import FileMonitor, NFOFileHandler
+from sonarr_metadata_rewrite.file_monitor import FileMonitor, MediaFileHandler
 
 
 @pytest.fixture
@@ -23,10 +23,10 @@ def test_file_monitor_initialization(file_monitor: FileMonitor) -> None:
     assert not file_monitor.is_running()
 
 
-def test_nfo_file_handler() -> None:
-    """Test NFO file event handler."""
+def test_media_file_handler() -> None:
+    """Test media file event handler."""
     callback = Mock()
-    handler = NFOFileHandler(callback)
+    handler = MediaFileHandler(callback)
 
     # Create mock file system event for .nfo file
     mock_event = Mock()
@@ -41,10 +41,10 @@ def test_nfo_file_handler() -> None:
     callback.assert_called_once_with(Path("/test/path/tvshow.nfo"))
 
 
-def test_nfo_file_handler_case_insensitive() -> None:
+def test_media_file_handler_case_insensitive() -> None:
     """Test that handler detects both .nfo and .NFO files."""
     callback = Mock()
-    handler = NFOFileHandler(callback)
+    handler = MediaFileHandler(callback)
 
     # Test lowercase .nfo file
     mock_event_lower = Mock()
@@ -64,16 +64,57 @@ def test_nfo_file_handler_case_insensitive() -> None:
     callback.assert_called_with(Path("/test/path/episode.NFO"))
 
 
-def test_nfo_file_handler_ignores_non_nfo() -> None:
-    """Test that handler ignores non-.nfo files."""
+def test_media_file_handler_handles_images() -> None:
+    """Test that handler detects rewritable image files."""
     callback = Mock()
-    handler = NFOFileHandler(callback)
+    handler = MediaFileHandler(callback)
 
-    mock_event = Mock()
-    mock_event.is_directory = False
-    mock_event.src_path = "/test/path/regular.txt"
+    # Test poster.jpg
+    mock_event_poster = Mock()
+    mock_event_poster.is_directory = False
+    mock_event_poster.src_path = "/test/path/poster.jpg"
 
-    handler.on_created(mock_event)
+    handler.on_created(mock_event_poster)
+    callback.assert_called_with(Path("/test/path/poster.jpg"))
+
+    # Test season01-poster.png
+    callback.reset_mock()
+    mock_event_season = Mock()
+    mock_event_season.is_directory = False
+    mock_event_season.src_path = "/test/path/season01-poster.png"
+
+    handler.on_created(mock_event_season)
+    callback.assert_called_with(Path("/test/path/season01-poster.png"))
+
+    # Test logo.jpeg
+    callback.reset_mock()
+    mock_event_logo = Mock()
+    mock_event_logo.is_directory = False
+    mock_event_logo.src_path = "/test/path/logo.jpeg"
+
+    handler.on_created(mock_event_logo)
+    callback.assert_called_with(Path("/test/path/logo.jpeg"))
+
+
+def test_media_file_handler_ignores_non_media() -> None:
+    """Test that handler ignores non-media files."""
+    callback = Mock()
+    handler = MediaFileHandler(callback)
+
+    # Ignore .txt file
+    mock_event_txt = Mock()
+    mock_event_txt.is_directory = False
+    mock_event_txt.src_path = "/test/path/regular.txt"
+
+    handler.on_created(mock_event_txt)
+    callback.assert_not_called()
+
+    # Ignore banner.jpg (not poster/logo pattern)
+    mock_event_banner = Mock()
+    mock_event_banner.is_directory = False
+    mock_event_banner.src_path = "/test/path/banner.jpg"
+
+    handler.on_created(mock_event_banner)
     callback.assert_not_called()
 
 

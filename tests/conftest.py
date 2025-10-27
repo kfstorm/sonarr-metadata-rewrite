@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import ProcessResult
+from sonarr_metadata_rewrite.models import MetadataProcessResult
 
 # Inline test data constants
 SAMPLE_TVSHOW_NFO = """<?xml version="1.0" encoding="utf-8"?>
@@ -155,7 +155,7 @@ def create_test_settings(test_data_dir: Path, **kwargs: Any) -> Settings:
     params = {
         "tmdb_api_key": kwargs.get("tmdb_api_key", "test_key_12345"),
         "rewrite_root_dir": kwargs.get("rewrite_root_dir", test_data_dir),
-        "preferred_languages": kwargs.get("preferred_languages", "zh-CN"),
+        "preferred_languages": kwargs.get("preferred_languages", ["zh-CN"]),
         "periodic_scan_interval_seconds": kwargs.get(
             "periodic_scan_interval_seconds", 1
         ),
@@ -204,7 +204,7 @@ def callback_tracker() -> Mock:
 
 
 def assert_process_result(
-    result: ProcessResult,
+    result: MetadataProcessResult,
     expected_success: bool,
     expected_series_id: int | None = None,
     expected_season: int | None = None,
@@ -213,7 +213,7 @@ def assert_process_result(
     expected_language: str | None = None,
     expected_message_contains: str | None = None,
 ) -> None:
-    """Shared assertion helper for ProcessResult validation."""
+    """Shared assertion helper for MetadataProcessResult validation."""
     assert result.success == expected_success
 
     if expected_series_id is not None:

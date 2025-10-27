@@ -61,13 +61,37 @@ class MetadataInfo:
 
 @dataclass
 class ProcessResult:
-    """Result of processing a metadata file."""
+    """Base result of processing a file."""
 
     success: bool
     file_path: Path
     message: str
     exception: Exception | None = None
-    tmdb_ids: TmdbIds | None = None
     backup_created: bool = False
     file_modified: bool = False
+
+
+@dataclass
+class MetadataProcessResult(ProcessResult):
+    """Result of processing a metadata file."""
+
+    tmdb_ids: TmdbIds | None = None
     translated_content: TranslatedContent | None = None
+
+
+@dataclass
+class ImageCandidate:
+    """TMDB image candidate information."""
+
+    file_path: str
+    iso_639_1: str | None
+    iso_3166_1: str | None
+
+
+@dataclass
+class ImageProcessResult(ProcessResult):
+    """Result of processing an image file."""
+
+    kind: str = ""  # "poster" or "logo"
+    selected_language: str = ""
+    selected_file_path: str = ""

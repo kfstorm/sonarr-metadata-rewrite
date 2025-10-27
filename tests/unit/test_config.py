@@ -15,7 +15,7 @@ def test_settings_with_required_fields(test_data_dir: Path) -> None:
     settings = Settings(
         tmdb_api_key="test_api_key_1234567890abcdef",
         rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+        preferred_languages="zh-CN",  # type: ignore[arg-type]
     )
     assert settings.tmdb_api_key == "test_api_key_1234567890abcdef"
     assert settings.rewrite_root_dir == test_data_dir
@@ -29,7 +29,7 @@ def test_settings_with_all_fields(test_data_dir: Path) -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=test_data_dir,
-        preferred_languages="ja-JP,ko-KR",
+        preferred_languages="ja-JP,ko-KR",  # type: ignore[arg-type]
         periodic_scan_interval_seconds=1800,
         cache_duration_hours=168,
         cache_dir=test_data_dir / "custom_cache",
@@ -61,7 +61,7 @@ def test_settings_backup_disabled(test_data_dir: Path) -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+        preferred_languages="zh-CN",  # type: ignore[arg-type]
         original_files_backup_dir=None,
     )
     assert settings.original_files_backup_dir is None
@@ -73,7 +73,7 @@ def test_preferred_languages_comma_separated() -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=Path("/tmp"),
-        preferred_languages="zh-CN, ja-JP , ko-KR",
+        preferred_languages="zh-CN, ja-JP , ko-KR",  # type: ignore[arg-type]
     )
     assert settings.preferred_languages == ["zh-CN", "ja-JP", "ko-KR"]
 
@@ -84,7 +84,7 @@ def test_preferred_languages_single_language() -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=Path("/tmp"),
-        preferred_languages="fr",
+        preferred_languages="fr",  # type: ignore[arg-type]
     )
     assert settings.preferred_languages == ["fr"]
 
@@ -96,7 +96,7 @@ def test_preferred_languages_empty_string_fails() -> None:
         Settings(
             tmdb_api_key="test_key",
             rewrite_root_dir=Path("/tmp"),
-            preferred_languages="",
+            preferred_languages="",  # type: ignore[arg-type]
         )
 
 
@@ -115,7 +115,7 @@ def test_service_mode_default(test_data_dir: Path) -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+        preferred_languages="zh-CN",  # type: ignore[arg-type]
     )
     assert settings.service_mode == "rewrite"
 
@@ -125,7 +125,7 @@ def test_service_mode_rewrite(test_data_dir: Path) -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+        preferred_languages="zh-CN",  # type: ignore[arg-type]
         service_mode="rewrite",
     )
     assert settings.service_mode == "rewrite"
@@ -136,7 +136,7 @@ def test_service_mode_rollback(test_data_dir: Path) -> None:
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dir=test_data_dir,
-        preferred_languages="zh-CN",
+        preferred_languages="zh-CN",  # type: ignore[arg-type]
         service_mode="rollback",
     )
     assert settings.service_mode == "rollback"
@@ -149,6 +149,6 @@ def test_service_mode_invalid_value_fails() -> None:
         Settings(
             tmdb_api_key="test_key",
             rewrite_root_dir=Path("/tmp"),
-            preferred_languages="zh-CN",
+            preferred_languages="zh-CN",  # type: ignore[arg-type]
             service_mode="invalid",
         )

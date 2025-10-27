@@ -6,7 +6,10 @@ import time
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
+from sonarr_metadata_rewrite.nfo_utils import (
+    find_nfo_files,
+    find_rewritable_images,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,17 +44,23 @@ class RollbackService:
             f"{self.settings.original_files_backup_dir}"
         )
 
-        # Find all .nfo and .NFO files in backup directory (case-insensitive)
-        backup_files = find_nfo_files(self.settings.original_files_backup_dir)
+        # Find all .nfo and image files in backup directory
+        nfo_backup_files = find_nfo_files(self.settings.original_files_backup_dir)
+        image_backup_files = find_rewritable_images(
+            self.settings.original_files_backup_dir
+        )
+        backup_files = nfo_backup_files + image_backup_files
 
         if not backup_files:
             logger.info(
-                "No .nfo/.NFO backup files found - "
-                "rollback completed with no files to restore"
+                "No backup files found - rollback completed with no files to restore"
             )
             return
 
-        logger.info(f"Found {len(backup_files)} backup files to restore")
+        logger.info(
+            f"Found {len(backup_files)} backup files to restore "
+            f"({len(nfo_backup_files)} NFO, {len(image_backup_files)} images)"
+        )
 
         restored_count = 0
         failed_count = 0
@@ -75,6 +84,9 @@ class RollbackService:
     def _restore_single_file(self, backup_file: Path) -> bool:
         """Restore a single file from backup to its original location.
 
+        For image files, this handles cases where the extension may have changed
+        (e.g., backup is poster.png but current file is poster.jpg).
+
         Args:
             backup_file: Path to the backup file
 
@@ -96,6 +108,20 @@ class RollbackService:
                     f"{original_file.parent}"
                 )
                 return False
+
+            # For image files, remove any file with same stem but different extension
+            # This handles cases where extension changed during rewrite
+            # (e.g., poster.png was replaced with poster.jpg)
+            if backup_file.suffix.lower() in {".jpg", ".jpeg", ".png"}:
+                stem = original_file.stem
+                parent = original_file.parent
+                for ext in [".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"]:
+                    candidate = parent / f"{stem}{ext}"
+                    if candidate.exists() and candidate != original_file:
+                        candidate.unlink()
+                        logger.debug(
+                            f"Removed file with different extension: {candidate.name}"
+                        )
 
             # Copy backup file to original location
             shutil.copy2(backup_file, original_file)
