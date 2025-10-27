@@ -11,7 +11,7 @@ import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
 
 import sonarr_metadata_rewrite.metadata_processor
-import sonarr_metadata_rewrite.translator
+from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
@@ -67,6 +67,9 @@ def patch_retry_timeout() -> Generator[None, None, None]:
 @pytest.fixture(autouse=True)
 def patch_image_download_retry() -> Generator[None, None, None]:
     """Patch retry decorator in image processor to use minimal timeout for tests."""
+    from collections.abc import Callable
+    from typing import Any
+
     import sonarr_metadata_rewrite.image_processor
 
     original_retry = sonarr_metadata_rewrite.image_processor.retry
@@ -76,7 +79,7 @@ def patch_image_download_retry() -> Generator[None, None, None]:
         interval: float = 0.5,
         log_interval: float = 2.0,
         exceptions: tuple[type[Exception], ...] = (Exception,),
-    ):
+    ) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
         """Fast retry for tests with minimal timeout."""
         return original_retry(
             timeout=0.1,  # Very short timeout for unit tests
@@ -118,7 +121,7 @@ def patch_fetch_with_retry() -> Generator[None, None, None]:
         return {}
 
     with patch.object(
-        sonarr_metadata_rewrite.translator.Translator,
+        Translator,
         "_fetch_with_retry",
         mock_fetch_with_retry,
     ):
@@ -126,7 +129,7 @@ def patch_fetch_with_retry() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def translator(test_settings, tmp_path) -> Translator:
+def translator(test_settings: Settings, tmp_path: Path) -> Translator:
     """Create a Translator instance with a temporary cache for testing."""
     cache = Cache(tmp_path / "cache")
     return Translator(test_settings, cache)

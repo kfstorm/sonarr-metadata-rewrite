@@ -1,7 +1,10 @@
 """Unit tests for ImageProcessor."""
 
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 import httpx
@@ -12,6 +15,28 @@ from sonarr_metadata_rewrite.image_processor import ImageProcessor
 from sonarr_metadata_rewrite.image_utils import embed_marker_and_atomic_write
 from sonarr_metadata_rewrite.models import ImageCandidate
 from sonarr_metadata_rewrite.translator import Translator
+
+
+@contextmanager
+def mock_translator_select(
+    image_processor: ImageProcessor,
+    *,
+    return_value: ImageCandidate | None = None,
+    side_effect: Any | None = None,
+) -> Iterator[Mock]:
+    """Context manager to mock translator.select_best_image on this image_processor.
+
+    Usage:
+        with mock_translator_select(image_processor, return_value=candidate):
+            ...
+    """
+    with patch.object(
+        image_processor.translator,
+        "select_best_image",
+        return_value=return_value,
+        side_effect=side_effect,
+    ) as mocked:
+        yield mocked
 
 
 @pytest.fixture
@@ -65,7 +90,7 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/test_poster.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real image data
         from io import BytesIO
@@ -79,7 +104,7 @@ class TestProcessSuccessScenarios:
 
         mock_response = Mock()
         mock_response.content = real_image_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
         # Process
         result = image_processor.process(poster_path)
@@ -105,7 +130,7 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/test_logo.png", iso_639_1="ja", iso_3166_1="JP"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real PNG data
         from io import BytesIO
@@ -119,7 +144,7 @@ class TestProcessSuccessScenarios:
 
         mock_response = Mock()
         mock_response.content = real_png_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = image_processor.process(logo_path)
 
@@ -144,7 +169,7 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/season1.jpg", iso_639_1="zh", iso_3166_1="CN"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real image
         from io import BytesIO
@@ -158,7 +183,7 @@ class TestProcessSuccessScenarios:
 
         mock_response = Mock()
         mock_response.content = real_image_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = image_processor.process(poster_path)
 
@@ -194,7 +219,7 @@ class TestProcessSuccessScenarios:
         marker = {"file_path": "/same_poster.jpg"}
         embed_marker_and_atomic_write(output.getvalue(), poster_path, marker)
 
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         result = image_processor.process(poster_path)
 
@@ -252,9 +277,8 @@ class TestProcessSuccessScenarios:
         create_test_image(poster_path)
         create_test_nfo(nfo_path, 12345)
 
-        image_processor.translator.select_best_image = Mock(return_value=None)
-
-        result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=None):
+            result = image_processor.process(poster_path)
 
         assert result.success is False
         assert "No poster available" in result.message
@@ -274,14 +298,15 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
 
         # Mock HTTP error
-        image_processor.http_client.get = Mock(
-            side_effect=httpx.RequestError("Network error")
-        )
-
-        result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=candidate):
+            with patch.object(
+                image_processor.http_client,
+                "get",
+                side_effect=httpx.RequestError("Network error"),
+            ):
+                result = image_processor.process(poster_path)
 
         assert result.success is False
         assert result.exception is not None
@@ -301,7 +326,6 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
 
         # Create real image bytes for successful download
         from io import BytesIO
@@ -315,11 +339,16 @@ class TestProcessSuccessScenarios:
 
         mock_response = Mock()
         mock_response.content = real_image_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
 
         # Mock backup failure
-        with patch("shutil.copy2", side_effect=PermissionError("No permission")):
-            result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=candidate):
+            with patch.object(
+                image_processor.http_client, "get", return_value=mock_response
+            ):
+                with patch(
+                    "shutil.copy2", side_effect=PermissionError("No permission")
+                ):
+                    result = image_processor.process(poster_path)
 
         # Backup failure causes overall failure in current implementation
         assert result.success is False
@@ -481,7 +510,7 @@ class TestDownloadAndWriteImage:
 
         mock_response = Mock()
         mock_response.content = png_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
         image_processor._download_and_write_image(poster_path, candidate)
 
@@ -511,7 +540,7 @@ class TestDownloadAndWriteImage:
 
         mock_response = Mock()
         mock_response.content = real_image_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
         with patch("os.replace") as mock_replace:
             image_processor._download_and_write_image(poster_path, candidate)
@@ -537,14 +566,15 @@ class TestErrorScenarios:
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
 
         # Mock network error
-        image_processor.http_client.get = Mock(
-            side_effect=httpx.NetworkError("Connection failed")
-        )
-
-        result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=candidate):
+            with patch.object(
+                image_processor.http_client,
+                "get",
+                side_effect=httpx.NetworkError("Connection failed"),
+            ):
+                result = image_processor.process(poster_path)
 
         assert result.success is False
         assert result.exception is not None
@@ -566,14 +596,15 @@ class TestErrorScenarios:
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
 
         # Mock corrupted response - invalid image data
         mock_response = Mock()
         mock_response.content = b"not a valid image"
-        image_processor.http_client.get = Mock(return_value=mock_response)
-
-        result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=candidate):
+            with patch.object(
+                image_processor.http_client, "get", return_value=mock_response
+            ):
+                result = image_processor.process(poster_path)
 
         assert result.success is False
         # Original file should still exist
@@ -594,7 +625,6 @@ class TestErrorScenarios:
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
 
         # Create real image bytes
         from io import BytesIO
@@ -608,10 +638,14 @@ class TestErrorScenarios:
 
         mock_response = Mock()
         mock_response.content = real_image_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)
+        # http client mocked inside the context below
 
-        with patch("shutil.copy2", side_effect=PermissionError("Denied")):
-            result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=candidate):
+            with patch.object(
+                image_processor.http_client, "get", return_value=mock_response
+            ):
+                with patch("shutil.copy2", side_effect=PermissionError("Denied")):
+                    result = image_processor.process(poster_path)
 
         # Permission error on backup causes overall failure
         assert result.success is False
@@ -632,14 +666,15 @@ class TestErrorScenarios:
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)
-
         mock_response = Mock()
         mock_response.content = b"image data"
-        image_processor.http_client.get = Mock(return_value=mock_response)
 
-        with patch("os.write", side_effect=OSError("Disk full")):
-            result = image_processor.process(poster_path)
+        with mock_translator_select(image_processor, return_value=candidate):
+            with patch.object(
+                image_processor.http_client, "get", return_value=mock_response
+            ):
+                with patch("os.write", side_effect=OSError("Disk full")):
+                    result = image_processor.process(poster_path)
 
         assert result.success is False
         assert result.exception is not None
@@ -657,7 +692,7 @@ class TestErrorScenarios:
         create_test_nfo(nfo_path, 12345)
 
         # Delete NFO after initial check
-        def side_effect_delete(*args, **kwargs):
+        def side_effect_delete(*args: object, **kwargs: object) -> None:
             nfo_path.unlink()
             return None
 

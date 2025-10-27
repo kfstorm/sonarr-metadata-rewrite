@@ -1404,7 +1404,7 @@ class TestSelectBestImage:
         result = translator.select_best_image(
             tmdb_ids,
             ["en-US"],
-            kind="banner",  # type: ignore[arg-type]
+            kind="banner",
         )
 
         assert result is None

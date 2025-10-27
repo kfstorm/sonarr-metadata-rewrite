@@ -9,6 +9,10 @@ _.parse_preferred_languages
 _.validate_service_mode
 _.cls
 
+# Pydantic settings customization is used by the framework
+_.settings_customise_sources
+_.env_settings
+
 # Signal handler parameters are required by the interface
 _.signum
 _.frame
@@ -51,6 +55,7 @@ _.side_effect
 patch_time_sleep
 patch_retry_timeout
 patch_fetch_with_retry
+patch_image_download_retry
 
 # TYPE_CHECKING imports for type annotations
 ElementTree

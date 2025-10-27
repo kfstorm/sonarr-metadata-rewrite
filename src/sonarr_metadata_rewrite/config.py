@@ -1,9 +1,61 @@
 """Configuration management using Pydantic Settings."""
 
+import os
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, ValidationError, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+
+class CustomEnvSettings(PydanticBaseSettingsSource):
+    """Custom environment settings source that handles comma-separated lists."""
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        """Get field value from environment, handling preferred_languages specially."""
+        env_name = field_name.upper()
+        env_val = os.getenv(env_name)
+
+        if env_val is None:
+            return None, env_name, False
+
+        # Handle preferred_languages as comma-separated string (not JSON)
+        if field_name == "preferred_languages":
+            return env_val, env_name, False
+
+        # For other fields, use default behavior
+        return env_val, env_name, False
+
+    def prepare_field_value(
+        self, field_name: str, field: Any, value: Any, value_is_complex: bool
+    ) -> Any:
+        """Prepare field value, skipping JSON parsing for preferred_languages."""
+        if field_name == "preferred_languages":
+            return value
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
+
+    def __call__(self) -> dict[str, Any]:
+        """Load settings from environment variables."""
+        d: dict[str, Any] = {}
+
+        for field_name, field_info in self.settings_cls.model_fields.items():
+            field_value, _, value_is_complex = self.get_field_value(
+                field_info, field_name
+            )
+            if field_value is not None:
+                prepared_value = self.prepare_field_value(
+                    field_name,
+                    field_info,
+                    field_value,
+                    value_is_complex,
+                )
+                d[field_name] = prepared_value
+
+        return d
 
 
 class Settings(BaseSettings):
@@ -14,6 +66,23 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Customize settings sources to use custom environment handler."""
+        return (
+            init_settings,
+            CustomEnvSettings(settings_cls),
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     # TMDB API
     tmdb_api_key: str = Field(description="TMDB API key for translation requests")
@@ -27,9 +96,22 @@ class Settings(BaseSettings):
     )
 
     # Translation preferences
-    preferred_languages: str = Field(
+    preferred_languages: list[str] = Field(
         description="Preferred languages in priority order (comma-separated)"
     )
+
+    @field_validator("preferred_languages", mode="before")
+    @classmethod
+    def parse_preferred_languages(cls, v: str | list[str]) -> list[str]:
+        """Parse preferred languages from comma-separated string or list."""
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            languages = [lang.strip() for lang in v.split(",") if lang.strip()]
+            if not languages:
+                raise ValueError("preferred_languages cannot be empty")
+            return languages
+        raise ValueError("preferred_languages must be a comma-separated string or list")
 
     # Universal caching configuration
     cache_duration_hours: int = Field(
@@ -69,17 +151,6 @@ class Settings(BaseSettings):
     enable_file_scanner: bool = Field(
         default=True, description="Enable periodic directory scanning"
     )
-
-    @field_validator("preferred_languages")
-    @classmethod
-    def parse_preferred_languages(cls, v: str) -> list[str]:
-        """Parse preferred languages from comma-separated string."""
-        if isinstance(v, str):
-            languages = [lang.strip() for lang in v.split(",") if lang.strip()]
-            if not languages:
-                raise ValueError("preferred_languages cannot be empty")
-            return languages
-        raise ValueError("preferred_languages must be a comma-separated string")
 
     @field_validator("service_mode")
     @classmethod

@@ -30,7 +30,7 @@ class TestReadEmbeddedMarker:
         # Create PNG with tEXt chunk containing JSON marker
         marker_data = {
             "rewritten_by": "test",
-            "tmdb_id": 12345,
+            "tmdb_id": "12345",
             "language": "en-US",
         }
         png_path = tmp_path / "test.png"
@@ -47,11 +47,11 @@ class TestReadEmbeddedMarker:
 
     def test_read_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test reading marker from JPEG with EXIF UserComment."""
-        import piexif
+        import piexif  # type: ignore[import-untyped]
 
         marker_data = {
             "rewritten_by": "test",
-            "tmdb_id": 67890,
+            "tmdb_id": "67890",
             "language": "ja-JP",
         }
         jpeg_path = tmp_path / "test.jpg"
@@ -111,7 +111,7 @@ class TestEmbedMarkerAndAtomicWrite:
         """Test embedding marker in PNG and writing atomically."""
         marker_data = {
             "rewritten_by": "test",
-            "tmdb_id": 11111,
+            "tmdb_id": "11111",
             "language": "zh-CN",
         }
         dst = tmp_path / "output.png"
@@ -132,7 +132,7 @@ class TestEmbedMarkerAndAtomicWrite:
         """Test embedding marker in JPEG via EXIF UserComment."""
         marker_data = {
             "rewritten_by": "test",
-            "tmdb_id": 22222,
+            "tmdb_id": "22222",
             "language": "fr-FR",
         }
         dst = tmp_path / "output.jpg"

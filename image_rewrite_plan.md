@@ -48,7 +48,7 @@ Components
 
   - Call TMDB images endpoint once using `include_image_language` built by comma-joining `preferred_languages` exactly as given (preserve region tokens like "en-US").
 
-  - For each preferred language (must be lang-country format), select the first candidate in the array whose `iso_639_1` and `iso_3166_1` exactly match the language and country part of the token. Ignore `vote_count` and `vote_average`. If none found, try the next preferred language. If no match for any, return None.
+    - For each preferred language (must be lang-country format), select the first candidate in the array whose `iso_639_1` and `iso_3166_1` exactly match the language and country part of the token. If none found, try the next preferred language. If no match for any, return None.
 
   - Return ImageCandidate dataclass (simplified): `{ file_path: str, iso_639_1: Optional[str], iso_3166_1: Optional[str] }` or None.
 
@@ -132,7 +132,6 @@ Selection rules (detailed)
   - Filter out candidates with null `iso_639_1` or null `iso_3166_1`.
   - Select the first candidate whose `f"{iso_639_1}-{iso_3166_1}"` exactly equals a preference token, respecting user order.
   - If none match, return None. Do not fallback to language-only or null-language images.
-- Tie-breaker (when multiple candidates share the exact same lang-country): prefer higher `vote_count`, then higher `vote_average`.
 
 Testing plan
 
@@ -177,7 +176,7 @@ Rollback strategy
 
 Security and privacy
 
-- Do not embed secrets or API keys into files. The embedded marker contains only TMDB `file_path`, `tmdb_tv_id`, optional `tmdb_season_number`, and language/country codes.
+- Do not embed secrets or API keys into files. The embedded marker contains only TMDB `file_path` and language/country codes (`iso_639_1`, `iso_3166_1`).
 
 Notes
 

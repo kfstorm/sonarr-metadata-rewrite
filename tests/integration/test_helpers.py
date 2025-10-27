@@ -457,8 +457,8 @@ def verify_images(
         """Extract language code from marker (e.g., 'zh-CN')."""
         if not marker:
             return ""
-        iso_639_1 = marker.get("iso_639_1", "")
-        iso_3166_1 = marker.get("iso_3166_1", "")
+        iso_639_1 = str(marker.get("iso_639_1", ""))
+        iso_3166_1 = str(marker.get("iso_3166_1", ""))
         language_parts = [p for p in [iso_639_1, iso_3166_1] if p]
         return "-".join(language_parts) if language_parts else ""
 

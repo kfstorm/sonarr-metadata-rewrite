@@ -65,7 +65,7 @@ def embed_marker_and_atomic_write(
     Args:
         raw_bytes: Raw image bytes to process
         dst: Destination path for final image
-        marker: Marker dictionary to embed as JSON
+        marker: Marker dictionary to embed as JSON (values must be JSON-serializable)
     """
     marker_json = json.dumps(marker, separators=(",", ":"))
 
