@@ -63,11 +63,7 @@ def cli() -> None:
     else:
         # Normal rewrite mode
         # Create and start service
-        try:
-            service = RewriteService(settings)
-        except RuntimeError as e:
-            click.echo(f"❌ {e}", err=True)
-            sys.exit(1)
+        service = RewriteService(settings)
 
         # Set up signal handlers for graceful shutdown
         def signal_handler(signum: int, frame: object) -> None:
