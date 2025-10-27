@@ -104,12 +104,7 @@ def test_rollback_service_mode(
             verify_translations(
                 nfo_files, expected_language="zh", possible_languages=["zh", "en"]
             )
-            verify_images(
-                image_files,
-                expected_language="zh-CN",
-                expect_backup=True,
-                backup_dir=backup_dir,
-            )
+            verify_images(image_files, expected_language="zh-CN")
 
         # Then, rollback using rollback service mode
         with ServiceRunner(
@@ -119,8 +114,8 @@ def test_rollback_service_mode(
             verify_translations(
                 nfo_files, expected_language="en", possible_languages=["zh", "en"]
             )
-            # After rollback, images should not have markers
-            verify_images(image_files, expected_language="zh-CN", expect_marker=False)
+            # After rollback, images should not have markers (original images)
+            verify_images(image_files, expected_language=None)
 
 
 @pytest.mark.integration

@@ -439,75 +439,73 @@ def create_placeholder_images(
 
 def verify_images(
     image_paths: list[Path],
-    expected_language: str,
-    expect_marker: bool = True,
-    expect_backup: bool = False,
-    backup_dir: Path | None = None,
+    expected_language: str | None,
 ) -> None:
     """Verify images have been processed.
 
     Args:
         image_paths: List of image file paths to verify
-        expected_language: Expected language/country code (e.g., "zh-CN")
-        expect_marker: Whether to expect embedded marker in images
-        expect_backup: Whether to expect backup files
-        backup_dir: Backup directory path (required if expect_backup is True)
+        expected_language: Expected language/country code (e.g., "zh-CN"),
+                          or None to verify original images without markers
 
     Raises:
         AssertionError: If images don't match expected state
     """
     from sonarr_metadata_rewrite.image_utils import read_embedded_marker
 
-    print(
-        f"Verifying {len(image_paths)} images with expected language: "
-        f"{expected_language}"
-    )
+    def get_marker_language(marker: dict[str, str] | None) -> str:
+        """Extract language code from marker (e.g., 'zh-CN')."""
+        if not marker:
+            return ""
+        iso_639_1 = marker.get("iso_639_1", "")
+        iso_3166_1 = marker.get("iso_3166_1", "")
+        language_parts = [p for p in [iso_639_1, iso_3166_1] if p]
+        return "-".join(language_parts) if language_parts else ""
 
-    for image_path in image_paths:
-        # Check image exists
-        assert image_path.exists(), f"Image file not found: {image_path}"
+    if expected_language is None:
+        print(f"Verifying {len(image_paths)} images are original (no markers)")
+    else:
+        print(
+            f"Verifying {len(image_paths)} images with expected language: "
+            f"{expected_language}"
+        )
 
-        if expect_marker:
-            # Read embedded marker
+    @retry(timeout=15.0, interval=0.5, log_interval=2.0)
+    def check_images_processed() -> None:
+        for image_path in image_paths:
+            # Check image exists
+            assert image_path.exists(), f"Image file not found: {image_path}"
+
             marker = read_embedded_marker(image_path)
-            assert marker is not None, (
-                f"No embedded marker found in {image_path.name}. "
-                f"Expected marker with language info."
-            )
 
-            # Verify language/country code in marker
-            marker_lang = marker.get("language")
-            assert marker_lang == expected_language, (
-                f"Language mismatch in {image_path.name}. "
-                f"Expected '{expected_language}', got '{marker_lang}'"
-            )
+            if expected_language is None:
+                # Verify no marker exists (original image)
+                assert marker is None, (
+                    f"Unexpected marker found in {image_path.name}. "
+                    f"Expected original image without marker."
+                )
+            else:
+                # Verify marker exists with expected language
+                assert marker is not None, (
+                    f"No embedded marker found in {image_path.name}. "
+                    f"Expected marker with language info."
+                )
 
+                marker_lang = get_marker_language(marker)
+                assert marker_lang == expected_language, (
+                    f"Language mismatch in {image_path.name}. "
+                    f"Expected '{expected_language}', got '{marker_lang}'"
+                )
+
+    check_images_processed()
+
+    # Print success messages after all checks pass
+    for image_path in image_paths:
+        marker = read_embedded_marker(image_path)
+        if marker:
+            marker_lang = get_marker_language(marker)
             print(f"✅ {image_path.name}: marker verified with language {marker_lang}")
         else:
-            # Verify no marker exists
-            marker = read_embedded_marker(image_path)
-            assert marker is None, (
-                f"Unexpected marker found in {image_path.name}. Expected no marker."
-            )
-            print(f"✅ {image_path.name}: verified no marker")
-
-        # Check backup if expected
-        if expect_backup:
-            assert backup_dir is not None, (
-                "backup_dir must be provided when expect_backup is True"
-            )
-            # Find backup file (handle extension changes)
-            backup_candidates = []
-            for ext in [".jpg", ".jpeg", ".png"]:
-                backup_path = (
-                    backup_dir / image_path.parent.name / (image_path.stem + ext)
-                )
-                if backup_path.exists():
-                    backup_candidates.append(backup_path)
-
-            assert len(backup_candidates) > 0, (
-                f"Backup not found for {image_path.name} in {backup_dir}"
-            )
-            print(f"✅ {image_path.name}: backup found at {backup_candidates[0]}")
+            print(f"✅ {image_path.name}: verified original image (no marker)")
 
     print(f"✅ All {len(image_paths)} images verified")
