@@ -166,42 +166,80 @@ def test_service_integration_processing_error_with_exception(
     assert "Processing error:" in call_args[0][0]
 
 
-def test_cache_initialization_error(test_settings: Settings) -> None:
+def test_cache_initialization_error(test_data_dir: Path) -> None:
     """Test cache initialization errors are handled with clear messages."""
-    import sqlite3
+    import os
 
-    # Test with sqlite3.OperationalError
-    with patch("sonarr_metadata_rewrite.rewrite_service.Cache") as mock_cache:
-        mock_cache.side_effect = sqlite3.OperationalError(
-            "unable to open database file"
+    from diskcache import Cache  # type: ignore[import-untyped]
+
+    from sonarr_metadata_rewrite.config import Settings
+
+    # Create a cache directory and initialize it
+    cache_dir = test_data_dir / "readonly_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a cache to generate the database file
+    cache = Cache(str(cache_dir))
+    cache.close()
+
+    # Make the cache database file read-only to trigger sqlite3.OperationalError
+    db_file = cache_dir / "cache.db"
+    os.chmod(db_file, 0o444)
+
+    try:
+        # Create settings pointing to the read-only cache
+        settings = Settings(
+            tmdb_api_key="test_key",
+            rewrite_root_dir=test_data_dir,
+            preferred_languages="en-US",
+            cache_dir=cache_dir,
         )
 
         # Verify that RuntimeError is raised with clear message
         with pytest.raises(RuntimeError) as exc_info:
-            RewriteService(test_settings)
+            RewriteService(settings)
 
         # Verify error message includes the cache directory path
         error_message = str(exc_info.value)
         assert "Failed to initialize cache" in error_message
-        assert str(test_settings.cache_dir) in error_message
+        assert str(cache_dir) in error_message
         assert "not be accessible or writable" in error_message
-        assert "unable to open database file" in error_message
+    finally:
+        # Restore permissions for cleanup
+        os.chmod(db_file, 0o644)
 
 
-def test_cache_initialization_permission_error(test_settings: Settings) -> None:
+def test_cache_initialization_permission_error(test_data_dir: Path) -> None:
     """Test cache initialization with permission errors."""
-    # Test with PermissionError
-    with patch("sonarr_metadata_rewrite.rewrite_service.Cache") as mock_cache:
-        mock_cache.side_effect = PermissionError(
-            "[Errno 13] Cache directory does not exist and could not be created"
+    import os
+
+    from sonarr_metadata_rewrite.config import Settings
+
+    # Create a read-only parent directory to trigger PermissionError
+    readonly_parent = test_data_dir / "readonly_parent"
+    readonly_parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(readonly_parent, 0o444)
+
+    try:
+        cache_dir = readonly_parent / "cache"
+
+        # Create settings pointing to a cache dir in read-only parent
+        settings = Settings(
+            tmdb_api_key="test_key",
+            rewrite_root_dir=test_data_dir,
+            preferred_languages="en-US",
+            cache_dir=cache_dir,
         )
 
         # Verify that RuntimeError is raised with clear message
         with pytest.raises(RuntimeError) as exc_info:
-            RewriteService(test_settings)
+            RewriteService(settings)
 
         # Verify error message includes the cache directory path
         error_message = str(exc_info.value)
         assert "Failed to initialize cache" in error_message
-        assert str(test_settings.cache_dir) in error_message
+        assert str(cache_dir) in error_message
         assert "not be accessible or writable" in error_message
+    finally:
+        # Restore permissions for cleanup
+        os.chmod(readonly_parent, 0o755)
