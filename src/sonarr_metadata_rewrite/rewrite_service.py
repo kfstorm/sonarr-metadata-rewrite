@@ -11,7 +11,7 @@ from sonarr_metadata_rewrite.file_scanner import FileScanner
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
 from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 from sonarr_metadata_rewrite.models import ProcessResult
-from sonarr_metadata_rewrite.nfo_utils import is_nfo_file
+from sonarr_metadata_rewrite.nfo_utils import is_nfo_file, is_rewritable_image
 from sonarr_metadata_rewrite.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,17 @@ class RewriteService:
         if is_nfo_file(file_path):
             return self.metadata_processor.process_file(file_path)
         else:
+            # Gate image rewriting by configuration
+            if not self.settings.enable_image_rewrite and is_rewritable_image(
+                file_path
+            ):
+                return ProcessResult(
+                    success=True,
+                    file_path=file_path,
+                    message="Image rewrite disabled; skipped",
+                    file_modified=False,
+                )
+
             return self.image_processor.process(file_path)
 
     def _process_file_callback(self, file_path: Path) -> None:

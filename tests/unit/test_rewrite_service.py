@@ -313,3 +313,32 @@ def test_integration_both_processors_working(
         # Verify results
         assert result_nfo.success is True
         assert result_image.success is True
+
+
+def test_image_processing_skipped_when_disabled(
+    rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """When enable_image_rewrite is False, image files should be skipped."""
+    # Disable image rewriting
+    rewrite_service.settings.enable_image_rewrite = False
+
+    # Create a rewritable image file (poster)
+    poster_path = tmp_path / "poster.jpg"
+    poster_path.write_bytes(b"fake image")
+
+    with (
+        patch.object(rewrite_service.image_processor, "process") as mock_image_process,
+        patch.object(
+            rewrite_service.metadata_processor, "process_file"
+        ) as mock_metadata_process,
+    ):
+        result = rewrite_service._process_file(poster_path)
+
+        # Image processor should not be called when disabled
+        mock_image_process.assert_not_called()
+        mock_metadata_process.assert_not_called()
+
+        # Should return a success skip result
+        assert result.success is True
+        assert result.file_modified is False
+        assert "disabled" in result.message

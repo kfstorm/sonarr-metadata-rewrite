@@ -157,3 +157,26 @@ def test_service_mode_invalid_value_fails() -> None:
             preferred_languages=["zh-CN"],
             service_mode="invalid",
         )
+
+
+def test_enable_image_rewrite_defaults_true(test_data_dir: Path) -> None:
+    """Image rewrite should be enabled by default."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dir=test_data_dir,
+        preferred_languages=["zh-CN"],
+    )
+    assert settings.enable_image_rewrite is True
+
+
+def test_enable_image_rewrite_can_be_disabled_via_env(tmp_path: Path) -> None:
+    """Image rewrite can be disabled via environment variable."""
+    env_vars = {
+        "TMDB_API_KEY": "test_key",
+        "REWRITE_ROOT_DIR": str(tmp_path),
+        "PREFERRED_LANGUAGES": "zh-CN",
+        "ENABLE_IMAGE_REWRITE": "false",
+    }
+    with patch.dict(os.environ, env_vars):
+        settings = get_settings()
+        assert settings.enable_image_rewrite is False
