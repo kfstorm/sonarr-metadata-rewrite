@@ -1,8 +1,51 @@
-"""Utility functions for handling .nfo/.NFO files with case sensitivity."""
+"""Utility functions for handling .nfo/.NFO files and image filenames.
+
+Centralizes image filename rules (poster/logo/season posters) and supported
+extensions so other modules can reuse the same logic consistently.
+"""
 
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+# Supported image extensions (lowercase with leading dot)
+IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png"}
+
+
+def parse_image_info(basename: str) -> tuple[str, int | None]:
+    """Parse image basename to determine kind and season number.
+
+    Args:
+        basename: Image file basename (e.g., "poster.jpg")
+
+    Returns:
+        Tuple of (kind, season_number) where kind is "poster" or "logo",
+        season_number is an integer season (0 for specials) or None for
+        series-level. Returns ("", None) if not recognized or extension
+        unsupported.
+    """
+    suffix = Path(basename).suffix.lower()
+    if suffix not in IMAGE_EXTENSIONS:
+        return ("", None)
+
+    name = Path(basename).stem.lower()
+
+    # Series-level poster/logo
+    if name == "poster":
+        return ("poster", None)
+    if name == "logo":
+        return ("logo", None)
+
+    # Specials poster
+    if name == "season-specials-poster":
+        return ("poster", 0)
+
+    # Season poster like season01-poster
+    m = re.match(r"^season(\d+)-poster$", name)
+    if m:
+        return ("poster", int(m.group(1)))
+
+    return ("", None)
 
 
 def is_nfo_file(file_path: Path) -> bool:
@@ -17,19 +60,6 @@ def is_nfo_file(file_path: Path) -> bool:
     return file_path.suffix.lower() == ".nfo"
 
 
-def is_image_file(file_path: Path) -> bool:
-    """Check if a file is an image file (jpg/jpeg/png, case-insensitive).
-
-    Args:
-        file_path: Path to the file to check
-
-    Returns:
-        True if the file has .jpg/.jpeg/.png extension, False otherwise
-    """
-    suffix = file_path.suffix.lower()
-    return suffix in {".jpg", ".jpeg", ".png"}
-
-
 def is_rewritable_image(file_path: Path) -> bool:
     """Check if an image file matches patterns for poster or logo.
 
@@ -40,16 +70,8 @@ def is_rewritable_image(file_path: Path) -> bool:
         True if filename matches poster.* or seasonNN-poster.*
         or logo.*, False otherwise
     """
-    if not is_image_file(file_path):
-        return False
-
-    name = file_path.stem.lower()
-    # Match: poster, seasonNN-poster (e.g., season01-poster), logo
-    return bool(
-        re.match(r"^poster$", name)
-        or re.match(r"^season\d+-poster$", name)
-        or re.match(r"^logo$", name)
-    )
+    kind, _ = parse_image_info(file_path.name)
+    return bool(kind)
 
 
 def find_nfo_files(directory: Path, recursive: bool = True) -> list[Path]:

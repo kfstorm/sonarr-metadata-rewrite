@@ -1,7 +1,6 @@
 """Image processor for rewriting poster and logo images."""
 
 import logging
-import re
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,7 +13,13 @@ from sonarr_metadata_rewrite.image_utils import (
     read_embedded_marker,
 )
 from sonarr_metadata_rewrite.models import ImageProcessResult, TmdbIds
-from sonarr_metadata_rewrite.nfo_utils import extract_tmdb_id
+from sonarr_metadata_rewrite.nfo_utils import (
+    IMAGE_EXTENSIONS,
+    extract_tmdb_id,
+)
+from sonarr_metadata_rewrite.nfo_utils import (
+    parse_image_info as util_parse_image_info,
+)
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
@@ -25,16 +30,6 @@ logger = logging.getLogger(__name__)
 
 # TMDB image base URL
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
-
-# Supported image extensions
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
-
-# Basename patterns (case-insensitive)
-SERIES_POSTER_PATTERN = re.compile(r"^poster\.(jpg|jpeg|png)$", re.IGNORECASE)
-SEASON_POSTER_PATTERN = re.compile(
-    r"^season(\d{2})-poster\.(jpg|jpeg|png)$", re.IGNORECASE
-)
-SERIES_LOGO_PATTERN = re.compile(r"^logo\.(jpg|jpeg|png)$", re.IGNORECASE)
 
 
 class ImageProcessor:
@@ -57,7 +52,7 @@ class ImageProcessor:
         try:
             # Determine image kind and scope
             basename = image_path.name
-            kind, season_num = self._parse_image_info(basename)
+            kind, season_num = util_parse_image_info(basename)
 
             if not kind:
                 return ImageProcessResult(
@@ -139,26 +134,6 @@ class ImageProcessor:
                 exception=e,
                 kind="",
             )
-
-    def _parse_image_info(self, basename: str) -> tuple[str, int | None]:
-        """Parse image basename to determine kind and season number.
-
-        Args:
-            basename: Image file basename
-
-        Returns:
-            Tuple of (kind, season_number) where kind is "poster" or "logo",
-            and season_number is None for series-level images
-        """
-        if SERIES_POSTER_PATTERN.match(basename):
-            return ("poster", None)
-        elif SERIES_LOGO_PATTERN.match(basename):
-            return ("logo", None)
-        elif match := SEASON_POSTER_PATTERN.match(basename):
-            season_num = int(match.group(1))
-            return ("poster", season_num)
-        else:
-            return ("", None)
 
     def _resolve_tmdb_ids(
         self, image_path: Path, season_num: int | None
@@ -265,20 +240,14 @@ class ImageProcessor:
         # Extract extension from candidate.file_path
         candidate_ext = Path(candidate.file_path).suffix.lower()
         if candidate_ext not in IMAGE_EXTENSIONS:
-            candidate_ext = ".jpg"  # Default fallback
+            raise ValueError(
+                f"Unsupported image format from TMDB: {candidate_ext}. "
+                f"Supported formats: {', '.join(sorted(IMAGE_EXTENSIONS))}"
+            )
 
-        # Normalize destination filename
-        basename = dst_path.name
-        kind, season_num = self._parse_image_info(basename)
-
-        if kind == "poster" and season_num is None:
-            normalized_name = f"poster{candidate_ext}"
-        elif kind == "logo":
-            normalized_name = f"logo{candidate_ext}"
-        elif kind == "poster" and season_num is not None:
-            normalized_name = f"season{season_num:02d}-poster{candidate_ext}"
-        else:
-            normalized_name = basename
+        # Use original filename stem with TMDB extension
+        original_stem = dst_path.stem
+        normalized_name = f"{original_stem}{candidate_ext}"
 
         final_dst = dst_path.parent / normalized_name
 

@@ -6,7 +6,6 @@ from pathlib import Path
 from sonarr_metadata_rewrite.nfo_utils import (
     find_nfo_files,
     find_rewritable_images,
-    is_image_file,
     is_nfo_file,
     is_rewritable_image,
 )
@@ -123,40 +122,6 @@ class TestFindNfoFiles:
                 assert file_path.is_file()
 
 
-class TestIsImageFile:
-    """Test is_image_file function."""
-
-    def test_jpg_file(self) -> None:
-        """Test that .jpg files are detected."""
-        assert is_image_file(Path("test.jpg")) is True
-
-    def test_jpeg_file(self) -> None:
-        """Test that .jpeg files are detected."""
-        assert is_image_file(Path("test.jpeg")) is True
-
-    def test_png_file(self) -> None:
-        """Test that .png files are detected."""
-        assert is_image_file(Path("test.png")) is True
-
-    def test_uppercase_extensions(self) -> None:
-        """Test that uppercase extensions are detected."""
-        assert is_image_file(Path("test.JPG")) is True
-        assert is_image_file(Path("test.JPEG")) is True
-        assert is_image_file(Path("test.PNG")) is True
-
-    def test_mixed_case_extensions(self) -> None:
-        """Test that mixed case extensions are detected."""
-        assert is_image_file(Path("test.Jpg")) is True
-        assert is_image_file(Path("test.Jpeg")) is True
-        assert is_image_file(Path("test.Png")) is True
-
-    def test_non_image_file(self) -> None:
-        """Test that non-image files are not detected."""
-        assert is_image_file(Path("test.txt")) is False
-        assert is_image_file(Path("test.gif")) is False
-        assert is_image_file(Path("test.bmp")) is False
-
-
 class TestIsRewritableImage:
     """Test is_rewritable_image function."""
 
@@ -173,6 +138,8 @@ class TestIsRewritableImage:
         assert is_rewritable_image(Path("season01-poster.jpg")) is True
         assert is_rewritable_image(Path("season02-poster.png")) is True
         assert is_rewritable_image(Path("season10-poster.jpeg")) is True
+        # Specials season poster
+        assert is_rewritable_image(Path("season-specials-poster.jpg")) is True
 
     def test_logo_jpg(self) -> None:
         """Test that logo.jpg is detected as rewritable."""
@@ -187,6 +154,7 @@ class TestIsRewritableImage:
         assert is_rewritable_image(Path("POSTER.jpg")) is True
         assert is_rewritable_image(Path("LOGO.png")) is True
         assert is_rewritable_image(Path("SEASON01-POSTER.jpg")) is True
+        assert is_rewritable_image(Path("SEASON-SPECIALS-POSTER.PNG")) is True
 
     def test_non_rewritable_images(self) -> None:
         """Test that non-poster/logo images are not detected."""
@@ -234,12 +202,15 @@ class TestFindRewritableImages:
             s01.touch()
             s02 = temp_path / "season02-poster.png"
             s02.touch()
+            s_sp = temp_path / "season-specials-poster.jpg"
+            s_sp.touch()
 
             found_files = find_rewritable_images(temp_path)
             found_names = {f.name for f in found_files}
 
             assert "season01-poster.jpg" in found_names
             assert "season02-poster.png" in found_names
+            assert "season-specials-poster.jpg" in found_names
 
     def test_recursive_search(self) -> None:
         """Test recursive search in subdirectories."""

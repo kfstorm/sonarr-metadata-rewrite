@@ -36,7 +36,6 @@ ImageCandidate
 ImageProcessResult
 ImageProcessor
 _.process
-is_image_file
 is_rewritable_image
 find_rewritable_images
 MediaFileHandler

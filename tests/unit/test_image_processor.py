@@ -14,6 +14,7 @@ from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
 from sonarr_metadata_rewrite.image_utils import embed_marker_and_atomic_write
 from sonarr_metadata_rewrite.models import ImageCandidate
+from sonarr_metadata_rewrite.nfo_utils import parse_image_info
 from sonarr_metadata_rewrite.translator import Translator
 
 
@@ -193,6 +194,52 @@ class TestProcessSuccessScenarios:
         call_args = image_processor.translator.select_best_image.call_args
         assert call_args[0][0].season == 1
 
+    def test_process_season_specials_poster_success(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test successful specials season poster processing (season 0)."""
+        series_dir = tmp_path / "Series"
+        specials_dir = series_dir / "Specials"
+        specials_dir.mkdir(parents=True)
+
+        poster_path = specials_dir / "season-specials-poster.jpg"
+        nfo_path = specials_dir / "season.nfo"
+
+        create_test_image(poster_path)
+        create_test_nfo(nfo_path, 22222)
+
+        # Choose PNG to test extension normalization and name preservation
+        candidate = ImageCandidate(
+            file_path="/specials.png", iso_639_1="fr", iso_3166_1="FR"
+        )
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
+
+        # Mock HTTP download with real PNG data
+        from io import BytesIO
+
+        from PIL import Image
+
+        img = Image.new("RGB", (100, 100), color="purple")
+        output = BytesIO()
+        img.save(output, format="PNG")
+        real_png_bytes = output.getvalue()
+
+        mock_response = Mock()
+        mock_response.content = real_png_bytes
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
+
+        result = image_processor.process(poster_path)
+
+        assert result.success is True, f"Processing failed: {result.message}"
+        assert result.kind == "poster"
+        # Verify specials season number (0) was passed to translator
+        call_args = image_processor.translator.select_best_image.call_args
+        assert call_args[0][0].season == 0
+
+        # Verify filename preserved as season-specials-poster with new extension
+        assert not poster_path.exists()
+        assert (specials_dir / "season-specials-poster.png").exists()
+
     def test_process_image_already_has_marker(
         self, tmp_path: Path, image_processor: ImageProcessor
     ) -> None:
@@ -361,7 +408,7 @@ class TestParseImageInfo:
 
     def test_parse_image_info_poster(self, image_processor: ImageProcessor) -> None:
         """Test parsing poster basename."""
-        kind, season = image_processor._parse_image_info("poster.jpg")
+        kind, season = parse_image_info("poster.jpg")
         assert kind == "poster"
         assert season is None
 
@@ -369,23 +416,29 @@ class TestParseImageInfo:
         self, image_processor: ImageProcessor
     ) -> None:
         """Test parsing season poster basenames."""
-        kind, season = image_processor._parse_image_info("season01-poster.jpg")
+        kind, season = parse_image_info("season01-poster.jpg")
         assert kind == "poster"
         assert season == 1
 
-        kind, season = image_processor._parse_image_info("season10-poster.png")
+        kind, season = parse_image_info("season10-poster.png")
         assert kind == "poster"
         assert season == 10
 
     def test_parse_image_info_logo(self, image_processor: ImageProcessor) -> None:
         """Test parsing logo basename."""
-        kind, season = image_processor._parse_image_info("logo.png")
+        kind, season = parse_image_info("logo.png")
         assert kind == "logo"
         assert season is None
 
+    def test_parse_image_info_specials(self, image_processor: ImageProcessor) -> None:
+        """Test parsing specials poster basename."""
+        kind, season = parse_image_info("season-specials-poster.jpg")
+        assert kind == "poster"
+        assert season == 0
+
     def test_parse_image_info_invalid(self, image_processor: ImageProcessor) -> None:
         """Test parsing invalid basename."""
-        kind, season = image_processor._parse_image_info("banner.jpg")
+        kind, season = parse_image_info("banner.jpg")
         assert kind == ""
         assert season is None
 
