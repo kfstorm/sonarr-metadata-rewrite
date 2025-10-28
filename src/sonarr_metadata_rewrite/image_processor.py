@@ -147,42 +147,50 @@ class ImageProcessor:
         Returns:
             TmdbIds if resolved, None otherwise
         """
-        # For series-level images, look for tvshow.nfo
-        if season_num is None:
-            # Search up to 3 levels for tvshow.nfo
-            current_dir = image_path.parent
-            for _ in range(3):
-                nfo_path = current_dir / "tvshow.nfo"
-                if nfo_path.exists():
-                    tmdb_id = extract_tmdb_id(nfo_path)
-                    if tmdb_id:
-                        return TmdbIds(series_id=tmdb_id)
-                parent = current_dir.parent
-                if parent == current_dir:
-                    break
-                current_dir = parent
-        else:
-            # For season-level images, look for season.nfo in same directory
-            nfo_path = image_path.parent / "season.nfo"
-            if nfo_path.exists():
-                tmdb_id = extract_tmdb_id(nfo_path)
-                if tmdb_id:
-                    return TmdbIds(series_id=tmdb_id, season=season_num)
 
-            # Fallback: look for tvshow.nfo upward
-            current_dir = image_path.parent
-            for _ in range(3):
-                nfo_path = current_dir / "tvshow.nfo"
+        @retry(timeout=30.0, interval=1.0, exceptions=(FileNotFoundError,))
+        def _find_and_extract_tmdb_id() -> TmdbIds:
+            # For series-level images, look for tvshow.nfo
+            if season_num is None:
+                # Search up to 3 levels for tvshow.nfo
+                current_dir = image_path.parent
+                for _ in range(3):
+                    nfo_path = current_dir / "tvshow.nfo"
+                    if nfo_path.exists():
+                        tmdb_id = extract_tmdb_id(nfo_path)
+                        if tmdb_id:
+                            return TmdbIds(series_id=tmdb_id)
+                    parent = current_dir.parent
+                    if parent == current_dir:
+                        break
+                    current_dir = parent
+            else:
+                # For season-level images, look for season.nfo in same directory
+                nfo_path = image_path.parent / "season.nfo"
                 if nfo_path.exists():
                     tmdb_id = extract_tmdb_id(nfo_path)
                     if tmdb_id:
                         return TmdbIds(series_id=tmdb_id, season=season_num)
-                parent = current_dir.parent
-                if parent == current_dir:
-                    break
-                current_dir = parent
 
-        return None
+                # Fallback: look for tvshow.nfo upward
+                current_dir = image_path.parent
+                for _ in range(3):
+                    nfo_path = current_dir / "tvshow.nfo"
+                    if nfo_path.exists():
+                        tmdb_id = extract_tmdb_id(nfo_path)
+                        if tmdb_id:
+                            return TmdbIds(series_id=tmdb_id, season=season_num)
+                    parent = current_dir.parent
+                    if parent == current_dir:
+                        break
+                    current_dir = parent
+
+            raise FileNotFoundError(f"Could not find NFO file for image: {image_path}")
+
+        try:
+            return _find_and_extract_tmdb_id()
+        except FileNotFoundError:
+            return None
 
     def _create_backup(self, image_path: Path) -> bool:
         """Create backup of existing image file.

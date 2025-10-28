@@ -158,8 +158,8 @@ class SeriesWithNfos:
         configured_sonarr_container: SonarrClient,
         temp_media_root: Path,
         tvdb_id: int,
+        expected_image_filenames: list[str],
         episodes: list[tuple[str, int, int]] | None = None,
-        create_images: bool = False,
     ):
         """Initialize the context manager.
 
@@ -167,14 +167,14 @@ class SeriesWithNfos:
             configured_sonarr_container: Configured Sonarr client
             temp_media_root: Temporary media root directory
             tvdb_id: TVDB ID of the series to set up
+            expected_image_filenames: List of expected image file names
             episodes: List of (title, season, episode) tuples, defaults to 2 episodes
-            create_images: Whether to create placeholder images
         """
         self.sonarr = configured_sonarr_container
         self.media_root = temp_media_root
         self.tvdb_id = tvdb_id
+        self.expected_image_filenames = expected_image_filenames
         self.episodes = episodes or [("Episode 1", 1, 1), ("Episode 2", 1, 2)]
-        self.create_images = create_images
         self.series: SeriesManager | None = None
 
     def __enter__(self) -> tuple[list[Path], list[Path]]:
@@ -219,20 +219,7 @@ class SeriesWithNfos:
         series_path = self.media_root / self.series.slug
         nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
 
-        # Create placeholder images if requested
-        image_files = []
-        if self.create_images:
-            # Create series-level images (poster, clearlogo)
-            image_files.extend(create_placeholder_images(series_path, season=None))
-
-            # Create season-specific images for each unique season
-            seasons = {season for _, season, _ in self.episodes}
-            for season in seasons:
-                image_files.extend(
-                    create_placeholder_images(series_path, season=season)
-                )
-
-        return nfo_files, image_files
+        return nfo_files, [series_path / f for f in self.expected_image_filenames]
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Clean up series."""
@@ -387,54 +374,6 @@ def verify_translations(
         f"✅ All {len(nfo_files)} files verified to contain "
         f"{expected_language} translations"
     )
-
-
-def create_placeholder_images(
-    series_path: Path, season: int | None = None
-) -> list[Path]:
-    """Create minimal valid JPEG/PNG images as placeholders.
-
-    Args:
-        series_path: Path to series directory
-        season: Season number for season-specific images, None for series-level
-
-    Returns:
-        List of created image file paths
-    """
-    from io import BytesIO
-
-    from PIL import Image
-
-    created_images = []
-
-    # Determine target directory
-    if season is not None:
-        target_dir = series_path / f"Season {season:02d}"
-        target_dir.mkdir(parents=True, exist_ok=True)
-        # Create season poster
-        poster_path = target_dir / f"season{season:02d}-poster.jpg"
-    else:
-        target_dir = series_path
-        # Create series poster and clearlogo
-        poster_path = target_dir / "poster.jpg"
-
-    # Create poster (100x150 red image)
-    poster_img = Image.new("RGB", (100, 150), color="red")
-    poster_buffer = BytesIO()
-    poster_img.save(poster_buffer, format="JPEG")
-    poster_path.write_bytes(poster_buffer.getvalue())
-    created_images.append(poster_path)
-
-    # Create clearlogo only for series-level (100x50 blue image)
-    if season is None:
-        logo_path = target_dir / "clearlogo.png"
-        logo_img = Image.new("RGBA", (100, 50), color="blue")
-        logo_buffer = BytesIO()
-        logo_img.save(logo_buffer, format="PNG")
-        logo_path.write_bytes(logo_buffer.getvalue())
-        created_images.append(logo_path)
-
-    return created_images
 
 
 def verify_images(

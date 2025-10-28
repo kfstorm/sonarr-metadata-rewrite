@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from watchdog.events import (
-    FileCreatedEvent,
-    FileModifiedEvent,
+    EVENT_TYPE_CLOSED,
+    EVENT_TYPE_MOVED,
     FileSystemEvent,
     FileSystemEventHandler,
 )
@@ -28,25 +28,25 @@ class MediaFileHandler(FileSystemEventHandler):
     def __init__(self, callback: Callable[[Path], None]):
         self.callback = callback
 
-    def _handle_file_event(self, event: FileSystemEvent) -> None:
+    def on_any_event(self, event: FileSystemEvent) -> None:
         """Handle file events for NFO or rewritable image files."""
-        if not event.is_directory:
-            file_path = Path(str(event.src_path))
-            if is_nfo_file(file_path) or is_rewritable_image(file_path):
-                try:
-                    self.callback(file_path)
-                except Exception:
-                    logger.exception(
-                        f"❌ Error in file monitor callback for {file_path}"
-                    )
+        if event.is_directory:
+            return
+        if event.event_type not in {EVENT_TYPE_CLOSED, EVENT_TYPE_MOVED}:
+            return
+        file_path = Path(
+            str(
+                event.src_path
+                if event.event_type != EVENT_TYPE_MOVED
+                else event.dest_path
+            )
+        )
 
-    def on_created(self, event: FileSystemEvent) -> None:
-        """Handle file creation events."""
-        self._handle_file_event(event)
-
-    def on_modified(self, event: FileSystemEvent) -> None:
-        """Handle file modification events."""
-        self._handle_file_event(event)
+        if is_nfo_file(file_path) or is_rewritable_image(file_path):
+            try:
+                self.callback(file_path)
+            except Exception:
+                logger.exception(f"❌ Error in file monitor callback for {file_path}")
 
 
 class FileMonitor:
@@ -69,12 +69,11 @@ class FileMonitor:
         self.handler = MediaFileHandler(callback)
         self.observer = Observer()
 
-        # Watch the root directory recursively, filtering for create/modify events only
+        # Watch the root directory recursively
         self.observer.schedule(
             self.handler,
             str(self.settings.rewrite_root_dir),
             recursive=True,
-            event_filter=[FileCreatedEvent, FileModifiedEvent],
         )
 
         self.observer.start()

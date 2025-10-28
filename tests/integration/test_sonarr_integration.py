@@ -12,11 +12,44 @@ from tests.integration.test_helpers import (
     verify_translations,
 )
 
+
+def season_poster_image_filenames(season_count: int, with_specials: bool) -> list[str]:
+    """Generate expected season poster image filenames for given season count.
+
+    Args:
+        season_count: Total number of seasons in the series
+        with_specials: Whether to include specials season poster
+
+    Returns:
+        List of expected season poster image filenames
+    """
+
+    filenames = []
+    if with_specials:
+        filenames.append("season-specials-poster.jpg")
+    for season_num in range(1, season_count + 1):
+        filenames.append(f"season{season_num:02d}-poster.jpg")
+    return filenames
+
+
 # Series TVDB IDs for testing
 BREAKING_BAD_TVDB_ID = 81189
+BREAKING_BAD_IMAGES = [
+    "poster.jpg",
+    "clearlogo.png",
+] + season_poster_image_filenames(5, with_specials=True)
 MING_DYNASTY_TVDB_ID = 300635
+MING_DYNASTY_IMAGES = [
+    "poster.jpg",
+]  # Sonarr only generates series poster image
 EVERY_TREASURE_TELLS_A_STORY_TVDB_ID = 364698
+EVERY_TREASURE_TELLS_A_STORY_IMAGES = [
+    "poster.jpg",
+]  # Sonarr only generates series poster image
 GEN_V_TVDB_ID = 417909
+GEN_V_IMAGES = ["poster.jpg", "clearlogo.png"] + season_poster_image_filenames(
+    2, with_specials=True
+)
 
 
 @pytest.mark.integration
@@ -40,7 +73,7 @@ def test_file_monitor_workflow(
             configured_sonarr_container,
             temp_media_root,
             BREAKING_BAD_TVDB_ID,
-            create_images=True,
+            BREAKING_BAD_IMAGES,
         ) as (nfo_files, image_files):
             verify_translations(
                 nfo_files, expected_language="zh", possible_languages=["zh", "en"]
@@ -63,7 +96,7 @@ def test_file_scanner_workflow(
         configured_sonarr_container,
         temp_media_root,
         BREAKING_BAD_TVDB_ID,
-        create_images=True,
+        BREAKING_BAD_IMAGES,
     ) as (nfo_files, image_files):
         with ServiceRunner(temp_media_root, {"ENABLE_FILE_MONITOR": "false"}):
             verify_translations(
@@ -92,7 +125,7 @@ def test_rollback_service_mode(
         configured_sonarr_container,
         temp_media_root,
         BREAKING_BAD_TVDB_ID,
-        create_images=True,
+        BREAKING_BAD_IMAGES,
     ) as (nfo_files, image_files):
         # First, translate files to Chinese using rewrite mode with backups enabled
         with ServiceRunner(
@@ -121,20 +154,30 @@ def test_rollback_service_mode(
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "tvdb_id,service_config,expected_language",
+    "tvdb_id,total_seasons,service_config,expected_language",
     [
         # Translation fallback when preferred language has empty titles (issue #26).
         # Tests Chinese series "大明王朝1566" where some Chinese translations have
         # empty titles but valid descriptions, requiring fallback to complete.
-        (MING_DYNASTY_TVDB_ID, {}, "zh"),
+        (MING_DYNASTY_TVDB_ID, MING_DYNASTY_IMAGES, {}, "zh"),
         # External ID lookup workflow using TVDB ID to find TMDB ID (issue #29).
         # Tests "Every Treasure Tells a Story" series (TVDB: 364698 -> TMDB: 86965)
         # to verify TMDB ID resolution from TVDB ID when direct TMDB ID unavailable.
-        (EVERY_TREASURE_TELLS_A_STORY_TVDB_ID, {}, "zh"),
+        (
+            EVERY_TREASURE_TELLS_A_STORY_TVDB_ID,
+            EVERY_TREASURE_TELLS_A_STORY_IMAGES,
+            {},
+            "zh",
+        ),
         # Smart fallback translation merging (issue #50).
         # Tests "Gen V" series where fr-CA and fr-FR translations are merged
         # to create complete French translations avoiding English fallback.
-        (GEN_V_TVDB_ID, {"PREFERRED_LANGUAGES": "fr-CA,fr-FR"}, "fr"),
+        (
+            GEN_V_TVDB_ID,
+            GEN_V_IMAGES,
+            {"PREFERRED_LANGUAGES": "fr-CA,fr-FR"},
+            "fr",
+        ),
     ],
     ids=["translation-fallback", "external-id-lookup", "smart-fallback-merging"],
 )
@@ -142,6 +185,7 @@ def test_advanced_translation_scenarios(
     temp_media_root: Path,
     configured_sonarr_container: SonarrClient,
     tvdb_id: int,
+    total_seasons: int,
     service_config: dict[str, str],
     expected_language: str,
 ) -> None:
@@ -158,7 +202,9 @@ def test_advanced_translation_scenarios(
     else:
         possible_languages.add("zh")
 
-    with SeriesWithNfos(configured_sonarr_container, temp_media_root, tvdb_id) as (
+    with SeriesWithNfos(
+        configured_sonarr_container, temp_media_root, tvdb_id, total_seasons
+    ) as (
         nfo_files,
         _,
     ):
