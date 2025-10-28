@@ -42,8 +42,7 @@ MediaFileHandler
 _._handle_file_event
 
 # Event handler methods are called by watchdog
-_.on_created
-_.on_modified
+_.on_any_event
 
 
 # Test mock attributes that vulture may not detect

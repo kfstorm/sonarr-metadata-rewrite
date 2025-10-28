@@ -2,3 +2,4 @@ check design doc #file:image_rewrite_plan.md and see if we missed some test case
 
 - Update docs (CLAUDE.md, README.md, ...)
 - Fix imports not at the top of files. `git grep -E -B 1 '^\s+from .* import .*|^\s+import .*'`
+- Improve test coverage to cover edge cases.

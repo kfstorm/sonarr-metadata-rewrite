@@ -135,6 +135,7 @@ class TestProcessSuccessScenarios:
 
         # Mock HTTP download with real PNG data
         from io import BytesIO
+
         from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="red")
