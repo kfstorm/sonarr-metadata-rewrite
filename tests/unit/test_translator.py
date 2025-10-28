@@ -1350,6 +1350,7 @@ class TestSelectBestImage:
         assert result.iso_3166_1 == "GB"
 
         # Test pt-BR
+        translator.cache.clear()
         response_pt_br = {
             "id": 12345,
             "posters": [
@@ -1363,6 +1364,7 @@ class TestSelectBestImage:
         assert result.iso_3166_1 == "BR"
 
         # Test zh-CN
+        translator.cache.clear()
         response_zh_cn = {
             "id": 12345,
             "logos": [
@@ -1376,6 +1378,7 @@ class TestSelectBestImage:
         assert result.iso_3166_1 == "CN"
 
         # Test es-MX
+        translator.cache.clear()
         response_es_mx = {
             "id": 12345,
             "posters": [

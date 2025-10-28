@@ -291,9 +291,6 @@ class Translator:
         """
         from sonarr_metadata_rewrite.models import ImageCandidate
 
-        # Build include_image_language parameter
-        include_image_language = ",".join(preferred_languages)
-
         # Determine endpoint based on kind and season
         if kind == "poster" and tmdb_ids.season is not None:
             endpoint = f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}/images"
@@ -301,11 +298,14 @@ class Translator:
             endpoint = f"/tv/{tmdb_ids.series_id}/images"
 
         # Fetch images from TMDB
-        cache_key = f"images:{endpoint}:{include_image_language}"
+        # NOTE: Do NOT pass include_image_language due to TMDB API bug;
+        # fetch all images and filter locally in Python.
+        # Cache by endpoint only since server response is independent of
+        # preference ordering; selection happens client-side.
+        cache_key = f"images:{endpoint}"
 
         def fetch_images() -> dict[str, Any]:
-            params = {"include_image_language": include_image_language}
-            return self._fetch_with_retry(endpoint, params)
+            return self._fetch_with_retry(endpoint)
 
         api_data = self._get_with_cache(cache_key, fetch_images, default_on_404={})
 

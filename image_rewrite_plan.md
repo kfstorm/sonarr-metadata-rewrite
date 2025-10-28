@@ -46,7 +46,7 @@ Components
 
   - Infer endpoint: if `kind == "poster"` and `tmdb_ids.season` is set -> /tv/{id}/season/{s}/images; else -> /tv/{id}/images. Logos are selected only from series-level `/tv/{id}/images`.
 
-  - Call TMDB images endpoint once using `include_image_language` built by comma-joining `preferred_languages` exactly as given (preserve region tokens like "en-US").
+  - Call TMDB images endpoint without `include_image_language` (due to a TMDB API bug). Fetch all languages and filter in Python using the user's `preferred_languages` order (preserve region tokens like "en-US").
 
     - For each preferred language (must be lang-country format), select the first candidate in the array whose `iso_639_1` and `iso_3166_1` exactly match the language and country part of the token. If none found, try the next preferred language. If no match for any, return None.
 
@@ -123,8 +123,7 @@ Scanning rules
 
 Selection rules (detailed)
 
-- Build `include_image_language` string by joining `Settings.preferred_languages` with commas, preserving each token exactly as provided (e.g., `en-US,ja-JP,zh-CN`).
-- Call the appropriate TMDB images endpoint with `include_image_language` to get candidate images.
+- Do not send `include_image_language`. Always call the appropriate TMDB images endpoint and get all candidates.
   - For posters, select from the `posters` array (season-level or series-level as applicable).
   - For logos, select from the `logos` array (series-level only).
 - Matching policy (strict lang-country only):
