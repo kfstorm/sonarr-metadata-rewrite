@@ -141,23 +141,23 @@ class TestIsRewritableImage:
         # Specials season poster
         assert is_rewritable_image(Path("season-specials-poster.jpg")) is True
 
-    def test_logo_jpg(self) -> None:
-        """Test that logo.jpg is detected as rewritable."""
-        assert is_rewritable_image(Path("logo.jpg")) is True
+    def test_clearlogo_jpg(self) -> None:
+        """Test that clearlogo.jpg is detected as rewritable."""
+        assert is_rewritable_image(Path("clearlogo.jpg")) is True
 
-    def test_logo_png(self) -> None:
-        """Test that logo.png is detected as rewritable."""
-        assert is_rewritable_image(Path("logo.png")) is True
+    def test_clearlogo_png(self) -> None:
+        """Test that clearlogo.png is detected as rewritable."""
+        assert is_rewritable_image(Path("clearlogo.png")) is True
 
     def test_uppercase_names(self) -> None:
         """Test that uppercase filenames are detected."""
         assert is_rewritable_image(Path("POSTER.jpg")) is True
-        assert is_rewritable_image(Path("LOGO.png")) is True
+        assert is_rewritable_image(Path("CLEARLOGO.png")) is True
         assert is_rewritable_image(Path("SEASON01-POSTER.jpg")) is True
         assert is_rewritable_image(Path("SEASON-SPECIALS-POSTER.PNG")) is True
 
     def test_non_rewritable_images(self) -> None:
-        """Test that non-poster/logo images are not detected."""
+        """Test that non-poster/clearlogo images are not detected."""
         assert is_rewritable_image(Path("banner.jpg")) is False
         assert is_rewritable_image(Path("fanart.jpg")) is False
         assert is_rewritable_image(Path("backdrop.png")) is False
@@ -166,22 +166,22 @@ class TestIsRewritableImage:
     def test_non_image_files(self) -> None:
         """Test that non-image files are not detected."""
         assert is_rewritable_image(Path("poster.txt")) is False
-        assert is_rewritable_image(Path("logo.nfo")) is False
+        assert is_rewritable_image(Path("clearlogo.nfo")) is False
 
 
 class TestFindRewritableImages:
     """Test find_rewritable_images function."""
 
-    def test_find_poster_and_logo(self) -> None:
-        """Test finding both poster and logo files."""
+    def test_find_poster_and_clearlogo(self) -> None:
+        """Test finding both poster and clearlogo files."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
             # Create test files
             poster = temp_path / "poster.jpg"
             poster.touch()
-            logo = temp_path / "logo.png"
-            logo.touch()
+            clearlogo = temp_path / "clearlogo.png"
+            clearlogo.touch()
             banner = temp_path / "banner.jpg"  # Should not be found
             banner.touch()
 
@@ -189,7 +189,7 @@ class TestFindRewritableImages:
             found_names = {f.name for f in found_files}
 
             assert "poster.jpg" in found_names
-            assert "logo.png" in found_names
+            assert "clearlogo.png" in found_names
             assert "banner.jpg" not in found_names
 
     def test_find_season_posters(self) -> None:

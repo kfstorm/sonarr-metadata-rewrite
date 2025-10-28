@@ -152,7 +152,7 @@ class Settings(BaseSettings):
         default=True, description="Enable periodic directory scanning"
     )
     enable_image_rewrite: bool = Field(
-        default=True, description="Enable image rewriting (posters and logos)"
+        default=True, description="Enable image rewriting (posters and clearlogos)"
     )
 
     @field_validator("service_mode")

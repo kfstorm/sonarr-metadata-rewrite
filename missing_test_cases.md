@@ -32,10 +32,10 @@ This document lists all missing test cases identified from the git diff analysis
    - Input: tmdb_ids, preferred_languages=["en-US"], kind="poster"
    - Expected: Returns ImageCandidate with en-US poster
 
-2. **test_select_best_image_logo_exact_match**
-   - Setup: Mock TMDB API to return logos with language tags
-   - Input: tmdb_ids, preferred_languages=["ja-JP"], kind="logo"
-   - Expected: Returns ImageCandidate with ja-JP logo
+2. **test_select_best_image_clearlogo_exact_match**
+   - Setup: Mock TMDB API to return clearlogos with language tags
+   - Input: tmdb_ids, preferred_languages=["ja-JP"], kind="clearlogo"
+   - Expected: Returns ImageCandidate with ja-JP clearlogo
 
 3. **test_select_best_image_season_poster**
    - Setup: Mock TMDB API season endpoint
@@ -78,7 +78,7 @@ This document lists all missing test cases identified from the git diff analysis
     - Expected: Each returns correct match based on exact lang-country pair
 
 11. **test_select_best_image_empty_array**
-    - Setup: Mock TMDB API returns empty posters/logos array
+   - Setup: Mock TMDB API returns empty posters/clearlogos array
     - Input: preferred_languages=["en-US"], kind="poster"
     - Expected: Returns None
 
@@ -104,10 +104,10 @@ This document lists all missing test cases identified from the git diff analysis
    - Action: Call process(poster.jpg)
    - Expected: ImageProcessResult with success=True, file_modified=True, backup_created=True
 
-2. **test_process_logo_success**
-   - Setup: Create logo.png, mock NFO, mock translator
-   - Action: Call process(logo.png)
-   - Expected: Success with correct kind="logo"
+2. **test_process_clearlogo_success**
+   - Setup: Create clearlogo.png, mock NFO, mock translator
+   - Action: Call process(clearlogo.png)
+   - Expected: Success with correct kind="clearlogo"
 
 3. **test_process_season_poster_success**
    - Setup: Create season01-poster.jpg, mock season.nfo with TMDB ID
@@ -152,9 +152,9 @@ This document lists all missing test cases identified from the git diff analysis
     - Input: basename="season01-poster.jpg", "season10-poster.png"
     - Expected: ("poster", 1), ("poster", 10)
 
-12. **test_parse_image_info_logo**
-    - Input: basename="logo.png"
-    - Expected: ("logo", None)
+12. **test_parse_image_info_clearlogo**
+   - Input: basename="clearlogo.png"
+   - Expected: ("clearlogo", None)
 
 13. **test_resolve_tmdb_ids_same_directory**
     - Setup: Create Season 1/poster.jpg and Season 1/tvshow.nfo
@@ -289,9 +289,9 @@ This document lists all missing test cases identified from the git diff analysis
    - Expected: poster.jpg removed, poster.png restored
 
 2. **test_restore_removes_all_extension_variants**
-   - Setup: Backup has logo.png, current has logo.jpg and logo.jpeg
+   - Setup: Backup has clearlogo.png, current has clearlogo.jpg and clearlogo.jpeg
    - Action: Call execute_rollback()
-   - Expected: Both logo.jpg and logo.jpeg removed, logo.png restored
+   - Expected: Both clearlogo.jpg and clearlogo.jpeg removed, clearlogo.png restored
 
 3. **test_restore_both_nfo_and_images**
    - Setup: Backup contains tvshow.nfo and poster.jpg
@@ -299,7 +299,7 @@ This document lists all missing test cases identified from the git diff analysis
    - Expected: Both files restored successfully
 
 4. **test_restore_mixed_backup_directory**
-   - Setup: Backup has NFO files, posters, and logos
+   - Setup: Backup has NFO files, posters, and clearlogos
    - Action: Call execute_rollback()
    - Expected: All files restored, correct counts logged
 
@@ -358,10 +358,10 @@ This document lists all missing test cases identified from the git diff analysis
    - Action: Trigger on_created event
    - Expected: Callback invoked with poster.jpg path
 
-2. **test_media_file_handler_detects_logo_modification**
-   - Setup: Mock file system event for logo.png modification
+2. **test_media_file_handler_detects_clearlogo_modification**
+   - Setup: Mock file system event for clearlogo.png modification
    - Action: Trigger on_modified event
-   - Expected: Callback invoked with logo.png path
+   - Expected: Callback invoked with clearlogo.png path
 
 3. **test_media_file_handler_ignores_banner**
    - Setup: Mock file system event for banner.jpg
@@ -379,9 +379,9 @@ This document lists all missing test cases identified from the git diff analysis
 ### Test Cases
 
 1. **test_scanner_finds_both_nfo_and_images**
-   - Setup: Directory with tvshow.nfo, poster.jpg, logo.png, banner.jpg
+   - Setup: Directory with tvshow.nfo, poster.jpg, clearlogo.png, banner.jpg
    - Action: Call _perform_scan()
-   - Expected: Processes tvshow.nfo, poster.jpg, logo.png (not banner.jpg)
+   - Expected: Processes tvshow.nfo, poster.jpg, clearlogo.png (not banner.jpg)
 
 2. **test_scanner_processes_images_after_nfo**
    - Setup: Directory with files, mock callback to track order
@@ -389,7 +389,7 @@ This document lists all missing test cases identified from the git diff analysis
    - Expected: NFO files processed first, then images
 
 3. **test_scanner_image_only_directory**
-   - Setup: Directory with only poster.jpg and logo.png
+   - Setup: Directory with only poster.jpg and clearlogo.png
    - Action: Call _perform_scan()
    - Expected: Both images processed successfully
 
@@ -431,7 +431,7 @@ This document lists all missing test cases identified from the git diff analysis
 
 Instead of creating new integration tests, extend existing ones to verify image processing:
 
-- Modify `SeriesWithNfos` to also create placeholder images (poster.jpg, logo.png)
+- Modify `SeriesWithNfos` to also create placeholder images (poster.jpg, clearlogo.png)
 - Add helper function `verify_images()` to verify image processing and language/country in markers
 - Update existing tests to verify both NFO and image processing
 - **Note**: `test_advanced_translation_scenarios` is for complicated translation tests only, skip image verification there
@@ -440,7 +440,7 @@ Instead of creating new integration tests, extend existing ones to verify image 
 
 1. **test_file_monitor_workflow (EXTEND)**
    - **Current**: Tests NFO file monitoring and translation
-   - **Add**: Create poster.jpg and logo.png alongside NFO files
+   - **Add**: Create poster.jpg and clearlogo.png alongside NFO files
    - **Verify**: Images rewritten with TMDB images, markers embedded with correct language/country info (zh-CN)
    - **Expected**: Both NFO and images processed in real-time
 
@@ -452,7 +452,7 @@ Instead of creating new integration tests, extend existing ones to verify image 
 
 3. **test_rollback_service_mode (EXTEND)**
    - **Current**: Tests NFO rollback functionality
-   - **Add**: Include images in initial setup (poster.jpg, logo.png)
+   - **Add**: Include images in initial setup (poster.jpg, clearlogo.png)
    - **Verify**: Both NFO and images restored, extension changes handled (.jpg ↔ .png)
    - **Expected**: Complete rollback of both file types
 

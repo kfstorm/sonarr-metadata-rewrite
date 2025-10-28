@@ -1120,18 +1120,18 @@ class TestSelectBestImage:
         assert result.iso_3166_1 == "US"
 
     @patch("httpx.Client.get")
-    def test_select_best_image_logo_exact_match(
+    def test_select_best_image_clearlogo_exact_match(
         self,
         mock_get: Mock,
         translator: Translator,
         mock_images_response_logos: dict[str, Any],
     ) -> None:
-        """Test selecting logo with exact language-country match."""
+        """Test selecting clearlogo with exact language-country match."""
         mock_get.return_value.json.return_value = mock_images_response_logos
         mock_get.return_value.raise_for_status = Mock()
 
         tmdb_ids = TmdbIds(series_id=67890, season=None, episode=None)
-        result = translator.select_best_image(tmdb_ids, ["ja-JP"], kind="logo")
+        result = translator.select_best_image(tmdb_ids, ["ja-JP"], kind="clearlogo")
 
         assert result is not None
         assert result.file_path == "/logo_ja.jpg"
@@ -1372,7 +1372,7 @@ class TestSelectBestImage:
             ],
         }
         mock_get.return_value.json.return_value = response_zh_cn
-        result = translator.select_best_image(tmdb_ids, ["zh-CN"], kind="logo")
+        result = translator.select_best_image(tmdb_ids, ["zh-CN"], kind="clearlogo")
         assert result is not None
         assert result.iso_639_1 == "zh"
         assert result.iso_3166_1 == "CN"

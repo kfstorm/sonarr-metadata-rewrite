@@ -245,7 +245,7 @@ def test_process_file_callback_logs_image_failure(
     mock_logger: Mock, rewrite_service: RewriteService, tmp_path: Path
 ) -> None:
     """Test callback logs failure for image processing."""
-    logo_path = tmp_path / "logo.png"
+    logo_path = tmp_path / "clearlogo.png"
     logo_path.write_bytes(b"fake image")
 
     with patch.object(rewrite_service.image_processor, "process") as mock_image_process:
@@ -256,7 +256,7 @@ def test_process_file_callback_logs_image_failure(
             success=False,
             file_path=logo_path,
             message="No logo available in preferred languages",
-            kind="logo",
+            kind="clearlogo",
         )
 
         rewrite_service._process_file_callback(logo_path)

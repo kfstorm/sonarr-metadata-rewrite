@@ -116,26 +116,25 @@ class TestProcessSuccessScenarios:
         assert result.kind == "poster"
         assert result.selected_language == "en-US"
 
-    def test_process_logo_success(
+    def test_process_clearlogo_success(
         self, tmp_path: Path, image_processor: ImageProcessor
     ) -> None:
-        """Test successful logo processing."""
+        """Test successful clearlogo processing."""
         series_dir = tmp_path / "Series"
         series_dir.mkdir()
-        logo_path = series_dir / "logo.png"
+        clearlogo_path = series_dir / "clearlogo.png"
         nfo_path = series_dir / "tvshow.nfo"
 
-        create_test_image(logo_path)
+        create_test_image(clearlogo_path)
         create_test_nfo(nfo_path, 67890)
 
         candidate = ImageCandidate(
-            file_path="/test_logo.png", iso_639_1="ja", iso_3166_1="JP"
+            file_path="/test_clearlogo.png", iso_639_1="ja", iso_3166_1="JP"
         )
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real PNG data
         from io import BytesIO
-
         from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="red")
@@ -147,10 +146,10 @@ class TestProcessSuccessScenarios:
         mock_response.content = real_png_bytes
         image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
-        result = image_processor.process(logo_path)
+        result = image_processor.process(clearlogo_path)
 
         assert result.success is True, f"Processing failed: {result.message}"
-        assert result.kind == "logo"
+        assert result.kind == "clearlogo"
         assert result.selected_language == "ja-JP"
 
     def test_process_season_poster_success(
@@ -424,10 +423,10 @@ class TestParseImageInfo:
         assert kind == "poster"
         assert season == 10
 
-    def test_parse_image_info_logo(self, image_processor: ImageProcessor) -> None:
-        """Test parsing logo basename."""
-        kind, season = parse_image_info("logo.png")
-        assert kind == "logo"
+    def test_parse_image_info_clearlogo(self, image_processor: ImageProcessor) -> None:
+        """Test parsing clearlogo basename."""
+        kind, season = parse_image_info("clearlogo.png")
+        assert kind == "clearlogo"
         assert season is None
 
     def test_parse_image_info_specials(self, image_processor: ImageProcessor) -> None:

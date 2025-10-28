@@ -1,6 +1,6 @@
 """Utility functions for handling .nfo/.NFO files and image filenames.
 
-Centralizes image filename rules (poster/logo/season posters) and supported
+Centralizes image filename rules (poster/clearlogo/season posters) and supported
 extensions so other modules can reuse the same logic consistently.
 """
 
@@ -19,7 +19,7 @@ def parse_image_info(basename: str) -> tuple[str, int | None]:
         basename: Image file basename (e.g., "poster.jpg")
 
     Returns:
-        Tuple of (kind, season_number) where kind is "poster" or "logo",
+        Tuple of (kind, season_number) where kind is "poster" or "clearlogo",
         season_number is an integer season (0 for specials) or None for
         series-level. Returns ("", None) if not recognized or extension
         unsupported.
@@ -30,11 +30,11 @@ def parse_image_info(basename: str) -> tuple[str, int | None]:
 
     name = Path(basename).stem.lower()
 
-    # Series-level poster/logo
+    # Series-level poster/clearlogo
     if name == "poster":
         return ("poster", None)
-    if name == "logo":
-        return ("logo", None)
+    if name == "clearlogo":
+        return ("clearlogo", None)
 
     # Specials poster
     if name == "season-specials-poster":
@@ -61,14 +61,14 @@ def is_nfo_file(file_path: Path) -> bool:
 
 
 def is_rewritable_image(file_path: Path) -> bool:
-    """Check if an image file matches patterns for poster or logo.
+    """Check if an image file matches patterns for poster or clearlogo.
 
     Args:
         file_path: Path to the image file to check
 
     Returns:
         True if filename matches poster.* or seasonNN-poster.*
-        or logo.*, False otherwise
+        or clearlogo.*, False otherwise
     """
     kind, _ = parse_image_info(file_path.name)
     return bool(kind)
@@ -121,7 +121,7 @@ def find_rewritable_images(directory: Path, recursive: bool = True) -> list[Path
     else:
         all_files = directory.glob("*")
 
-    # Filter for rewritable images (poster/logo patterns)
+    # Filter for rewritable images (poster/clearlogo patterns)
     images = []
     for file_path in all_files:
         if file_path.is_file() and is_rewritable_image(file_path):

@@ -1,4 +1,4 @@
-"""Image processor for rewriting poster and logo images."""
+"""Image processor for rewriting poster and clearlogo images."""
 
 import logging
 import shutil
@@ -33,7 +33,7 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
 
 
 class ImageProcessor:
-    """Processor for poster and logo image files."""
+    """Processor for poster and clearlogo image files."""
 
     def __init__(self, settings: Settings, translator: Translator):
         self.settings = settings

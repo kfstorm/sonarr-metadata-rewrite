@@ -1,10 +1,10 @@
 # Image Rewrite Implementation Plan
 
-This document describes the design and implementation plan for adding localized image rewriting (posters and logos) to the sonarr-metadata-rewrite project.
+This document describes the design and implementation plan for adding localized image rewriting (posters and clearlogos) to the sonarr-metadata-rewrite project.
 
 Goals
 
-- Add support for writing localized series and season poster image files, and series logo image files, alongside existing .nfo rewrites.
+- Add support for writing localized series and season poster image files, and series clearlogo image files, alongside existing .nfo rewrites.
 
 - Be transparent and avoid sidecar JSON files in media folders.
 
@@ -24,7 +24,7 @@ Goals
 
 - [x] Exact language+country matching only, in the order of `Settings.preferred_languages`.
 
-- [x] Image file naming: series poster `poster.<ext>`, season poster `season{season:02d}-poster.<ext>`, series logo `logo.<ext>`; extensions chosen from TMDB candidate and limited to `.jpg`, `.jpeg`, or `.png`.
+- [x] Image file naming: series poster `poster.<ext>`, season poster `season{season:02d}-poster.<ext>`, series clearlogo `clearlogo.<ext>`; extensions chosen from TMDB candidate and limited to `.jpg`, `.jpeg`, or `.png`.
 
 - [x] No sidecar JSON files in media folders.
 
@@ -40,7 +40,7 @@ Components
 
 - Translator (`src/sonarr_metadata_rewrite/translator.py`)
 
-  - New method: `select_best_image(tmdb_ids: TmdbIds, preferred_languages: list[str], kind: Literal["poster", "logo"]) -> ImageCandidate | None`
+  - New method: `select_best_image(tmdb_ids: TmdbIds, preferred_languages: list[str], kind: Literal["poster", "clearlogo"]) -> ImageCandidate | None`
 
   - Responsibilities:
 
@@ -75,7 +75,7 @@ Components
   - Class `ImageProcessor` with method `process(image_path: Path) -> ImageProcessResult`
 
   - Resolve TMDB context for the given `image_path`:
-    - Determine if it's a series poster/logo or a season poster based on basename pattern (see scanning rules).
+    - Determine if it's a series poster/clearlogo or a season poster based on basename pattern (see scanning rules).
     - Locate the associated NFO (e.g., `tvshow.nfo` for series-level, `season.nfo` in season folders) and extract TMDB IDs using existing metadata logic; if missing, return a failure result.
   - If the file exists, read embedded marker. If `marker.file_path == selected_candidate.file_path` -> return a no-op success result. Only download and rewrite when they do not match.
 
@@ -103,7 +103,7 @@ Integration points
   - Focused solely on `.nfo` rewrites. No direct responsibility for images.
 
 - `image_processor.py`
-  - Processes poster/logo image files as directed by `RewriteService`.
+  - Processes poster/clearlogo image files as directed by `RewriteService`.
 
 Rewrite decision
 
@@ -113,19 +113,19 @@ Rewrite decision
 Scanning rules
 
 - Monitor and scan all image files with extensions `.jpg`, `.jpeg`, and `.png`.
-- Filter to only process recognized poster/logo basenames (case-insensitive):
+Filter to only process recognized poster/clearlogo basenames (case-insensitive):
   - Series poster: `poster.<ext>`
   - Season poster: `seasonXX-poster.<ext>` (zero-padded season number)
-  - Series logo: `logo.<ext>`
-- Derive processing scope from basename:
-  - `poster.*` and `logo.*` are series-level; `seasonXX-poster.*` is season-level with parsed season number.
+  - Series clearlogo: `clearlogo.<ext>`
+Derive processing scope from basename:
+  - `poster.*` and `clearlogo.*` are series-level; `seasonXX-poster.*` is season-level with parsed season number.
 - When rewriting, compute the destination path using the normalized basename and the TMDB candidate's extension; if an old variant exists with a different extension, remove it after successful replace.
 
 Selection rules (detailed)
 
 - Do not send `include_image_language`. Always call the appropriate TMDB images endpoint and get all candidates.
   - For posters, select from the `posters` array (season-level or series-level as applicable).
-  - For logos, select from the `logos` array (series-level only).
+  - For clearlogos, select from the `logos` array (series-level only).
 - Matching policy (strict lang-country only):
   - Require all `preferred_languages` tokens to be in `lang-country` format.
   - Filter out candidates with null `iso_639_1` or null `iso_3166_1`.
@@ -135,13 +135,13 @@ Selection rules (detailed)
 Testing plan
 
 - Unit tests
-  - `tests/unit/test_translator.py`: test `select_best_image` with mocked TMDB responses for series and season endpoints (posters) and series-level logos, ensure selection honors order and exact-match rules.
+  - `tests/unit/test_translator.py`: test `select_best_image` with mocked TMDB responses for series and season endpoints (posters) and series-level clearlogos, ensure selection honors order and exact-match rules.
   - `tests/unit/test_image_utils.py`: test embedding and reading marker for JPEG and PNG bytes.
   - `tests/unit/test_image_processor.py`: mock HTTP responses for download-to-memory and assert atomic replace behavior.
 
 - Integration tests (no HTTP mocking)
   - Run end-to-end rewrite flow with temporary directories and real TMDB HTTP requests (require `TMDB_API_KEY` in environment). Skip tests when `TMDB_API_KEY` is not set.
-  - Verify `poster.jpg`/`seasonXX-poster.jpg` and `logo.jpg` (or `.jpeg`/`.png`) are written and contain the embedded marker with the expected `file_path` and language.
+  - Verify `poster.jpg`/`seasonXX-poster.jpg` and `clearlogo.jpg` (or `.jpeg`/`.png`) are written and contain the embedded marker with the expected `file_path` and language.
 
 Quality gates
 
@@ -170,7 +170,7 @@ Open questions / assumptions
 Rollback strategy
 
 - The rewrite operation is reversible by Sonarr or users; our operations are atomic and create no sidecars.
-- For images (including logo), before overwriting, create a backup using the same backup/restore mechanism as `.nfo` files. On rollback, restore the previous image from backup, handling extension differences (e.g., restoring `logo.png` if `logo.jpg` was replaced). Remove backup after successful restore or per retention policy.
+- For images (including clearlogo), before overwriting, create a backup using the same backup/restore mechanism as `.nfo` files. On rollback, restore the previous image from backup, handling extension differences (e.g., restoring `clearlogo.png` if `clearlogo.jpg` was replaced). Remove backup after successful restore or per retention policy.
 - Existing `rollback_service` should be extended to support image files alongside `.nfo` files.
 
 Security and privacy
@@ -195,7 +195,7 @@ Result types
     - tmdb_ids: TmdbIds | None
     - translated_content: TranslatedContent | None
   - `ImageProcessResult(ProcessResult)`:
-    - kind: Literal["poster","logo"]
+    - kind: Literal["poster","clearlogo"]
     - selected_language: str
     - selected_file_path: str
 
@@ -238,7 +238,7 @@ This section outlines the recommended step-by-step implementation sequence for t
 
 - [ ] Update scanning and filtering logic
   - [ ] Ensure all .jpg/.jpeg/.png files are scanned.
-  - [ ] Filter to poster/logo patterns and normalize destination filenames.
+  - [ ] Filter to poster/clearlogo patterns and normalize destination filenames.
 
 - [ ] Add and update tests
   - [ ] Update unit tests for selection, embedding, and processor logic.

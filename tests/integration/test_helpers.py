@@ -222,7 +222,7 @@ class SeriesWithNfos:
         # Create placeholder images if requested
         image_files = []
         if self.create_images:
-            # Create series-level images (poster, logo)
+            # Create series-level images (poster, clearlogo)
             image_files.extend(create_placeholder_images(series_path, season=None))
 
             # Create season-specific images for each unique season
@@ -415,7 +415,7 @@ def create_placeholder_images(
         poster_path = target_dir / f"season{season:02d}-poster.jpg"
     else:
         target_dir = series_path
-        # Create series poster and logo
+        # Create series poster and clearlogo
         poster_path = target_dir / "poster.jpg"
 
     # Create poster (100x150 red image)
@@ -425,9 +425,9 @@ def create_placeholder_images(
     poster_path.write_bytes(poster_buffer.getvalue())
     created_images.append(poster_path)
 
-    # Create logo only for series-level (100x50 blue image)
+    # Create clearlogo only for series-level (100x50 blue image)
     if season is None:
-        logo_path = target_dir / "logo.png"
+        logo_path = target_dir / "clearlogo.png"
         logo_img = Image.new("RGBA", (100, 50), color="blue")
         logo_buffer = BytesIO()
         logo_img.save(logo_buffer, format="PNG")

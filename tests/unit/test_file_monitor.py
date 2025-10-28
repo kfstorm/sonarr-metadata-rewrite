@@ -86,14 +86,14 @@ def test_media_file_handler_handles_images() -> None:
     handler.on_created(mock_event_season)
     callback.assert_called_with(Path("/test/path/season01-poster.png"))
 
-    # Test logo.jpeg
+    # Test clearlogo.jpeg
     callback.reset_mock()
-    mock_event_logo = Mock()
-    mock_event_logo.is_directory = False
-    mock_event_logo.src_path = "/test/path/logo.jpeg"
+    mock_event_clearlogo = Mock()
+    mock_event_clearlogo.is_directory = False
+    mock_event_clearlogo.src_path = "/test/path/clearlogo.jpeg"
 
-    handler.on_created(mock_event_logo)
-    callback.assert_called_with(Path("/test/path/logo.jpeg"))
+    handler.on_created(mock_event_clearlogo)
+    callback.assert_called_with(Path("/test/path/clearlogo.jpeg"))
 
 
 def test_media_file_handler_ignores_non_media() -> None:
@@ -109,7 +109,7 @@ def test_media_file_handler_ignores_non_media() -> None:
     handler.on_created(mock_event_txt)
     callback.assert_not_called()
 
-    # Ignore banner.jpg (not poster/logo pattern)
+    # Ignore banner.jpg (not poster/clearlogo pattern)
     mock_event_banner = Mock()
     mock_event_banner.is_directory = False
     mock_event_banner.src_path = "/test/path/banner.jpg"
@@ -154,17 +154,17 @@ def test_media_file_handler_detects_poster_creation() -> None:
     callback.assert_called_once_with(Path("/test/Series/Season 1/poster.jpg"))
 
 
-def test_media_file_handler_detects_logo_modification() -> None:
-    """Test handler detects logo.png modification events."""
+def test_media_file_handler_detects_clearlogo_modification() -> None:
+    """Test handler detects clearlogo.png modification events."""
     callback = Mock()
     handler = MediaFileHandler(callback)
 
     mock_event = Mock()
     mock_event.is_directory = False
-    mock_event.src_path = "/test/Series/logo.png"
+    mock_event.src_path = "/test/Series/clearlogo.png"
 
     handler.on_modified(mock_event)
-    callback.assert_called_once_with(Path("/test/Series/logo.png"))
+    callback.assert_called_once_with(Path("/test/Series/clearlogo.png"))
 
 
 def test_media_file_handler_ignores_banner() -> None:

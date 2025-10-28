@@ -92,6 +92,6 @@ class ImageCandidate:
 class ImageProcessResult(ProcessResult):
     """Result of processing an image file."""
 
-    kind: str = ""  # "poster" or "logo"
+    kind: str = ""  # "poster" or "clearlogo"
     selected_language: str = ""
     selected_file_path: str = ""

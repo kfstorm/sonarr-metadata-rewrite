@@ -173,7 +173,7 @@ def test_scanner_finds_both_nfo_and_images(
         test_files = [
             test_dir / "tvshow.nfo",
             test_dir / "poster.jpg",
-            test_dir / "logo.png",
+            test_dir / "clearlogo.png",
             test_dir / "banner.jpg",  # Should be ignored
         ]
 
@@ -185,12 +185,12 @@ def test_scanner_finds_both_nfo_and_images(
         time.sleep(0.1)
         file_scanner.stop()
 
-        # Should process tvshow.nfo, poster.jpg, logo.png (not banner.jpg)
+        # Should process tvshow.nfo, poster.jpg, clearlogo.png (not banner.jpg)
         assert callback_tracker.call_count == 3
         called_paths = {call[0][0] for call in callback_tracker.call_args_list}
         assert test_dir / "tvshow.nfo" in called_paths
         assert test_dir / "poster.jpg" in called_paths
-        assert test_dir / "logo.png" in called_paths
+        assert test_dir / "clearlogo.png" in called_paths
         assert test_dir / "banner.jpg" not in called_paths
     finally:
         if test_dir.exists():
@@ -210,7 +210,7 @@ def test_scanner_processes_images_after_nfo(
         test_files = [
             test_dir / "poster.jpg",
             test_dir / "tvshow.nfo",
-            test_dir / "logo.png",
+            test_dir / "clearlogo.png",
         ]
 
         for test_file in test_files:
@@ -227,10 +227,10 @@ def test_scanner_processes_images_after_nfo(
         # NFO should be processed before images
         nfo_index = called_paths.index(test_dir / "tvshow.nfo")
         poster_index = called_paths.index(test_dir / "poster.jpg")
-        logo_index = called_paths.index(test_dir / "logo.png")
+        clearlogo_index = called_paths.index(test_dir / "clearlogo.png")
 
         assert nfo_index < poster_index
-        assert nfo_index < logo_index
+        assert nfo_index < clearlogo_index
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
@@ -248,7 +248,7 @@ def test_scanner_image_only_directory(
     try:
         test_files = [
             test_dir / "poster.jpg",
-            test_dir / "logo.png",
+            test_dir / "clearlogo.png",
         ]
 
         for test_file in test_files:
@@ -263,7 +263,7 @@ def test_scanner_image_only_directory(
         assert callback_tracker.call_count == 2
         called_paths = {call[0][0] for call in callback_tracker.call_args_list}
         assert test_dir / "poster.jpg" in called_paths
-        assert test_dir / "logo.png" in called_paths
+        assert test_dir / "clearlogo.png" in called_paths
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)

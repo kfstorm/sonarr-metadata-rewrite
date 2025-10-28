@@ -284,7 +284,7 @@ class Translator:
             tmdb_ids: TMDB identifiers (series_id and optional season)
             preferred_languages: List of language codes in preference order
                 (e.g., ["en-US", "ja-JP"])
-            kind: Image kind - "poster" or "logo"
+            kind: Image kind - "poster" or "clearlogo"
 
         Returns:
             ImageCandidate with file_path and language info, or None if no match
@@ -312,7 +312,7 @@ class Translator:
         # Select from appropriate array
         if kind == "poster":
             candidates = api_data.get("posters", [])
-        elif kind == "logo":
+        elif kind == "clearlogo":
             candidates = api_data.get("logos", [])
         else:
             return None

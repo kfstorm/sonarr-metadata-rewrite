@@ -299,14 +299,14 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
     # Create backup with .png extension
     backup_show_dir = backup_dir / "Show1"
     backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "logo.png"
+    backup_file = backup_show_dir / "clearlogo.png"
     backup_file.write_bytes(b"Original PNG logo")
 
     # Create current directory with multiple extension variants
     original_show_dir = original_dir / "Show1"
     original_show_dir.mkdir(exist_ok=True)
-    jpg_file = original_show_dir / "logo.jpg"
-    jpeg_file = original_show_dir / "logo.jpeg"
+    jpg_file = original_show_dir / "clearlogo.jpg"
+    jpeg_file = original_show_dir / "clearlogo.jpeg"
     jpg_file.write_bytes(b"JPEG logo 1")
     jpeg_file.write_bytes(b"JPEG logo 2")
 
@@ -324,7 +324,7 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
     assert not jpg_file.exists()
     assert not jpeg_file.exists()
     # Original .png should be restored
-    restored_file = original_show_dir / "logo.png"
+    restored_file = original_show_dir / "clearlogo.png"
     assert restored_file.exists()
     assert restored_file.read_bytes() == b"Original PNG logo"
 
@@ -389,7 +389,7 @@ def test_restore_mixed_backup_directory(
     show1_backup.mkdir(exist_ok=True)
     (show1_backup / "tvshow.nfo").write_text("NFO 1")
     (show1_backup / "poster.jpg").write_bytes(b"Poster 1")
-    (show1_backup / "logo.png").write_bytes(b"Logo 1")
+    (show1_backup / "clearlogo.png").write_bytes(b"Logo 1")
 
     show2_backup = backup_dir / "Show2"
     show2_backup.mkdir(exist_ok=True)
@@ -415,7 +415,7 @@ def test_restore_mixed_backup_directory(
     # All files should be restored
     assert (show1_orig / "tvshow.nfo").exists()
     assert (show1_orig / "poster.jpg").exists()
-    assert (show1_orig / "logo.png").exists()
+    assert (show1_orig / "clearlogo.png").exists()
     assert (show2_orig / "tvshow.nfo").exists()
 
     # Check log contains count
