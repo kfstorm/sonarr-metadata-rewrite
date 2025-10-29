@@ -1,12 +1,12 @@
 """Rollback service for restoring original files from backups."""
 
 import logging
-import shutil
 import time
 from pathlib import Path
 
+from sonarr_metadata_rewrite.backup_utils import restore_from_backup
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
+from sonarr_metadata_rewrite.file_utils import find_target_files
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,12 @@ class RollbackService:
             f"{self.settings.original_files_backup_dir}"
         )
 
-        # Find all .nfo and .NFO files in backup directory (case-insensitive)
-        backup_files = find_nfo_files(self.settings.original_files_backup_dir)
+        # Find all .nfo and image files in backup directory
+        backup_files = find_target_files(self.settings.original_files_backup_dir)
 
         if not backup_files:
             logger.info(
-                "No .nfo/.NFO backup files found - "
-                "rollback completed with no files to restore"
+                "No backup files found - rollback completed with no files to restore"
             )
             return
 
@@ -75,6 +74,9 @@ class RollbackService:
     def _restore_single_file(self, backup_file: Path) -> bool:
         """Restore a single file from backup to its original location.
 
+        For image files, this handles cases where the extension may have changed
+        (e.g., backup is poster.png but current file is poster.jpg).
+
         Args:
             backup_file: Path to the backup file
 
@@ -97,10 +99,22 @@ class RollbackService:
                 )
                 return False
 
-            # Copy backup file to original location
-            shutil.copy2(backup_file, original_file)
-            logger.info(f"✅ Restored: {relative_path}")
-            return True
+            # Use shared restore function which handles:
+            # - Stem-matching for different extensions
+            # - Deleting files with same stem but different extensions
+            # - Copying backup to original location
+            success = restore_from_backup(
+                original_file,
+                self.settings.original_files_backup_dir,
+                self.settings.rewrite_root_dir,
+            )
+
+            if success:
+                logger.info(f"✅ Restored: {relative_path}")
+            else:
+                logger.warning(f"⚠️ No backup found for: {relative_path}")
+
+            return success
 
         except Exception:
             logger.exception(f"❌ Failed to restore {backup_file.name}")

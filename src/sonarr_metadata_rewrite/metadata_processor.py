@@ -1,23 +1,20 @@
 """Complete metadata file processing unit."""
 
 import logging
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import TYPE_CHECKING
+from xml.etree.ElementTree import ElementTree  # noqa: F401
 
-if TYPE_CHECKING:
-    from xml.etree.ElementTree import ElementTree  # noqa: F401
-
+from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.file_utils import extract_metadata_info
 from sonarr_metadata_rewrite.models import (
     MetadataInfo,
-    ProcessResult,
+    MetadataProcessResult,
     TmdbIds,
     TranslatedContent,
     TranslatedString,
 )
-from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
 logger = logging.getLogger(__name__)
@@ -30,50 +27,25 @@ class MetadataProcessor:
         self.settings = settings
         self.translator = translator
 
-    def _parse_nfo_with_retry(self, nfo_path: Path) -> "ElementTree[ET.Element]":
-        """Parse NFO file with retry logic for incomplete/corrupt files.
-
-        Args:
-            nfo_path: Path to .nfo file to parse
-
-        Returns:
-            Parsed XML tree
-
-        Raises:
-            ET.ParseError: If file remains corrupt after retries
-            OSError: If file cannot be accessed after retries
-        """
-
-        @retry(
-            timeout=10.0,
-            interval=0.5,
-            log_interval=3.0,
-            exceptions=(ET.ParseError, OSError),
-        )
-        def parse_file() -> "ElementTree[ET.Element]":
-            return ET.parse(nfo_path)
-
-        return parse_file()
-
-    def process_file(self, nfo_path: Path) -> ProcessResult:
+    def process_file(self, nfo_path: Path) -> MetadataProcessResult:
         """Process a single .nfo file with complete translation workflow.
 
         Args:
             nfo_path: Path to .nfo file to process
 
         Returns:
-            ProcessResult with success status and details
+            MetadataProcessResult with success status and details
         """
         tmdb_ids = None
         metadata_info = None
         try:
             # Extract all metadata in single parse (including content for comparison)
-            metadata_info = self._extract_metadata_info(nfo_path)
+            metadata_info = extract_metadata_info(nfo_path)
 
             # Build TMDB IDs from parsed metadata using hierarchical resolution
             tmdb_ids = self._build_tmdb_ids_from_metadata(metadata_info, nfo_path)
             if not tmdb_ids:
-                return ProcessResult(
+                return MetadataProcessResult(
                     success=False,
                     file_path=nfo_path,
                     message="No TMDB ID found in .nfo file",
@@ -114,7 +86,7 @@ class MetadataProcessor:
                             if all_translations
                             else "none"
                         )
-                        return ProcessResult(
+                        return MetadataProcessResult(
                             success=False,
                             file_path=nfo_path,
                             message=(
@@ -136,7 +108,7 @@ class MetadataProcessor:
                         if all_translations
                         else "none"
                     )
-                    return ProcessResult(
+                    return MetadataProcessResult(
                         success=False,
                         file_path=nfo_path,
                         message=(
@@ -160,7 +132,7 @@ class MetadataProcessor:
                 and metadata_info.description
                 == selected_translation.description.content
             ):
-                return ProcessResult(
+                return MetadataProcessResult(
                     success=True,
                     file_path=nfo_path,
                     message="Content already matches preferred translation",
@@ -170,14 +142,18 @@ class MetadataProcessor:
                 )
 
             # Create backup if enabled
-            backup_created = self._backup_original(nfo_path)
+            backup_created = create_backup(
+                nfo_path,
+                self.settings.original_files_backup_dir,
+                self.settings.rewrite_root_dir,
+            )
 
             # Write translated metadata using cached XML tree
             self._write_translated_metadata_with_tree(
                 metadata_info.xml_tree, nfo_path, selected_translation
             )
 
-            return ProcessResult(
+            return MetadataProcessResult(
                 success=True,
                 file_path=nfo_path,
                 message=self._build_success_message(selected_translation),
@@ -188,7 +164,7 @@ class MetadataProcessor:
             )
 
         except Exception as e:
-            return ProcessResult(
+            return MetadataProcessResult(
                 success=False,
                 file_path=nfo_path,
                 message=f"Processing error: {e}",
@@ -197,60 +173,6 @@ class MetadataProcessor:
                 file_modified=False,
                 translated_content=None,
             )
-
-    def _extract_metadata_info(self, nfo_path: Path) -> MetadataInfo:
-        """Extract all metadata information from NFO file in single parse.
-
-        Args:
-            nfo_path: Path to .nfo file
-
-        Returns:
-            MetadataInfo object with all extracted data
-        """
-        tree = self._parse_nfo_with_retry(nfo_path)
-        root = tree.getroot()
-
-        # Determine file type from root tag
-        file_type = root.tag if root.tag in ("tvshow", "episodedetails") else "unknown"
-
-        info = MetadataInfo(file_type=file_type, xml_tree=tree)  # type: ignore[arg-type]
-
-        # Extract all uniqueid elements
-        for uniqueid in root.findall(".//uniqueid"):
-            id_type = uniqueid.get("type", "").lower()
-            id_value = uniqueid.text
-
-            if not id_value or not id_value.strip():
-                continue
-
-            if id_type == "tmdb":
-                info.tmdb_id = int(id_value.strip())
-            elif id_type == "tvdb":
-                info.tvdb_id = int(id_value.strip())
-            elif id_type == "imdb":
-                info.imdb_id = id_value.strip()
-
-        # Extract title
-        title_element = root.find("title")
-        if title_element is not None and title_element.text:
-            info.title = title_element.text.strip()
-
-        # Extract plot/description
-        plot_element = root.find("plot")
-        if plot_element is not None and plot_element.text:
-            info.description = plot_element.text.strip()
-
-        # For episode files, extract season/episode numbers
-        if file_type == "episodedetails":
-            season_element = root.find("season")
-            episode_element = root.find("episode")
-
-            if season_element is not None and season_element.text:
-                info.season = int(season_element.text.strip())
-            if episode_element is not None and episode_element.text:
-                info.episode = int(episode_element.text.strip())
-
-        return info
 
     def _resolve_tmdb_id_with_metadata(
         self, metadata_info: MetadataInfo, nfo_path: Path
@@ -295,7 +217,7 @@ class MetadataProcessor:
             if tvshow_path.exists() and tvshow_path.is_file():
                 try:
                     # Parse and extract metadata info
-                    metadata_info = self._extract_metadata_info(tvshow_path)
+                    metadata_info = extract_metadata_info(tvshow_path)
                     if metadata_info.file_type == "tvshow":
                         return metadata_info
                 except (ET.ParseError, ValueError, AttributeError):
@@ -504,33 +426,6 @@ class MetadataProcessor:
 
         return None
 
-    def _backup_original(self, nfo_path: Path) -> bool:
-        """Create backup of original .nfo file.
-
-        Args:
-            nfo_path: Path to original .nfo file
-
-        Returns:
-            True if backup was created successfully, False otherwise
-        """
-        if not self.settings.original_files_backup_dir:
-            return False
-
-        # Create backup directory structure mirroring original
-        relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
-        backup_path = self.settings.original_files_backup_dir / relative_path
-
-        # Check if backup already exists - don't overwrite it
-        if backup_path.exists():
-            return True  # Backup already exists, so we consider this successful
-
-        # Ensure backup directory exists
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Copy original file to backup location
-        shutil.copy2(nfo_path, backup_path)
-        return True
-
     def _write_translated_metadata_with_tree(
         self,
         xml_tree: ET.ElementTree | None,
@@ -642,7 +537,7 @@ class MetadataProcessor:
             return f"Successfully translated ({', '.join(parts)})"
 
     def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
-        """Get original metadata from backup file if available.
+        """Get original metadata from backup NFO file if available.
 
         Args:
             nfo_path: Path to current .nfo file
@@ -650,19 +545,18 @@ class MetadataProcessor:
         Returns:
             MetadataInfo object if backup exists, None otherwise
         """
-        if not self.settings.original_files_backup_dir:
+        backup_path = get_backup_path(
+            nfo_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dir,
+        )
+        if not backup_path:
             return None
 
-        # Calculate backup path using same logic as _backup_original()
-        relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
-        backup_path = self.settings.original_files_backup_dir / relative_path
-
-        if backup_path.exists():
-            try:
-                return self._extract_metadata_info(backup_path)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to read backup file {backup_path}: {e}", exc_info=True
-                )
-                return None
-        return None
+        try:
+            return extract_metadata_info(backup_path)
+        except Exception as e:
+            logger.warning(
+                f"Failed to read backup file {backup_path}: {e}", exc_info=True
+            )
+            return None

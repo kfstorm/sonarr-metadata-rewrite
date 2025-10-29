@@ -9,6 +9,10 @@ _.parse_preferred_languages
 _.validate_service_mode
 _.cls
 
+# Pydantic settings customization is used by the framework
+_.settings_customise_sources
+_.env_settings
+
 # Signal handler parameters are required by the interface
 _.signum
 _.frame
@@ -20,10 +24,11 @@ _.file_modified
 _.file_path
 _.series_id
 _.translated_content
+_.selected_language
+_.selected_file_path
 
 # Event handler methods are called by watchdog
-_.on_created
-_.on_modified
+_.on_any_event
 
 
 # Test mock attributes that vulture may not detect
@@ -34,6 +39,4 @@ _.side_effect
 patch_time_sleep
 patch_retry_timeout
 patch_fetch_with_retry
-
-# TYPE_CHECKING imports for type annotations
-ElementTree
+patch_image_download_retry

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
+from sonarr_metadata_rewrite.file_utils import find_target_files
 
 logger = logging.getLogger(__name__)
 
@@ -71,22 +71,25 @@ class FileScanner:
             logger.warning(f"Root directory does not exist: {root_dir}")
             return
 
-        logger.debug(f"Starting scan of directory: {root_dir}")
+        logger.info(f"Starting scan of directory: {root_dir}")
 
         try:
-            # Scan for .nfo/.NFO files recursively (case-insensitive)
-            nfo_files = find_nfo_files(root_dir)
-            for nfo_path in nfo_files:
+            # Scan for target files (.nfo and rewritable images) in one pass
+            target_files = find_target_files(root_dir)
+
+            for file_path in target_files:
                 if self.stop_event is not None and self.stop_event.is_set():
                     break
 
                 try:
                     if self.callback:
-                        logger.debug(f"Processing file: {nfo_path}")
-                        self.callback(nfo_path)
+                        logger.debug(f"Processing file: {file_path}")
+                        self.callback(file_path)
                 except Exception:
-                    logger.exception(f"Unexpected error processing file {nfo_path}")
+                    logger.exception(f"Unexpected error processing file {file_path}")
                     continue
+
+            logger.info(f"Completed scan of directory: {root_dir}")
 
         except (OSError, PermissionError):
             logger.exception(f"File system error during scan of {root_dir}")

@@ -51,6 +51,7 @@ depends_on = [
     "sonarr_metadata_rewrite.file_monitor",
     "sonarr_metadata_rewrite.file_scanner",
     "sonarr_metadata_rewrite.metadata_processor",
+    "sonarr_metadata_rewrite.models",
     "sonarr_metadata_rewrite.translator",
 ]
 

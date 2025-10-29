@@ -10,7 +10,9 @@ from fast_langdetect import (  # type: ignore[import-untyped]
     detect_multilingual,
 )
 
-from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
+from sonarr_metadata_rewrite.file_utils import find_target_files, is_nfo_file
+from sonarr_metadata_rewrite.image_utils import read_embedded_marker
+from sonarr_metadata_rewrite.models import ImageCandidate
 from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
@@ -90,7 +92,9 @@ def wait_for_nfo_files(
 
     @retry(timeout=timeout, interval=0.5, log_interval=1.0)
     def check_nfo_files() -> list[Path]:
-        nfo_files = find_nfo_files(series_path)
+        nfo_files = [
+            p for p in find_target_files(series_path, recursive=True) if is_nfo_file(p)
+        ]
         assert len(nfo_files) == expected_count, (
             f"Expected exactly {expected_count} .nfo files, but found "
             f"{len(nfo_files)} in {series_path}. Files found: {nfo_files}"
@@ -158,6 +162,7 @@ class SeriesWithNfos:
         configured_sonarr_container: SonarrClient,
         temp_media_root: Path,
         tvdb_id: int,
+        expected_image_filenames: list[str],
         episodes: list[tuple[str, int, int]] | None = None,
     ):
         """Initialize the context manager.
@@ -166,19 +171,21 @@ class SeriesWithNfos:
             configured_sonarr_container: Configured Sonarr client
             temp_media_root: Temporary media root directory
             tvdb_id: TVDB ID of the series to set up
+            expected_image_filenames: List of expected image file names
             episodes: List of (title, season, episode) tuples, defaults to 2 episodes
         """
         self.sonarr = configured_sonarr_container
         self.media_root = temp_media_root
         self.tvdb_id = tvdb_id
+        self.expected_image_filenames = expected_image_filenames
         self.episodes = episodes or [("Episode 1", 1, 1), ("Episode 2", 1, 2)]
         self.series: SeriesManager | None = None
 
-    def __enter__(self) -> list[Path]:
+    def __enter__(self) -> tuple[list[Path], list[Path]]:
         """Set up series and return series info.
 
         Returns:
-            List of NFO file paths
+            Tuple of (nfo_files, image_files)
         """
         self.series = SeriesManager(self.sonarr, self.tvdb_id, "/tv", self.media_root)
         self.series.__enter__()
@@ -213,9 +220,10 @@ class SeriesWithNfos:
 
         # Wait for .nfo files to be generated
         expected_nfo_count = len(episode_files) + 1  # episodes + series
+        series_path = self.media_root / self.series.slug
         nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
 
-        return nfo_files
+        return nfo_files, [series_path / f for f in self.expected_image_filenames]
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Clean up series."""
@@ -370,3 +378,76 @@ def verify_translations(
         f"✅ All {len(nfo_files)} files verified to contain "
         f"{expected_language} translations"
     )
+
+
+def verify_images(
+    image_paths: list[Path],
+    expected_language: str | None,
+) -> None:
+    """Verify images have been processed.
+
+    Args:
+        image_paths: List of image file paths to verify
+        expected_language: Expected language/country code (e.g., "zh-CN"),
+                          or None to verify original images without markers
+
+    Raises:
+        AssertionError: If images don't match expected state
+    """
+
+    def get_marker_language(marker: ImageCandidate | None) -> str:
+        """Extract language code from marker (e.g., 'zh-CN')."""
+        if not marker:
+            return ""
+        iso_639_1 = marker.iso_639_1 or ""
+        iso_3166_1 = marker.iso_3166_1 or ""
+        language_parts = [p for p in [iso_639_1, iso_3166_1] if p]
+        return "-".join(language_parts) if language_parts else ""
+
+    if expected_language is None:
+        print(f"Verifying {len(image_paths)} images are original (no markers)")
+    else:
+        print(
+            f"Verifying {len(image_paths)} images with expected language: "
+            f"{expected_language}"
+        )
+
+    @retry(timeout=15.0, interval=0.5, log_interval=2.0)
+    def check_images_processed() -> None:
+        for image_path in image_paths:
+            # Check image exists
+            assert image_path.exists(), f"Image file not found: {image_path}"
+
+            marker = read_embedded_marker(image_path)
+
+            if expected_language is None:
+                # Verify no marker exists (original image)
+                assert marker is None, (
+                    f"Unexpected marker found in {image_path.name}. "
+                    f"Expected original image without marker."
+                )
+            else:
+                # Verify marker exists with expected language
+                assert marker is not None, (
+                    f"No embedded marker found in {image_path.name}. "
+                    f"Expected marker with language info."
+                )
+
+                marker_lang = get_marker_language(marker)
+                assert marker_lang == expected_language, (
+                    f"Language mismatch in {image_path.name}. "
+                    f"Expected '{expected_language}', got '{marker_lang}'"
+                )
+
+    check_images_processed()
+
+    # Print success messages after all checks pass
+    for image_path in image_paths:
+        marker = read_embedded_marker(image_path)
+        if marker:
+            marker_lang = get_marker_language(marker)
+            print(f"✅ {image_path.name}: marker verified with language {marker_lang}")
+        else:
+            print(f"✅ {image_path.name}: verified original image (no marker)")
+
+    print(f"✅ All {len(image_paths)} images verified")

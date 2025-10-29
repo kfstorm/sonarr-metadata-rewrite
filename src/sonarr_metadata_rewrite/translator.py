@@ -8,7 +8,12 @@ import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent, TranslatedString
+from sonarr_metadata_rewrite.models import (
+    ImageCandidate,
+    TmdbIds,
+    TranslatedContent,
+    TranslatedString,
+)
 
 
 class Translator:
@@ -268,6 +273,79 @@ class Translator:
                 converted_data[lang_code] = content
 
         return converted_data
+
+    def select_best_image(
+        self,
+        tmdb_ids: TmdbIds,
+        preferred_languages: list[str],
+        kind: str,
+    ) -> ImageCandidate | None:
+        """Select the best image candidate based on language preferences.
+
+        Args:
+            tmdb_ids: TMDB identifiers (series_id and optional season)
+            preferred_languages: List of language codes in preference order
+                (e.g., ["en-US", "ja-JP"])
+            kind: Image kind - "poster" or "clearlogo"
+
+        Returns:
+            ImageCandidate with file_path and language info, or None if no match
+        """
+        # Determine endpoint based on kind and season
+        if kind == "poster" and tmdb_ids.season is not None:
+            endpoint = f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}/images"
+        else:
+            endpoint = f"/tv/{tmdb_ids.series_id}/images"
+
+        # Fetch images from TMDB
+        # NOTE: Do NOT pass include_image_language due to TMDB API bug;
+        # fetch all images and filter locally in Python.
+        # Cache by endpoint only since server response is independent of
+        # preference ordering; selection happens client-side.
+        cache_key = f"images:{endpoint}"
+
+        def fetch_images() -> dict[str, Any]:
+            return self._fetch_with_retry(endpoint)
+
+        api_data = self._get_with_cache(cache_key, fetch_images, default_on_404={})
+
+        # Select from appropriate array
+        if kind == "poster":
+            candidates = api_data.get("posters", [])
+        elif kind == "clearlogo":
+            candidates = api_data.get("logos", [])
+        else:
+            return None
+
+        # Match against preferred languages in order
+        for pref_lang in preferred_languages:
+            # Split lang-country format (e.g., "en-US" -> "en", "US")
+            if "-" not in pref_lang:
+                continue  # Skip if not in lang-country format
+
+            lang_part, country_part = pref_lang.split("-", 1)
+
+            # Find first candidate matching this language-country combination
+            for candidate in candidates:
+                iso_639_1 = candidate.get("iso_639_1")
+                iso_3166_1 = candidate.get("iso_3166_1")
+
+                # Skip candidates with null language or country
+                if iso_639_1 is None or iso_3166_1 is None:
+                    continue
+
+                # Check for exact match
+                if iso_639_1 == lang_part and iso_3166_1 == country_part:
+                    file_path = candidate.get("file_path", "")
+                    if file_path:
+                        return ImageCandidate(
+                            file_path=file_path,
+                            iso_639_1=iso_639_1,
+                            iso_3166_1=iso_3166_1,
+                        )
+
+        # No match found
+        return None
 
     def close(self) -> None:
         """Close the HTTP client."""
