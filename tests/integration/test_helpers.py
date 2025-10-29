@@ -10,9 +10,9 @@ from fast_langdetect import (  # type: ignore[import-untyped]
     detect_multilingual,
 )
 
+from sonarr_metadata_rewrite.file_utils import find_target_files, is_nfo_file
 from sonarr_metadata_rewrite.image_utils import read_embedded_marker
 from sonarr_metadata_rewrite.models import ImageCandidate
-from sonarr_metadata_rewrite.nfo_utils import find_target_files, is_nfo_file
 from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient

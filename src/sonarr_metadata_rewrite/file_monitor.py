@@ -14,7 +14,7 @@ from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import is_target_file
+from sonarr_metadata_rewrite.file_utils import is_target_file
 
 logger = logging.getLogger(__name__)
 

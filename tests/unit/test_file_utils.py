@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 
-from sonarr_metadata_rewrite.nfo_utils import (
+from sonarr_metadata_rewrite.file_utils import (
     find_target_files,
     is_nfo_file,
     is_rewritable_image,

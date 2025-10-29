@@ -8,10 +8,10 @@ from diskcache import Cache  # type: ignore[import-untyped]
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_monitor import FileMonitor
 from sonarr_metadata_rewrite.file_scanner import FileScanner
+from sonarr_metadata_rewrite.file_utils import is_nfo_file, is_rewritable_image
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
 from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 from sonarr_metadata_rewrite.models import ProcessResult
-from sonarr_metadata_rewrite.nfo_utils import is_nfo_file, is_rewritable_image
 from sonarr_metadata_rewrite.translator import Translator
 
 logger = logging.getLogger(__name__)

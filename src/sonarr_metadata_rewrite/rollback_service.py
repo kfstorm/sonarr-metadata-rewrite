@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sonarr_metadata_rewrite.backup_utils import restore_from_backup
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import find_target_files
+from sonarr_metadata_rewrite.file_utils import find_target_files
 
 logger = logging.getLogger(__name__)
 

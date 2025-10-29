@@ -11,16 +11,16 @@ from sonarr_metadata_rewrite.backup_utils import (
     restore_from_backup,
 )
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.file_utils import (
+    IMAGE_EXTENSIONS,
+    extract_tmdb_id,
+    parse_image_info,
+)
 from sonarr_metadata_rewrite.image_utils import (
     embed_marker_and_atomic_write,
     read_embedded_marker,
 )
 from sonarr_metadata_rewrite.models import ImageCandidate, ImageProcessResult, TmdbIds
-from sonarr_metadata_rewrite.nfo_utils import (
-    IMAGE_EXTENSIONS,
-    extract_tmdb_id,
-    parse_image_info,
-)
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 

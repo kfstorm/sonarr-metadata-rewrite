@@ -13,13 +13,13 @@ import pytest
 from PIL import Image
 
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.file_utils import parse_image_info
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
 from sonarr_metadata_rewrite.image_utils import (
     embed_marker_and_atomic_write,
     read_embedded_marker,
 )
 from sonarr_metadata_rewrite.models import ImageCandidate
-from sonarr_metadata_rewrite.nfo_utils import parse_image_info
 from sonarr_metadata_rewrite.translator import Translator
 
 
