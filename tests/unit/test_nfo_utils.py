@@ -6,6 +6,7 @@ from pathlib import Path
 from sonarr_metadata_rewrite.nfo_utils import (
     create_backup,
     find_target_files,
+    get_backup_path,
     is_nfo_file,
     is_rewritable_image,
 )
@@ -281,21 +282,26 @@ class TestFindRewritableImages:
             assert found_files == []
 
 
-class TestCreateBackup:
-    """Test create_backup function."""
+class TestBackupFunctions:
+    """Test create_backup and get_backup_path functions."""
 
     def test_backup_with_none_backup_dir(self) -> None:
-        """Test that backup returns False when backup_dir is None."""
+        """Test backup functions with None backup_dir."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             file_path = temp_path / "test.nfo"
             file_path.write_text("<tvshow></tvshow>")
 
+            # create_backup returns False
             result = create_backup(file_path, None, temp_path)
             assert result is False
 
+            # get_backup_path returns None
+            backup_path = get_backup_path(file_path, None, temp_path)
+            assert backup_path is None
+
     def test_backup_nonexistent_file(self) -> None:
-        """Test that backup returns False for nonexistent file."""
+        """Test that create_backup returns False for nonexistent file."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             backup_dir = temp_path / "backup"
@@ -304,8 +310,8 @@ class TestCreateBackup:
             result = create_backup(file_path, backup_dir, temp_path)
             assert result is False
 
-    def test_backup_creates_file(self) -> None:
-        """Test that backup creates a copy of the file."""
+    def test_backup_and_retrieval_workflow(self) -> None:
+        """Test complete workflow: create backup and retrieve it."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             backup_dir = temp_path / "backup"
@@ -313,15 +319,22 @@ class TestCreateBackup:
             content = "<tvshow></tvshow>"
             file_path.write_text(content)
 
-            result = create_backup(file_path, backup_dir, temp_path)
-            assert result is True
+            # Before backup, get_backup_path returns None
+            backup_path = get_backup_path(file_path, backup_dir, temp_path)
+            assert backup_path is None
 
-            backup_path = backup_dir / "test.nfo"
+            # Create backup
+            created = create_backup(file_path, backup_dir, temp_path)
+            assert created is True
+
+            # After backup, get_backup_path returns the backup path
+            backup_path = get_backup_path(file_path, backup_dir, temp_path)
+            assert backup_path is not None
             assert backup_path.exists()
             assert backup_path.read_text() == content
 
     def test_backup_preserves_directory_structure(self) -> None:
-        """Test that backup maintains directory structure."""
+        """Test backup maintains directory structure."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             backup_dir = temp_path / "backup"
@@ -331,12 +344,18 @@ class TestCreateBackup:
             content = "<tvshow></tvshow>"
             file_path.write_text(content)
 
+            # Create backup
             result = create_backup(file_path, backup_dir, temp_path)
             assert result is True
 
-            backup_path = backup_dir / "shows" / "series1" / "tvshow.nfo"
-            assert backup_path.exists()
-            assert backup_path.read_text() == content
+            # Verify structure is preserved
+            expected_backup = backup_dir / "shows" / "series1" / "tvshow.nfo"
+            assert expected_backup.exists()
+            assert expected_backup.read_text() == content
+
+            # get_backup_path should find it
+            backup_path = get_backup_path(file_path, backup_dir, temp_path)
+            assert backup_path == expected_backup
 
     def test_backup_does_not_overwrite_existing(self) -> None:
         """Test that backup doesn't overwrite existing backup."""
@@ -352,14 +371,21 @@ class TestCreateBackup:
             original_content = "<tvshow>original</tvshow>"
             backup_path.write_text(original_content)
 
+            # Try to backup new content
             result = create_backup(file_path, backup_dir, temp_path)
             assert result is True
 
             # Verify backup wasn't overwritten
             assert backup_path.read_text() == original_content
 
-    def test_backup_checks_stem_for_different_extensions(self) -> None:
-        """Test that backup doesn't create new file if same stem exists."""
+            # get_backup_path should return existing backup
+            retrieved_path = get_backup_path(file_path, backup_dir, temp_path)
+            assert retrieved_path == backup_path
+            assert retrieved_path is not None
+            assert retrieved_path.read_text() == original_content
+
+    def test_backup_stem_matching_for_different_extensions(self) -> None:
+        """Test both functions handle same stem with different extensions."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             backup_dir = temp_path / "backup"
@@ -373,6 +399,7 @@ class TestCreateBackup:
             file_path_jpg = temp_path / "poster.jpg"
             file_path_jpg.write_bytes(b"JPG new")
 
+            # create_backup should recognize existing stem and not create new
             result = create_backup(file_path_jpg, backup_dir, temp_path)
             assert result is True
 
@@ -383,3 +410,9 @@ class TestCreateBackup:
             # Verify new backup wasn't created
             backup_path_jpg = backup_dir / "poster.jpg"
             assert not backup_path_jpg.exists()
+
+            # get_backup_path should find the .png backup when looking for .jpg
+            retrieved_path = get_backup_path(file_path_jpg, backup_dir, temp_path)
+            assert retrieved_path == backup_path_png
+            assert retrieved_path is not None
+            assert retrieved_path.read_bytes() == b"PNG original"

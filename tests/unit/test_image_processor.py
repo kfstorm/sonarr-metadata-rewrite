@@ -14,7 +14,10 @@ from PIL import Image
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
-from sonarr_metadata_rewrite.image_utils import embed_marker_and_atomic_write
+from sonarr_metadata_rewrite.image_utils import (
+    embed_marker_and_atomic_write,
+    read_embedded_marker,
+)
 from sonarr_metadata_rewrite.models import ImageCandidate
 from sonarr_metadata_rewrite.nfo_utils import parse_image_info
 from sonarr_metadata_rewrite.translator import Translator
@@ -232,6 +235,162 @@ class TestProcessSuccessScenarios:
         assert result.success is False
         assert "No poster available" in result.message
 
+    def test_process_revert_to_backup_when_no_candidate(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test reverting to backup when no preferred language available."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        poster_path = series_dir / "poster.jpg"
+        nfo_path = series_dir / "tvshow.nfo"
+
+        # Create backup dir using same structure as settings
+        backup_root = image_processor.settings.original_files_backup_dir
+        assert backup_root is not None
+        backup_dir = backup_root / "Series"
+        backup_dir.mkdir(parents=True)
+        backup_path = backup_dir / "poster.jpg"
+
+        # Create original backup (no marker)
+        original_img = Image.new("RGB", (100, 100), color="white")
+        original_img.save(backup_path, format="JPEG")
+
+        # Create current file with ja-JP marker
+        current_img = Image.new("RGB", (100, 100), color="red")
+        current_output = BytesIO()
+        current_img.save(current_output, format="JPEG")
+
+        marker = {"file_path": "/ja.jpg", "language": "ja-JP"}
+        embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
+
+        create_test_nfo(nfo_path, 12345)
+
+        # No candidate available
+        with mock_translator_select(image_processor, return_value=None):
+            result = image_processor.process(poster_path)
+
+        # Should revert to backup
+        assert result.success is True
+        assert result.file_modified is True
+        assert "Reverted poster to original" in result.message
+
+        # Verify poster reverted to backup content
+        restored_marker = read_embedded_marker(poster_path)
+        assert restored_marker is None
+
+    def test_process_already_original_when_no_candidate(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test when current file is already original and no candidate available."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        poster_path = series_dir / "poster.jpg"
+        nfo_path = series_dir / "tvshow.nfo"
+
+        # Create backup dir using same structure as settings
+        backup_root = image_processor.settings.original_files_backup_dir
+        assert backup_root is not None
+        backup_dir = backup_root / "Series"
+        backup_dir.mkdir(parents=True)
+        backup_path = backup_dir / "poster.jpg"
+
+        # Create current file without marker (original)
+        create_test_image(poster_path)
+
+        # Create backup
+        create_test_image(backup_path)
+
+        create_test_nfo(nfo_path, 12345)
+
+        # No candidate available
+        with mock_translator_select(image_processor, return_value=None):
+            result = image_processor.process(poster_path)
+
+        # Should report already original
+        assert result.success is False
+        assert "already original" in result.message
+        assert result.file_modified is False
+
+    def test_process_no_backup_when_no_candidate(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test when no candidate and no backup available."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        poster_path = series_dir / "poster.jpg"
+        nfo_path = series_dir / "tvshow.nfo"
+
+        # Create current file with marker but no backup
+        current_img = Image.new("RGB", (100, 100), color="red")
+        current_output = BytesIO()
+        current_img.save(current_output, format="JPEG")
+
+        marker = {"file_path": "/ja.jpg", "language": "ja-JP"}
+        embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
+
+        create_test_nfo(nfo_path, 12345)
+
+        # No candidate available
+        with mock_translator_select(image_processor, return_value=None):
+            result = image_processor.process(poster_path)
+
+        # Should report no image available
+        assert result.success is False
+        assert "No poster available" in result.message
+        assert result.file_modified is False
+
+    def test_process_revert_with_stem_matching(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test reverting to backup with different extension (stem matching)."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        # Current file is poster.jpg with marker
+        poster_path = series_dir / "poster.jpg"
+        nfo_path = series_dir / "tvshow.nfo"
+
+        # Create backup dir using same structure as settings
+        backup_root = image_processor.settings.original_files_backup_dir
+        assert backup_root is not None
+        backup_dir = backup_root / "Series"
+        backup_dir.mkdir(parents=True)
+        # Backup is poster.png (different extension)
+        backup_path = backup_dir / "poster.png"
+
+        # Create original backup as PNG (no marker)
+        original_img = Image.new("RGB", (100, 100), color="white")
+        original_img.save(backup_path, format="PNG")
+
+        # Create current JPEG with marker
+        current_img = Image.new("RGB", (100, 100), color="red")
+        current_output = BytesIO()
+        current_img.save(current_output, format="JPEG")
+
+        marker = {"file_path": "/ja.jpg", "language": "ja-JP"}
+        embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
+
+        create_test_nfo(nfo_path, 12345)
+
+        # No candidate available
+        with mock_translator_select(image_processor, return_value=None):
+            result = image_processor.process(poster_path)
+
+        # Should revert to backup even with different extension
+        assert result.success is True
+        assert result.file_modified is True
+        assert "Reverted poster to original" in result.message
+
+        # Verify poster reverted (should still be JPEG since we copy over it)
+        assert poster_path.exists()
+        restored_marker = read_embedded_marker(poster_path)
+        # Backup was PNG without marker, copied to JPEG location
+        # The file will have PNG content but .jpg extension
+        assert restored_marker is None
+
     def test_process_tmdb_download_fails(
         self, tmp_path: Path, image_processor: ImageProcessor
     ) -> None:
@@ -361,36 +520,6 @@ class TestResolveTmdbIds:
         assert result is not None
         assert result.series_id == 99999
         assert result.season is None
-
-
-class TestCreateBackup:
-    """Tests for _create_backup method."""
-
-    def test_create_backup_creates_proper_structure(
-        self, tmp_path: Path, test_settings: Settings, translator: Translator
-    ) -> None:
-        """Test backup creates proper directory structure."""
-        # Set backup directory and rewrite root
-        backup_dir = tmp_path / "backups"
-        media_root = tmp_path / "media"
-        test_settings.original_files_backup_dir = backup_dir
-        test_settings.rewrite_root_dir = media_root
-
-        processor = ImageProcessor(test_settings, translator)
-
-        # Create source file
-        series_dir = media_root / "Series" / "Season 1"
-        series_dir.mkdir(parents=True)
-        poster_path = series_dir / "poster.jpg"
-        create_test_image(poster_path)
-
-        # Create backup
-        result = processor._create_backup(poster_path)
-
-        assert result is True
-        # Backup should preserve directory structure relative to media root
-        expected_backup = backup_dir / "Series" / "Season 1" / "poster.jpg"
-        assert expected_backup.exists()
 
 
 class TestDownloadAndWriteImage:

@@ -13,7 +13,7 @@ from sonarr_metadata_rewrite.models import (
     TranslatedContent,
     TranslatedString,
 )
-from sonarr_metadata_rewrite.nfo_utils import create_backup
+from sonarr_metadata_rewrite.nfo_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
@@ -167,7 +167,11 @@ class MetadataProcessor:
                 )
 
             # Create backup if enabled
-            backup_created = self._backup_original(nfo_path)
+            backup_created = create_backup(
+                nfo_path,
+                self.settings.original_files_backup_dir,
+                self.settings.rewrite_root_dir,
+            )
 
             # Write translated metadata using cached XML tree
             self._write_translated_metadata_with_tree(
@@ -501,21 +505,6 @@ class MetadataProcessor:
 
         return None
 
-    def _backup_original(self, nfo_path: Path) -> bool:
-        """Create backup of original .nfo file.
-
-        Args:
-            nfo_path: Path to original .nfo file
-
-        Returns:
-            True if backup was created successfully, False otherwise
-        """
-        return create_backup(
-            nfo_path,
-            self.settings.original_files_backup_dir,
-            self.settings.rewrite_root_dir,
-        )
-
     def _write_translated_metadata_with_tree(
         self,
         xml_tree: ET.ElementTree | None,
@@ -627,7 +616,7 @@ class MetadataProcessor:
             return f"Successfully translated ({', '.join(parts)})"
 
     def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
-        """Get original metadata from backup file if available.
+        """Get original metadata from backup NFO file if available.
 
         Args:
             nfo_path: Path to current .nfo file
@@ -635,19 +624,18 @@ class MetadataProcessor:
         Returns:
             MetadataInfo object if backup exists, None otherwise
         """
-        if not self.settings.original_files_backup_dir:
+        backup_path = get_backup_path(
+            nfo_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dir,
+        )
+        if not backup_path:
             return None
 
-        # Calculate backup path using same logic as _backup_original()
-        relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
-        backup_path = self.settings.original_files_backup_dir / relative_path
-
-        if backup_path.exists():
-            try:
-                return self._extract_metadata_info(backup_path)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to read backup file {backup_path}: {e}", exc_info=True
-                )
-                return None
-        return None
+        try:
+            return self._extract_metadata_info(backup_path)
+        except Exception as e:
+            logger.warning(
+                f"Failed to read backup file {backup_path}: {e}", exc_info=True
+            )
+            return None

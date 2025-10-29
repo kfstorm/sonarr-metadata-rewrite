@@ -1,6 +1,7 @@
 """Image processor for rewriting poster and clearlogo images."""
 
 import logging
+import shutil
 from pathlib import Path
 
 import httpx
@@ -15,6 +16,7 @@ from sonarr_metadata_rewrite.nfo_utils import (
     IMAGE_EXTENSIONS,
     create_backup,
     extract_tmdb_id,
+    get_backup_path,
     parse_image_info,
 )
 from sonarr_metadata_rewrite.retry_utils import retry
@@ -72,6 +74,47 @@ class ImageProcessor:
             )
 
             if not candidate:
+                # No preferred language available - try to revert to original backup
+                backup_path = get_backup_path(
+                    image_path,
+                    self.settings.original_files_backup_dir,
+                    self.settings.rewrite_root_dir,
+                )
+                if backup_path and image_path.exists():
+                    # Check if current image is different from backup
+                    current_marker = read_embedded_marker(image_path)
+                    backup_marker = read_embedded_marker(backup_path)
+
+                    # If current has a marker but backup doesn't, or they differ
+                    # it means current is rewritten and should be reverted
+                    if current_marker and not backup_marker:
+                        # Revert to original backup
+                        shutil.copy2(backup_path, image_path)
+                        preferred_langs = ", ".join(self.settings.preferred_languages)
+                        return ImageProcessResult(
+                            success=True,
+                            file_path=image_path,
+                            message=(
+                                f"Reverted {kind} to original - no image available "
+                                f"in preferred languages [{preferred_langs}]"
+                            ),
+                            kind=kind,
+                            file_modified=True,
+                        )
+                    elif not current_marker:
+                        # Already showing original
+                        preferred_langs = ", ".join(self.settings.preferred_languages)
+                        return ImageProcessResult(
+                            success=False,
+                            file_path=image_path,
+                            message=(
+                                f"File unchanged - already original and no {kind} "
+                                f"available in preferred languages [{preferred_langs}]"
+                            ),
+                            kind=kind,
+                        )
+
+                # No backup or can't revert
                 preferred_langs = ", ".join(self.settings.preferred_languages)
                 return ImageProcessResult(
                     success=False,
@@ -104,7 +147,11 @@ class ImageProcessor:
                     )
 
             # Create backup if file exists
-            backup_created = self._create_backup(image_path)
+            backup_created = create_backup(
+                image_path,
+                self.settings.original_files_backup_dir,
+                self.settings.rewrite_root_dir,
+            )
 
             # Download and write image
             self._download_and_write_image(image_path, candidate)
@@ -177,21 +224,6 @@ class ImageProcessor:
             return _find_and_extract_tmdb_id()
         except FileNotFoundError:
             return None
-
-    def _create_backup(self, image_path: Path) -> bool:
-        """Create backup of existing image file.
-
-        Args:
-            image_path: Path to image file
-
-        Returns:
-            True if backup was created, False otherwise
-        """
-        return create_backup(
-            image_path,
-            self.settings.original_files_backup_dir,
-            self.settings.rewrite_root_dir,
-        )
 
     def _download_and_write_image(
         self, dst_path: Path, candidate: ImageCandidate
