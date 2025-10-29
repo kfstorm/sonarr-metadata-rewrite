@@ -126,6 +126,33 @@ Pydantic Settings-based configuration with custom env source parsing
 Includes `ENABLE_IMAGE_REWRITE` flag (default: true). Loads from .env and
 performs comprehensive validation.
 
+1. **ImageProcessor** (`image_processor.py`)
+Complete image rewrite workflow: identify rewritable image files (poster,
+clearlogo, season posters), extract TMDB IDs, fetch image candidates via
+Translator, select best match based on language preferences, download and
+rewrite with embedded marker, and atomic writes with optional backup.
+
+1. **ImageUtils** (`image_utils.py`)
+Image metadata helpers for embedding and reading markers in PNG (tEXt chunk) and
+JPEG (EXIF UserComment) formats. Markers contain TMDB file_path and language info
+to enable reprocessing avoidance.
+
+1. **RollbackService** (`rollback_service.py`)
+Backup restoration service that reverts .nfo and image files to their original
+state. Removes conflicting extension variants during image rollback.
+
+1. **BackupUtils** (`backup_utils.py`)
+Backup file operations for creating and managing backup copies of original files
+when `ORIGINAL_FILES_BACKUP_DIR` is configured.
+
+1. **FileUtils** (`file_utils.py`)
+Atomic file write operations using temporary files with proper replacement to
+ensure data integrity during updates.
+
+1. **RetryUtils** (`retry_utils.py`)
+Retry logic with exponential backoff for handling transient failures, particularly
+for TMDB API rate limiting (HTTP 429) responses.
+
 1. **Data Models** (`models.py`)
 TmdbIds: TMDB identifier structures for series/episodes. TranslatedContent:
 Translated metadata containers. ProcessResult: base outcome. MetadataProcessResult:
@@ -179,7 +206,11 @@ src/sonarr_metadata_rewrite/
 ├── file_scanner.py (periodic scanning)
 ├── image_utils.py (image metadata embed/read helpers)
 ├── image_processor.py (poster/clearlogo rewrite)
-└── rewrite_service.py (service orchestrator)
+├── rewrite_service.py (service orchestrator)
+├── rollback_service.py (backup restoration service)
+├── backup_utils.py (backup file operations)
+├── file_utils.py (atomic file operations)
+└── retry_utils.py (retry logic with exponential backoff)
 tests/
 ├── unit/ (fast unit tests for all modules)
 ├── integration/ (comprehensive Sonarr integration tests with Docker)
