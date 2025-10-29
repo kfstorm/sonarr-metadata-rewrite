@@ -33,7 +33,6 @@ Must-follow checklist (Copilot MUST enforce)
 - Project conventions:
   - Follow repository layout (src/ package), versioning (_version.py via Hatch/VCS tags), and module separation.
   - preferred_languages is a list[str] in code but provided as a comma-separated env var (no JSON). A custom env source parses it—don’t change this behavior.
-  - Some service entrypoints are async; use asyncio.run at the CLI boundary instead of making long-running sync loops.
 
 Branch, commit, and PR conventions
 - Branch name: kebab-case with prefix: feat/, fix/, chore/, docs/, test/ (e.g., feat/add-tmdb-cache).

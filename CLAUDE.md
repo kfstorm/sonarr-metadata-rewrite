@@ -90,8 +90,8 @@ Metadata translation and image rewrite service with Click framework providing:
 1. **CLI Interface** (`main.py`)
 Click-based command that runs a persistent service. Performs comprehensive
 configuration validation on startup, installs signal handlers for graceful
-shutdown, starts the service via `asyncio.run(service.start())`, and uses
-proper exit codes on failure.
+shutdown, starts the service synchronously, and uses proper exit codes on
+failure.
 
 1. **RewriteService** (`rewrite_service.py`)
 Orchestrator coordinating metadata and image processing components. Manages

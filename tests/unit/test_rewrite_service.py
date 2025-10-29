@@ -33,9 +33,7 @@ def test_rewrite_service_initialization(rewrite_service: RewriteService) -> None
 
 
 @patch("sonarr_metadata_rewrite.rewrite_service.logger")
-async def test_service_start_stop(
-    mock_logger: Mock, rewrite_service: RewriteService
-) -> None:
+def test_service_start_stop(mock_logger: Mock, rewrite_service: RewriteService) -> None:
     """Test service start/stop functionality."""
     with (
         patch.object(rewrite_service.file_monitor, "start") as mock_monitor_start,
@@ -46,7 +44,7 @@ async def test_service_start_stop(
         patch.object(rewrite_service.cache, "close") as mock_cache_close,
     ):
         # Test start
-        await rewrite_service.start()
+        rewrite_service.start()
         mock_monitor_start.assert_called_once()
         mock_scanner_start.assert_called_once()
 
