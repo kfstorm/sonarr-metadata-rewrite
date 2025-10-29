@@ -5,7 +5,6 @@ extensions so other modules can reuse the same logic consistently.
 """
 
 import re
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -131,83 +130,3 @@ def extract_tmdb_id(nfo_path: Path) -> int | None:
         pass
 
     return None
-
-
-def get_backup_path(
-    file_path: Path, backup_dir: Path | None, root_dir: Path
-) -> Path | None:
-    """Get backup file path for a given file.
-
-    Args:
-        file_path: Path to the file to get backup path for
-        backup_dir: Backup directory root (None to skip)
-        root_dir: Root directory for calculating relative path
-
-    Returns:
-        Path to backup file if backup directory is configured and backup exists,
-        None otherwise. For files with different extensions (e.g., images),
-        returns any existing backup with the same stem.
-    """
-    if backup_dir is None:
-        return None
-
-    # Calculate backup path using same logic as create_backup()
-    relative_path = file_path.relative_to(root_dir)
-    backup_path = backup_dir / relative_path
-
-    # Check for exact path match first
-    if backup_path.exists():
-        return backup_path
-
-    # For files that might have different extensions (e.g., images),
-    # check if any file with the same stem already exists in backup dir
-    if backup_path.parent.exists():
-        stem = backup_path.stem
-        for existing_file in backup_path.parent.iterdir():
-            if existing_file.is_file() and existing_file.stem == stem:
-                # Found backup with same filename stem
-                return existing_file
-
-    return None
-
-
-def create_backup(file_path: Path, backup_dir: Path | None, root_dir: Path) -> bool:
-    """Create backup of a file maintaining directory structure.
-
-    Args:
-        file_path: Path to file to backup
-        backup_dir: Backup directory root (None to skip backup)
-        root_dir: Root directory for calculating relative path
-
-    Returns:
-        True if backup was created or already exists, False if backup disabled
-    """
-    if backup_dir is None:
-        return False
-
-    if not file_path.exists():
-        return False
-
-    # Calculate backup path maintaining directory structure
-    relative_path = file_path.relative_to(root_dir)
-    backup_path = backup_dir / relative_path
-
-    # Don't overwrite existing backup with exact same path
-    if backup_path.exists():
-        return True
-
-    # For files that might have different extensions (e.g., images),
-    # check if any file with the same stem already exists in backup dir
-    if backup_path.parent.exists():
-        stem = backup_path.stem
-        for existing_file in backup_path.parent.iterdir():
-            if existing_file.is_file() and existing_file.stem == stem:
-                # Backup with same filename stem already exists
-                return True
-
-    # Ensure backup directory exists
-    backup_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Copy file to backup location
-    shutil.copy2(file_path, backup_path)
-    return True

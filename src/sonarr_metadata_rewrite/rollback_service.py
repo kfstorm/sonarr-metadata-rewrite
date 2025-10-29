@@ -1,10 +1,10 @@
 """Rollback service for restoring original files from backups."""
 
 import logging
-import shutil
 import time
 from pathlib import Path
 
+from sonarr_metadata_rewrite.backup_utils import restore_from_backup
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.nfo_utils import find_target_files
 
@@ -99,24 +99,22 @@ class RollbackService:
                 )
                 return False
 
-            # For image files, remove any file with same stem but different extension
-            # This handles cases where extension changed during rewrite
-            # (e.g., poster.png was replaced with poster.jpg)
-            if backup_file.suffix.lower() in {".jpg", ".jpeg", ".png"}:
-                stem = original_file.stem
-                parent = original_file.parent
-                for ext in [".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"]:
-                    candidate = parent / f"{stem}{ext}"
-                    if candidate.exists() and candidate != original_file:
-                        candidate.unlink()
-                        logger.debug(
-                            f"Removed file with different extension: {candidate.name}"
-                        )
+            # Use shared restore function which handles:
+            # - Stem-matching for different extensions
+            # - Deleting files with same stem but different extensions
+            # - Copying backup to original location
+            success = restore_from_backup(
+                original_file,
+                self.settings.original_files_backup_dir,
+                self.settings.rewrite_root_dir,
+            )
 
-            # Copy backup file to original location
-            shutil.copy2(backup_file, original_file)
-            logger.info(f"✅ Restored: {relative_path}")
-            return True
+            if success:
+                logger.info(f"✅ Restored: {relative_path}")
+            else:
+                logger.warning(f"⚠️ No backup found for: {relative_path}")
+
+            return success
 
         except Exception:
             logger.exception(f"❌ Failed to restore {backup_file.name}")

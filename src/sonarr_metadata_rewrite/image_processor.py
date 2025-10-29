@@ -1,11 +1,15 @@
 """Image processor for rewriting poster and clearlogo images."""
 
 import logging
-import shutil
 from pathlib import Path
 
 import httpx
 
+from sonarr_metadata_rewrite.backup_utils import (
+    create_backup,
+    get_backup_path,
+    restore_from_backup,
+)
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.image_utils import (
     embed_marker_and_atomic_write,
@@ -14,9 +18,7 @@ from sonarr_metadata_rewrite.image_utils import (
 from sonarr_metadata_rewrite.models import ImageCandidate, ImageProcessResult, TmdbIds
 from sonarr_metadata_rewrite.nfo_utils import (
     IMAGE_EXTENSIONS,
-    create_backup,
     extract_tmdb_id,
-    get_backup_path,
     parse_image_info,
 )
 from sonarr_metadata_rewrite.retry_utils import retry
@@ -89,7 +91,11 @@ class ImageProcessor:
                     # it means current is rewritten and should be reverted
                     if current_marker and not backup_marker:
                         # Revert to original backup
-                        shutil.copy2(backup_path, image_path)
+                        restore_from_backup(
+                            image_path,
+                            self.settings.original_files_backup_dir,
+                            self.settings.rewrite_root_dir,
+                        )
                         preferred_langs = ", ".join(self.settings.preferred_languages)
                         return ImageProcessResult(
                             success=True,

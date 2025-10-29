@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.etree.ElementTree import ElementTree  # noqa: F401
 
+from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
     MetadataInfo,
@@ -13,7 +14,6 @@ from sonarr_metadata_rewrite.models import (
     TranslatedContent,
     TranslatedString,
 )
-from sonarr_metadata_rewrite.nfo_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
