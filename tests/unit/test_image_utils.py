@@ -102,6 +102,48 @@ class TestReadEmbeddedMarker:
 
         assert result is None
 
+    def test_read_marker_from_nonexistent_file(self, tmp_path: Path) -> None:
+        """Test reading marker from non-existent file returns None."""
+        nonexistent = tmp_path / "does_not_exist.jpg"
+        result = read_embedded_marker(nonexistent)
+        assert result is None
+
+    def test_read_jpeg_with_unicode_encoded_user_comment(self, tmp_path: Path) -> None:
+        """Test reading JPEG with UNICODE-prefixed UserComment."""
+        marker_data = {"test": "unicode"}
+        jpeg_path = tmp_path / "unicode.jpg"
+
+        img = Image.new("RGB", (100, 100), color="blue")
+
+        # Create UserComment with UNICODE\x00 prefix
+        marker_json = json.dumps(marker_data)
+        user_comment = b"UNICODE\x00" + marker_json.encode("utf-8")
+        exif_dict = {"Exif": {piexif.ExifIFD.UserComment: user_comment}}
+        exif_bytes = piexif.dump(exif_dict)
+
+        img.save(jpeg_path, "JPEG", exif=exif_bytes)
+
+        result = read_embedded_marker(jpeg_path)
+        assert result == marker_data
+
+    def test_read_jpeg_with_ascii_encoded_user_comment(self, tmp_path: Path) -> None:
+        """Test reading JPEG with ASCII prefix."""
+        marker_data = {"test": "ascii"}
+        jpeg_path = tmp_path / "ascii.jpg"
+
+        img = Image.new("RGB", (100, 100), color="green")
+
+        # Create UserComment with ASCII\x00\x00\x00 prefix
+        marker_json = json.dumps(marker_data)
+        user_comment = b"ASCII\x00\x00\x00" + marker_json.encode("utf-8")
+        exif_dict = {"Exif": {piexif.ExifIFD.UserComment: user_comment}}
+        exif_bytes = piexif.dump(exif_dict)
+
+        img.save(jpeg_path, "JPEG", exif=exif_bytes)
+
+        result = read_embedded_marker(jpeg_path)
+        assert result == marker_data
+
 
 class TestEmbedMarkerAndAtomicWrite:
     """Tests for embed_marker_and_atomic_write() function."""
@@ -175,3 +217,38 @@ class TestEmbedMarkerAndAtomicWrite:
 
         with pytest.raises((OSError, ValueError)):
             embed_marker_and_atomic_write(invalid_bytes, dst, marker_data)
+
+    def test_embed_marker_in_unsupported_format(self, tmp_path: Path) -> None:
+        """Test embedding marker in unsupported format saves as-is."""
+        marker_data = {"test": "unsupported"}
+        dst = tmp_path / "output.bmp"
+
+        # Create BMP image bytes
+        img = Image.new("RGB", (50, 50), color="yellow")
+        output = BytesIO()
+        img.save(output, format="BMP")
+        raw_bytes = output.getvalue()
+
+        # Should not raise
+        embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
+
+        assert dst.exists()
+        # Marker won't be readable from BMP
+        result = read_embedded_marker(dst)
+        assert result is None
+
+    def test_atomic_write_cleanup_on_error(self, tmp_path: Path) -> None:
+        """Test temp file cleanup on write error."""
+        marker_data = {"test": "cleanup"}
+        dst = tmp_path / "error.png"
+
+        raw_bytes = _create_image_bytes((30, 30), "white", "PNG")
+
+        # Mock os.replace to raise exception
+        with patch("os.replace", side_effect=OSError("Mock error")):
+            with pytest.raises(OSError, match="Mock error"):
+                embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
+
+        # Verify temp files cleaned up
+        temp_files = list(tmp_path.glob(".tmp_*"))
+        assert len(temp_files) == 0

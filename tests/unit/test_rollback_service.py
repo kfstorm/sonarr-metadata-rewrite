@@ -458,3 +458,44 @@ def test_restore_case_insensitive_extensions(test_data_dir: Path) -> None:
     restored_file = original_show_dir / "poster.png"
     assert restored_file.exists()
     assert restored_file.read_bytes() == b"Original PNG"
+
+
+def test_restore_single_file_when_backup_parent_not_exists(
+    test_data_dir: Path,
+) -> None:
+    """Test restore when original parent directory doesn't exist."""
+    backup_dir = test_data_dir / "backups"
+    backup_dir.mkdir()
+
+    # Create backup file
+    backup_file = backup_dir / "show" / "poster.jpg"
+    backup_file.parent.mkdir(parents=True)
+    backup_file.write_bytes(b"Original")
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    # Don't create the parent directory in rewrite_root_dir
+    result = service._restore_single_file(backup_file)
+
+    assert result is False
+
+
+def test_execute_rollback_with_no_backup_files(test_data_dir: Path) -> None:
+    """Test rollback when backup directory exists but is empty."""
+    backup_dir = test_data_dir / "empty_backups"
+    backup_dir.mkdir()
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    # Should not raise
+    service.execute_rollback()

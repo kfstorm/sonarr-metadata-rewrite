@@ -729,3 +729,162 @@ class TestErrorScenarios:
 
         # Should handle gracefully
         assert result.success is False
+
+
+class TestAdditionalCoverageScenarios:
+    """Additional tests for coverage improvement."""
+
+    def test_process_unrecognized_image_filename(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test unrecognized image filename."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        unrecognized_path = series_dir / "banner.jpg"
+        create_test_image(unrecognized_path)
+
+        result = image_processor.process(unrecognized_path)
+
+        assert result.success is False
+        assert "Unrecognized image file" in result.message
+        assert result.kind == ""
+
+    def test_process_image_nfo_not_found(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test NFO not found."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        poster_path = series_dir / "poster.jpg"
+        create_test_image(poster_path)
+
+        result = image_processor.process(poster_path)
+
+        assert result.success is False
+        assert "Could not resolve TMDB ID from NFO" in result.message
+
+    def test_process_season_poster_fallback_to_tvshow_nfo(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test season poster fallback to tvshow.nfo."""
+        series_dir = tmp_path / "Series"
+        season_dir = series_dir / "Season 01"
+        season_dir.mkdir(parents=True)
+
+        season_poster = season_dir / "season01-poster.jpg"
+        create_test_image(season_poster)
+
+        # No season.nfo, but tvshow.nfo in parent
+        tvshow_nfo = series_dir / "tvshow.nfo"
+        create_test_nfo(tvshow_nfo, 12345)
+
+        candidate = ImageCandidate(
+            file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
+        )
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
+
+        img = Image.new("RGB", (100, 100), color="blue")
+        output = BytesIO()
+        img.save(output, format="JPEG")
+        mock_response = Mock(content=output.getvalue())
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
+
+        result = image_processor.process(season_poster)
+
+        assert result.success is True
+        assert result.kind == "poster"
+
+    def test_process_no_backup_when_backup_dir_none(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test no backup when backup_dir is None."""
+        image_processor.settings.original_files_backup_dir = None
+
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+        poster_path = series_dir / "poster.jpg"
+        nfo_path = series_dir / "tvshow.nfo"
+
+        create_test_image(poster_path)
+        create_test_nfo(nfo_path, 12345)
+
+        candidate = ImageCandidate(
+            file_path="/new.jpg", iso_639_1="en", iso_3166_1="US"
+        )
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
+
+        img = Image.new("RGB", (100, 100), color="green")
+        output = BytesIO()
+        img.save(output, format="JPEG")
+        mock_response = Mock(content=output.getvalue())
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
+
+        result = image_processor.process(poster_path)
+
+        assert result.success is True
+        assert result.backup_created is False
+
+    def test_process_extension_change_removes_old_file(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test old file removed when extension changes."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+
+        old_poster = series_dir / "poster.png"
+        nfo_path = series_dir / "tvshow.nfo"
+        create_test_image(old_poster)
+        create_test_nfo(nfo_path, 12345)
+
+        # TMDB returns .jpg
+        candidate = ImageCandidate(
+            file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
+        )
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
+
+        img = Image.new("RGB", (100, 100), color="blue")
+        output = BytesIO()
+        img.save(output, format="JPEG")
+        mock_response = Mock(content=output.getvalue())
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
+
+        result = image_processor.process(old_poster)
+
+        assert result.success is True
+        assert not old_poster.exists()
+        assert (series_dir / "poster.jpg").exists()
+
+    def test_process_unsupported_tmdb_format(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test error when TMDB returns unsupported format."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+        poster_path = series_dir / "poster.jpg"
+        nfo_path = series_dir / "tvshow.nfo"
+
+        create_test_image(poster_path)
+        create_test_nfo(nfo_path, 12345)
+
+        candidate = ImageCandidate(
+            file_path="/test.webp", iso_639_1="en", iso_3166_1="US"
+        )
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
+
+        mock_response = Mock(content=b"fake webp data")
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
+
+        result = image_processor.process(poster_path)
+
+        assert result.success is False
+        assert "Unsupported image format" in result.message
+
+    def test_close_http_client(self, image_processor: ImageProcessor) -> None:
+        """Test closing HTTP client."""
+        image_processor.close()
+
+        # Verify client closed
+        with pytest.raises(RuntimeError, match="client has been closed"):
+            image_processor.http_client.get("http://example.com")

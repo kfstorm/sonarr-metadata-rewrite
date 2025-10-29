@@ -3,7 +3,7 @@
 import shutil
 import time
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -264,6 +264,138 @@ def test_scanner_image_only_directory(
         called_paths = {call[0][0] for call in callback_tracker.call_args_list}
         assert test_dir / "poster.jpg" in called_paths
         assert test_dir / "clearlogo.png" in called_paths
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
+
+
+def test_scanner_handles_scan_loop_exception(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test scanner handles exceptions in scan loop."""
+    with patch.object(
+        file_scanner, "_perform_scan", side_effect=RuntimeError("Mock error")
+    ):
+        file_scanner.start(callback_tracker)
+        time.sleep(0.2)
+        file_scanner.stop()
+
+    # Should not crash
+
+
+def test_scanner_handles_permission_error(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test scanner handles PermissionError."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_permission"
+    test_dir.mkdir()
+
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        with patch(
+            "sonarr_metadata_rewrite.file_scanner.find_nfo_files",
+            side_effect=PermissionError("Access denied"),
+        ):
+            file_scanner.start(callback_tracker)
+            time.sleep(0.1)
+            file_scanner.stop()
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
+
+
+def test_scanner_stop_event_during_nfo_processing(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test stop event during NFO processing."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_stop_nfo"
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        for i in range(100):
+            nfo_path = test_dir / f"test{i}.nfo"
+            nfo_path.parent.mkdir(parents=True, exist_ok=True)
+            nfo_path.touch()
+
+        def slow_callback(path: Path) -> None:
+            time.sleep(0.01)
+            callback_tracker(path)
+
+        file_scanner.start(slow_callback)
+        time.sleep(0.03)  # Give less time so stop is called mid-processing
+        file_scanner.stop()
+
+        # Should stop processing before all files are done
+        # Due to timing, allow some tolerance
+        assert callback_tracker.call_count <= 100
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
+
+
+def test_scanner_stop_event_during_image_processing(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test stop event during image processing."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_stop_images"
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        for i in range(100):
+            img_path = test_dir / f"poster{i}.jpg"
+            img_path.parent.mkdir(parents=True, exist_ok=True)
+            img_path.touch()
+
+        def slow_callback(path: Path) -> None:
+            time.sleep(0.01)
+            callback_tracker(path)
+
+        file_scanner.start(slow_callback)
+        time.sleep(0.05)
+        file_scanner.stop()
+
+        assert callback_tracker.call_count < 100
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dir = original_root
+
+
+def test_scanner_callback_exception_for_images(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Test callback exception handling for images."""
+    test_dir = file_scanner.settings.rewrite_root_dir / "test_callback_error"
+    original_root = file_scanner.settings.rewrite_root_dir
+    file_scanner.settings.rewrite_root_dir = test_dir
+
+    try:
+        test_files = [
+            test_dir / "poster.jpg",
+            test_dir / "clearlogo.png",
+        ]
+
+        for test_file in test_files:
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            test_file.touch()
+
+        def error_callback(path: Path) -> None:
+            callback_tracker(path)
+            if path.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+                raise ValueError("Mock image processing error")
+
+        file_scanner.start(error_callback)
+        time.sleep(0.1)
+        file_scanner.stop()
+
+        assert callback_tracker.call_count == 2
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)

@@ -154,7 +154,7 @@ def test_rollback_service_mode(
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "tvdb_id,total_seasons,service_config,expected_language",
+    "tvdb_id,images,service_config,expected_language",
     [
         # Translation fallback when preferred language has empty titles (issue #26).
         # Tests Chinese series "大明王朝1566" where some Chinese translations have
@@ -185,7 +185,7 @@ def test_advanced_translation_scenarios(
     temp_media_root: Path,
     configured_sonarr_container: SonarrClient,
     tvdb_id: int,
-    total_seasons: int,
+    images: list[str],
     service_config: dict[str, str],
     expected_language: str,
 ) -> None:
@@ -203,7 +203,7 @@ def test_advanced_translation_scenarios(
         possible_languages.add("zh")
 
     with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, tvdb_id, total_seasons
+        configured_sonarr_container, temp_media_root, tvdb_id, images
     ) as (
         nfo_files,
         _,

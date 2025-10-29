@@ -1,4 +1,1 @@
-check design doc #file:image_rewrite_plan.md and see if we missed some test cases in #file:missing_test_cases.md . Also consider error cases and edge cases. If you think we need any more cases, append them to the test cases doc at the end with a special section, and implement these test cases.
-
 - Update docs (CLAUDE.md, README.md, ...)
-- Improve test coverage to cover edge cases.
