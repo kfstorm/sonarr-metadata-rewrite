@@ -145,87 +145,6 @@ class TestProcessSuccessScenarios:
         assert result.kind == "clearlogo"
         assert result.selected_language == "ja-JP"
 
-    def test_process_season_poster_success(
-        self, tmp_path: Path, image_processor: ImageProcessor
-    ) -> None:
-        """Test successful season poster processing."""
-        series_dir = tmp_path / "Series"
-        season_dir = series_dir / "Season 01"
-        season_dir.mkdir(parents=True)
-
-        poster_path = season_dir / "season01-poster.jpg"
-        nfo_path = season_dir / "season.nfo"
-
-        create_test_image(poster_path)
-        create_test_nfo(nfo_path, 11111)
-
-        candidate = ImageCandidate(
-            file_path="/season1.jpg", iso_639_1="zh", iso_3166_1="CN"
-        )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
-
-        # Mock HTTP download with real image
-
-        img = Image.new("RGB", (100, 100), color="green")
-        output = BytesIO()
-        img.save(output, format="JPEG")
-        real_image_bytes = output.getvalue()
-
-        mock_response = Mock()
-        mock_response.content = real_image_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
-
-        result = image_processor.process(poster_path)
-
-        assert result.success is True, f"Processing failed: {result.message}"
-        assert result.kind == "poster"
-        # Verify season number was passed to translator
-        call_args = image_processor.translator.select_best_image.call_args
-        assert call_args[0][0].season == 1
-
-    def test_process_season_specials_poster_success(
-        self, tmp_path: Path, image_processor: ImageProcessor
-    ) -> None:
-        """Test successful specials season poster processing (season 0)."""
-        series_dir = tmp_path / "Series"
-        specials_dir = series_dir / "Specials"
-        specials_dir.mkdir(parents=True)
-
-        poster_path = specials_dir / "season-specials-poster.jpg"
-        nfo_path = specials_dir / "season.nfo"
-
-        create_test_image(poster_path)
-        create_test_nfo(nfo_path, 22222)
-
-        # Choose PNG to test extension normalization and name preservation
-        candidate = ImageCandidate(
-            file_path="/specials.png", iso_639_1="fr", iso_3166_1="FR"
-        )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
-
-        # Mock HTTP download with real PNG data
-
-        img = Image.new("RGB", (100, 100), color="purple")
-        output = BytesIO()
-        img.save(output, format="PNG")
-        real_png_bytes = output.getvalue()
-
-        mock_response = Mock()
-        mock_response.content = real_png_bytes
-        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
-
-        result = image_processor.process(poster_path)
-
-        assert result.success is True, f"Processing failed: {result.message}"
-        assert result.kind == "poster"
-        # Verify specials season number (0) was passed to translator
-        call_args = image_processor.translator.select_best_image.call_args
-        assert call_args[0][0].season == 0
-
-        # Verify filename preserved as season-specials-poster with new extension
-        assert not poster_path.exists()
-        assert (specials_dir / "season-specials-poster.png").exists()
-
     def test_process_image_already_has_marker(
         self, tmp_path: Path, image_processor: ImageProcessor
     ) -> None:
@@ -386,15 +305,13 @@ class TestProcessSuccessScenarios:
 class TestParseImageInfo:
     """Tests for _parse_image_info method."""
 
-    def test_parse_image_info_poster(self, image_processor: ImageProcessor) -> None:
+    def test_parse_image_info_poster(self) -> None:
         """Test parsing poster basename."""
         kind, season = parse_image_info("poster.jpg")
         assert kind == "poster"
         assert season is None
 
-    def test_parse_image_info_season_poster(
-        self, image_processor: ImageProcessor
-    ) -> None:
+    def test_parse_image_info_season_poster(self) -> None:
         """Test parsing season poster basenames."""
         kind, season = parse_image_info("season01-poster.jpg")
         assert kind == "poster"
@@ -404,19 +321,19 @@ class TestParseImageInfo:
         assert kind == "poster"
         assert season == 10
 
-    def test_parse_image_info_clearlogo(self, image_processor: ImageProcessor) -> None:
+    def test_parse_image_info_clearlogo(self) -> None:
         """Test parsing clearlogo basename."""
         kind, season = parse_image_info("clearlogo.png")
         assert kind == "clearlogo"
         assert season is None
 
-    def test_parse_image_info_specials(self, image_processor: ImageProcessor) -> None:
+    def test_parse_image_info_specials(self) -> None:
         """Test parsing specials poster basename."""
         kind, season = parse_image_info("season-specials-poster.jpg")
         assert kind == "poster"
         assert season == 0
 
-    def test_parse_image_info_invalid(self, image_processor: ImageProcessor) -> None:
+    def test_parse_image_info_invalid(self) -> None:
         """Test parsing invalid basename."""
         kind, season = parse_image_info("banner.jpg")
         assert kind == ""
@@ -444,47 +361,6 @@ class TestResolveTmdbIds:
         assert result is not None
         assert result.series_id == 99999
         assert result.season is None
-
-    def test_resolve_tmdb_ids_parent_directory(
-        self, tmp_path: Path, image_processor: ImageProcessor
-    ) -> None:
-        """Test resolving TMDB ID from NFO in parent directory."""
-        series_dir = tmp_path / "Series"
-        season_dir = series_dir / "Season 01"
-        season_dir.mkdir(parents=True)
-
-        poster_path = season_dir / "poster.jpg"
-        nfo_path = series_dir / "tvshow.nfo"
-
-        create_test_image(poster_path)
-        create_test_nfo(nfo_path, 88888)
-
-        result = image_processor._resolve_tmdb_ids(poster_path, None)
-
-        assert result is not None
-        assert result.series_id == 88888
-
-    def test_resolve_tmdb_ids_season_nfo_priority(
-        self, tmp_path: Path, image_processor: ImageProcessor
-    ) -> None:
-        """Test that season.nfo is preferred for season posters."""
-        series_dir = tmp_path / "Series"
-        season_dir = series_dir / "Season 01"
-        season_dir.mkdir(parents=True)
-
-        poster_path = season_dir / "season01-poster.jpg"
-        season_nfo = season_dir / "season.nfo"
-        series_nfo = series_dir / "tvshow.nfo"
-
-        create_test_image(poster_path)
-        create_test_nfo(season_nfo, 55555)
-        create_test_nfo(series_nfo, 66666)
-
-        result = image_processor._resolve_tmdb_ids(poster_path, 1)
-
-        assert result is not None
-        assert result.series_id == 55555
-        assert result.season == 1
 
 
 class TestCreateBackup:
@@ -764,37 +640,6 @@ class TestAdditionalCoverageScenarios:
 
         assert result.success is False
         assert "Could not resolve TMDB ID from NFO" in result.message
-
-    def test_process_season_poster_fallback_to_tvshow_nfo(
-        self, tmp_path: Path, image_processor: ImageProcessor
-    ) -> None:
-        """Test season poster fallback to tvshow.nfo."""
-        series_dir = tmp_path / "Series"
-        season_dir = series_dir / "Season 01"
-        season_dir.mkdir(parents=True)
-
-        season_poster = season_dir / "season01-poster.jpg"
-        create_test_image(season_poster)
-
-        # No season.nfo, but tvshow.nfo in parent
-        tvshow_nfo = series_dir / "tvshow.nfo"
-        create_test_nfo(tvshow_nfo, 12345)
-
-        candidate = ImageCandidate(
-            file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
-        )
-        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
-
-        img = Image.new("RGB", (100, 100), color="blue")
-        output = BytesIO()
-        img.save(output, format="JPEG")
-        mock_response = Mock(content=output.getvalue())
-        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
-
-        result = image_processor.process(season_poster)
-
-        assert result.success is True
-        assert result.kind == "poster"
 
     def test_process_no_backup_when_backup_dir_none(
         self, tmp_path: Path, image_processor: ImageProcessor

@@ -145,42 +145,33 @@ class ImageProcessor:
 
         @retry(timeout=30.0, interval=1.0, exceptions=(FileNotFoundError,))
         def _find_and_extract_tmdb_id() -> TmdbIds:
-            # For series-level images, look for tvshow.nfo
-            if season_num is None:
-                # Search up to 3 levels for tvshow.nfo
-                current_dir = image_path.parent
-                for _ in range(3):
-                    nfo_path = current_dir / "tvshow.nfo"
-                    if nfo_path.exists():
-                        tmdb_id = extract_tmdb_id(nfo_path)
-                        if tmdb_id:
-                            return TmdbIds(series_id=tmdb_id)
-                    parent = current_dir.parent
-                    if parent == current_dir:
-                        break
-                    current_dir = parent
-            else:
-                # For season-level images, look for season.nfo in same directory
-                nfo_path = image_path.parent / "season.nfo"
-                if nfo_path.exists():
-                    tmdb_id = extract_tmdb_id(nfo_path)
-                    if tmdb_id:
-                        return TmdbIds(series_id=tmdb_id, season=season_num)
+            """
+            Find and extract TMDB ID from tvshow.nfo file.
+            This function locates the tvshow.nfo file that is always
+            placed next to the image file
+            (as per Kodi's NFO file structure: https://kodi.wiki/view/NFO_files/TV_shows),
+            extracts the TMDB ID from it, and returns a TmdbIds object
+            containing the series ID and season number.
 
-                # Fallback: look for tvshow.nfo upward
-                current_dir = image_path.parent
-                for _ in range(3):
-                    nfo_path = current_dir / "tvshow.nfo"
-                    if nfo_path.exists():
-                        tmdb_id = extract_tmdb_id(nfo_path)
-                        if tmdb_id:
-                            return TmdbIds(series_id=tmdb_id, season=season_num)
-                    parent = current_dir.parent
-                    if parent == current_dir:
-                        break
-                    current_dir = parent
+            Returns:
+                TmdbIds: An object containing the TMDB series ID and season number.
 
-            raise FileNotFoundError(f"Could not find NFO file for image: {image_path}")
+            Raises:
+                FileNotFoundError: If tvshow.nfo is not found next to the image file.
+                ValueError: If TMDB ID could not be extracted from the tvshow.nfo file.
+            """
+            # tvshow.nfo is always next to the image file
+            nfo_path = image_path.parent / "tvshow.nfo"
+            if not nfo_path.exists():
+                raise FileNotFoundError(
+                    f"Could not find tvshow.nfo for image: {image_path}"
+                )
+
+            tmdb_id = extract_tmdb_id(nfo_path)
+            if not tmdb_id:
+                raise ValueError(f"Could not extract TMDB ID from {nfo_path}")
+
+            return TmdbIds(series_id=tmdb_id, season=season_num)
 
         try:
             return _find_and_extract_tmdb_id()
