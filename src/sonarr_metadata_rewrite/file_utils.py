@@ -7,6 +7,10 @@ extensions so other modules can reuse the same logic consistently.
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from xml.etree.ElementTree import ElementTree  # noqa: F401
+
+from sonarr_metadata_rewrite.models import MetadataInfo
+from sonarr_metadata_rewrite.retry_utils import retry
 
 # Supported image extensions (lowercase with leading dot)
 IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png"}
@@ -107,26 +111,82 @@ def is_target_file(file_path: Path) -> bool:
     return is_nfo_file(file_path) or is_rewritable_image(file_path)
 
 
-def extract_tmdb_id(nfo_path: Path) -> int | None:
-    """Extract TMDB ID from an NFO file.
+def parse_nfo_with_retry(nfo_path: Path) -> "ElementTree[ET.Element]":
+    """Parse NFO file with retry logic for incomplete/corrupt files.
 
     Args:
-        nfo_path: Path to NFO file
+        nfo_path: Path to .nfo file to parse
 
     Returns:
-        TMDB series ID if found, None otherwise
+        Parsed XML tree
+
+    Raises:
+        ET.ParseError: If file remains corrupt after retries
+        OSError: If file cannot be accessed after retries
     """
-    try:
-        tree = ET.parse(nfo_path)
-        root = tree.getroot()
 
-        # Look for uniqueid with type="tmdb"
-        for uniqueid in root.findall(".//uniqueid"):
-            if uniqueid.get("type", "").lower() == "tmdb":
-                id_value = uniqueid.text
-                if id_value and id_value.strip():
-                    return int(id_value.strip())
-    except Exception:
-        pass
+    @retry(
+        timeout=3.0,
+        interval=0.5,
+        log_interval=3.0,
+        exceptions=(ET.ParseError, OSError),
+    )
+    def parse_file() -> "ElementTree[ET.Element]":
+        return ET.parse(nfo_path)
 
-    return None
+    return parse_file()
+
+
+def extract_metadata_info(nfo_path: Path) -> MetadataInfo:
+    """Extract all metadata information from NFO file in single parse.
+
+    Args:
+        nfo_path: Path to .nfo file
+
+    Returns:
+        MetadataInfo object with all extracted data
+    """
+    tree = parse_nfo_with_retry(nfo_path)
+    root = tree.getroot()
+
+    # Determine file type from root tag
+    file_type = root.tag if root.tag in ("tvshow", "episodedetails") else "unknown"
+
+    info = MetadataInfo(file_type=file_type, xml_tree=tree)  # type: ignore[arg-type]
+
+    # Extract all uniqueid elements
+    for uniqueid in root.findall(".//uniqueid"):
+        id_type = uniqueid.get("type", "").lower()
+        id_value = uniqueid.text
+
+        if not id_value or not id_value.strip():
+            continue
+
+        if id_type == "tmdb":
+            info.tmdb_id = int(id_value.strip())
+        elif id_type == "tvdb":
+            info.tvdb_id = int(id_value.strip())
+        elif id_type == "imdb":
+            info.imdb_id = id_value.strip()
+
+    # Extract title
+    title_element = root.find("title")
+    if title_element is not None and title_element.text:
+        info.title = title_element.text.strip()
+
+    # Extract plot/description
+    plot_element = root.find("plot")
+    if plot_element is not None and plot_element.text:
+        info.description = plot_element.text.strip()
+
+    # For episode files, extract season/episode numbers
+    if file_type == "episodedetails":
+        season_element = root.find("season")
+        episode_element = root.find("episode")
+
+        if season_element is not None and season_element.text:
+            info.season = int(season_element.text.strip())
+        if episode_element is not None and episode_element.text:
+            info.episode = int(episode_element.text.strip())
+
+    return info

@@ -41,9 +41,7 @@ def patch_time_sleep() -> Generator[None, None, None]:
 def patch_retry_timeout() -> Generator[None, None, None]:
     """Reduce retry timeout for unit tests to speed up failure cases."""
 
-    def fast_parse_nfo_with_retry(
-        self: object, nfo_path: Path
-    ) -> "ElementTree[ET.Element]":
+    def fast_parse_nfo_with_retry(nfo_path: Path) -> "ElementTree[ET.Element]":
         @retry(
             timeout=0.1,  # Very short timeout for unit tests
             interval=0.01,  # Very short interval
@@ -55,9 +53,8 @@ def patch_retry_timeout() -> Generator[None, None, None]:
 
         return parse_file()
 
-    with patch.object(
-        sonarr_metadata_rewrite.metadata_processor.MetadataProcessor,
-        "_parse_nfo_with_retry",
+    with patch(
+        "sonarr_metadata_rewrite.file_utils.parse_nfo_with_retry",
         fast_parse_nfo_with_retry,
     ):
         yield

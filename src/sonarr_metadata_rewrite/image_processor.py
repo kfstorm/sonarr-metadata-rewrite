@@ -13,7 +13,7 @@ from sonarr_metadata_rewrite.backup_utils import (
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_utils import (
     IMAGE_EXTENSIONS,
-    extract_tmdb_id,
+    extract_metadata_info,
     parse_image_info,
 )
 from sonarr_metadata_rewrite.image_utils import (
@@ -217,11 +217,11 @@ class ImageProcessor:
                     f"Could not find tvshow.nfo for image: {image_path}"
                 )
 
-            tmdb_id = extract_tmdb_id(nfo_path)
-            if not tmdb_id:
+            metadata_info = extract_metadata_info(nfo_path)
+            if not metadata_info.tmdb_id:
                 raise ValueError(f"Could not extract TMDB ID from {nfo_path}")
 
-            return TmdbIds(series_id=tmdb_id, season=season_num)
+            return TmdbIds(series_id=metadata_info.tmdb_id, season=season_num)
 
         try:
             return _find_and_extract_tmdb_id()
