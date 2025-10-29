@@ -11,7 +11,8 @@ when available (e.g., `poster.jpg`, `clearlogo.png`, `season01-poster.jpg`).
 
 It's my solution to [Sonarr Issue #269](
 https://github.com/Sonarr/Sonarr/issues/269) and
-[Sonarr Issue #6663](https://github.com/Sonarr/Sonarr/issues/6663) — turns out a lot of people want
+[Sonarr Issue #6663](https://github.com/Sonarr/Sonarr/issues/6663)
+. It turns out a lot of people want
 their media metadata in their native language, but Sonarr doesn't support this
 natively.
 

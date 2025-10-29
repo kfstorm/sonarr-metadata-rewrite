@@ -5,6 +5,7 @@ extensions so other modules can reuse the same logic consistently.
 """
 
 import re
+import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -130,3 +131,36 @@ def extract_tmdb_id(nfo_path: Path) -> int | None:
         pass
 
     return None
+
+
+def create_backup(file_path: Path, backup_dir: Path | None, root_dir: Path) -> bool:
+    """Create backup of a file maintaining directory structure.
+
+    Args:
+        file_path: Path to file to backup
+        backup_dir: Backup directory root (None to skip backup)
+        root_dir: Root directory for calculating relative path
+
+    Returns:
+        True if backup was created or already exists, False if backup disabled
+    """
+    if backup_dir is None:
+        return False
+
+    if not file_path.exists():
+        return False
+
+    # Calculate backup path maintaining directory structure
+    relative_path = file_path.relative_to(root_dir)
+    backup_path = backup_dir / relative_path
+
+    # Don't overwrite existing backup
+    if backup_path.exists():
+        return True
+
+    # Ensure backup directory exists
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Copy file to backup location
+    shutil.copy2(file_path, backup_path)
+    return True

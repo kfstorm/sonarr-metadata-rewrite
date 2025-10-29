@@ -1,7 +1,6 @@
 """Complete metadata file processing unit."""
 
 import logging
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.etree.ElementTree import ElementTree  # noqa: F401
@@ -14,6 +13,7 @@ from sonarr_metadata_rewrite.models import (
     TranslatedContent,
     TranslatedString,
 )
+from sonarr_metadata_rewrite.nfo_utils import create_backup
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
@@ -27,7 +27,7 @@ class MetadataProcessor:
         self.settings = settings
         self.translator = translator
 
-    def _parse_nfo_with_retry(self, nfo_path: Path) -> ElementTree[ET.Element]:
+    def _parse_nfo_with_retry(self, nfo_path: Path) -> "ElementTree[ET.Element]":
         """Parse NFO file with retry logic for incomplete/corrupt files.
 
         Args:
@@ -47,7 +47,7 @@ class MetadataProcessor:
             log_interval=3.0,
             exceptions=(ET.ParseError, OSError),
         )
-        def parse_file() -> ElementTree[ET.Element]:
+        def parse_file() -> "ElementTree[ET.Element]":
             return ET.parse(nfo_path)
 
         return parse_file()
@@ -510,23 +510,11 @@ class MetadataProcessor:
         Returns:
             True if backup was created successfully, False otherwise
         """
-        if not self.settings.original_files_backup_dir:
-            return False
-
-        # Create backup directory structure mirroring original
-        relative_path = nfo_path.relative_to(self.settings.rewrite_root_dir)
-        backup_path = self.settings.original_files_backup_dir / relative_path
-
-        # Check if backup already exists - don't overwrite it
-        if backup_path.exists():
-            return True  # Backup already exists, so we consider this successful
-
-        # Ensure backup directory exists
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Copy original file to backup location
-        shutil.copy2(nfo_path, backup_path)
-        return True
+        return create_backup(
+            nfo_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dir,
+        )
 
     def _write_translated_metadata_with_tree(
         self,

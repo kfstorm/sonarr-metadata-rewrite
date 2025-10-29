@@ -43,14 +43,14 @@ def patch_retry_timeout() -> Generator[None, None, None]:
 
     def fast_parse_nfo_with_retry(
         self: object, nfo_path: Path
-    ) -> ElementTree[ET.Element]:
+    ) -> "ElementTree[ET.Element]":
         @retry(
             timeout=0.1,  # Very short timeout for unit tests
             interval=0.01,  # Very short interval
             log_interval=0.05,
             exceptions=(ET.ParseError, OSError),
         )
-        def parse_file() -> ElementTree[ET.Element]:
+        def parse_file() -> "ElementTree[ET.Element]":
             return ET.parse(nfo_path)
 
         return parse_file()

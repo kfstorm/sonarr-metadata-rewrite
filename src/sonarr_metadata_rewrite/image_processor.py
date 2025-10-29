@@ -1,7 +1,6 @@
 """Image processor for rewriting poster and clearlogo images."""
 
 import logging
-import shutil
 from pathlib import Path
 
 import httpx
@@ -14,10 +13,9 @@ from sonarr_metadata_rewrite.image_utils import (
 from sonarr_metadata_rewrite.models import ImageCandidate, ImageProcessResult, TmdbIds
 from sonarr_metadata_rewrite.nfo_utils import (
     IMAGE_EXTENSIONS,
+    create_backup,
     extract_tmdb_id,
-)
-from sonarr_metadata_rewrite.nfo_utils import (
-    parse_image_info as util_parse_image_info,
+    parse_image_info,
 )
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
@@ -48,7 +46,7 @@ class ImageProcessor:
         try:
             # Determine image kind and scope
             basename = image_path.name
-            kind, season_num = util_parse_image_info(basename)
+            kind, season_num = parse_image_info(basename)
 
             if not kind:
                 return ImageProcessResult(
@@ -97,7 +95,8 @@ class ImageProcessor:
                         success=True,
                         file_path=image_path,
                         message=(
-                            f"{kind.capitalize()} already matches selected candidate"
+                            f"{kind.capitalize()} already matches"
+                            f" selected candidate ({lang_str})"
                         ),
                         kind=kind,
                         selected_language=lang_str,
@@ -197,19 +196,11 @@ class ImageProcessor:
         Returns:
             True if backup was created, False otherwise
         """
-        if not image_path.exists() or self.settings.original_files_backup_dir is None:
-            return False
-
-        backup_dir = self.settings.original_files_backup_dir
-        backup_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create backup path maintaining structure
-        rel_path = image_path.relative_to(self.settings.rewrite_root_dir)
-        backup_path = backup_dir / rel_path
-
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(image_path, backup_path)
-        return True
+        return create_backup(
+            image_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dir,
+        )
 
     def _download_and_write_image(
         self, dst_path: Path, candidate: ImageCandidate
