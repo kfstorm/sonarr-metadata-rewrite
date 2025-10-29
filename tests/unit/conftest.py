@@ -4,8 +4,9 @@ import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import patch
+from xml.etree.ElementTree import ElementTree
 
 import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -15,9 +16,6 @@ import sonarr_metadata_rewrite.metadata_processor
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
-
-if TYPE_CHECKING:
-    from xml.etree.ElementTree import ElementTree
 
 
 @pytest.fixture(autouse=True)
@@ -45,14 +43,14 @@ def patch_retry_timeout() -> Generator[None, None, None]:
 
     def fast_parse_nfo_with_retry(
         self: object, nfo_path: Path
-    ) -> "ElementTree[ET.Element]":
+    ) -> ElementTree[ET.Element]:
         @retry(
             timeout=0.1,  # Very short timeout for unit tests
             interval=0.01,  # Very short interval
             log_interval=0.05,
             exceptions=(ET.ParseError, OSError),
         )
-        def parse_file() -> "ElementTree[ET.Element]":
+        def parse_file() -> ElementTree[ET.Element]:
             return ET.parse(nfo_path)
 
         return parse_file()

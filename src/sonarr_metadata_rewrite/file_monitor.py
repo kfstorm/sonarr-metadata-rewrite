@@ -3,7 +3,6 @@
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from watchdog.events import (
     EVENT_TYPE_CLOSED,
@@ -12,9 +11,7 @@ from watchdog.events import (
     FileSystemEventHandler,
 )
 from watchdog.observers import Observer
-
-if TYPE_CHECKING:
-    from watchdog.observers.api import BaseObserver
+from watchdog.observers.api import BaseObserver
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.nfo_utils import is_target_file

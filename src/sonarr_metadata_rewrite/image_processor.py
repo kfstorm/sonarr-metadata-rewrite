@@ -3,7 +3,6 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import httpx
 
@@ -12,7 +11,7 @@ from sonarr_metadata_rewrite.image_utils import (
     embed_marker_and_atomic_write,
     read_embedded_marker,
 )
-from sonarr_metadata_rewrite.models import ImageProcessResult, TmdbIds
+from sonarr_metadata_rewrite.models import ImageCandidate, ImageProcessResult, TmdbIds
 from sonarr_metadata_rewrite.nfo_utils import (
     IMAGE_EXTENSIONS,
     extract_tmdb_id,
@@ -22,9 +21,6 @@ from sonarr_metadata_rewrite.nfo_utils import (
 )
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
-
-if TYPE_CHECKING:
-    from sonarr_metadata_rewrite.models import ImageCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +212,7 @@ class ImageProcessor:
         return True
 
     def _download_and_write_image(
-        self, dst_path: Path, candidate: "ImageCandidate"
+        self, dst_path: Path, candidate: ImageCandidate
     ) -> None:
         """Download image from TMDB and write with embedded marker.
 

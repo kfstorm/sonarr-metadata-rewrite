@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -14,9 +14,6 @@ from sonarr_metadata_rewrite.models import (
     TranslatedContent,
     TranslatedString,
 )
-
-if TYPE_CHECKING:
-    from sonarr_metadata_rewrite.models import ImageCandidate
 
 
 class Translator:
@@ -282,7 +279,7 @@ class Translator:
         tmdb_ids: TmdbIds,
         preferred_languages: list[str],
         kind: str,
-    ) -> "ImageCandidate | None":
+    ) -> ImageCandidate | None:
         """Select the best image candidate based on language preferences.
 
         Args:

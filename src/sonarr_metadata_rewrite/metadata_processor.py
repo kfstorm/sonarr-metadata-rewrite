@@ -4,10 +4,7 @@ import logging
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from xml.etree.ElementTree import ElementTree  # noqa: F401
+from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
@@ -30,7 +27,7 @@ class MetadataProcessor:
         self.settings = settings
         self.translator = translator
 
-    def _parse_nfo_with_retry(self, nfo_path: Path) -> "ElementTree[ET.Element]":
+    def _parse_nfo_with_retry(self, nfo_path: Path) -> ElementTree[ET.Element]:
         """Parse NFO file with retry logic for incomplete/corrupt files.
 
         Args:
@@ -50,7 +47,7 @@ class MetadataProcessor:
             log_interval=3.0,
             exceptions=(ET.ParseError, OSError),
         )
-        def parse_file() -> "ElementTree[ET.Element]":
+        def parse_file() -> ElementTree[ET.Element]:
             return ET.parse(nfo_path)
 
         return parse_file()
