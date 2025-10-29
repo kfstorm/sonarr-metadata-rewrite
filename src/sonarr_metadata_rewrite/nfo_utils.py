@@ -154,9 +154,18 @@ def create_backup(file_path: Path, backup_dir: Path | None, root_dir: Path) -> b
     relative_path = file_path.relative_to(root_dir)
     backup_path = backup_dir / relative_path
 
-    # Don't overwrite existing backup
+    # Don't overwrite existing backup with exact same path
     if backup_path.exists():
         return True
+
+    # For files that might have different extensions (e.g., images),
+    # check if any file with the same stem already exists in backup dir
+    if backup_path.parent.exists():
+        stem = backup_path.stem
+        for existing_file in backup_path.parent.iterdir():
+            if existing_file.is_file() and existing_file.stem == stem:
+                # Backup with same filename stem already exists
+                return True
 
     # Ensure backup directory exists
     backup_path.parent.mkdir(parents=True, exist_ok=True)

@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from sonarr_metadata_rewrite.nfo_utils import (
+    create_backup,
     find_target_files,
     is_nfo_file,
     is_rewritable_image,
@@ -278,3 +279,107 @@ class TestFindRewritableImages:
                 p for p in find_target_files(temp_path) if is_rewritable_image(p)
             ]
             assert found_files == []
+
+
+class TestCreateBackup:
+    """Test create_backup function."""
+
+    def test_backup_with_none_backup_dir(self) -> None:
+        """Test that backup returns False when backup_dir is None."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            file_path = temp_path / "test.nfo"
+            file_path.write_text("<tvshow></tvshow>")
+
+            result = create_backup(file_path, None, temp_path)
+            assert result is False
+
+    def test_backup_nonexistent_file(self) -> None:
+        """Test that backup returns False for nonexistent file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            backup_dir = temp_path / "backup"
+            file_path = temp_path / "nonexistent.nfo"
+
+            result = create_backup(file_path, backup_dir, temp_path)
+            assert result is False
+
+    def test_backup_creates_file(self) -> None:
+        """Test that backup creates a copy of the file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            backup_dir = temp_path / "backup"
+            file_path = temp_path / "test.nfo"
+            content = "<tvshow></tvshow>"
+            file_path.write_text(content)
+
+            result = create_backup(file_path, backup_dir, temp_path)
+            assert result is True
+
+            backup_path = backup_dir / "test.nfo"
+            assert backup_path.exists()
+            assert backup_path.read_text() == content
+
+    def test_backup_preserves_directory_structure(self) -> None:
+        """Test that backup maintains directory structure."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            backup_dir = temp_path / "backup"
+            subdir = temp_path / "shows" / "series1"
+            subdir.mkdir(parents=True)
+            file_path = subdir / "tvshow.nfo"
+            content = "<tvshow></tvshow>"
+            file_path.write_text(content)
+
+            result = create_backup(file_path, backup_dir, temp_path)
+            assert result is True
+
+            backup_path = backup_dir / "shows" / "series1" / "tvshow.nfo"
+            assert backup_path.exists()
+            assert backup_path.read_text() == content
+
+    def test_backup_does_not_overwrite_existing(self) -> None:
+        """Test that backup doesn't overwrite existing backup."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            backup_dir = temp_path / "backup"
+            file_path = temp_path / "test.nfo"
+            file_path.write_text("<tvshow>new</tvshow>")
+
+            # Create existing backup with different content
+            backup_path = backup_dir / "test.nfo"
+            backup_path.parent.mkdir(parents=True)
+            original_content = "<tvshow>original</tvshow>"
+            backup_path.write_text(original_content)
+
+            result = create_backup(file_path, backup_dir, temp_path)
+            assert result is True
+
+            # Verify backup wasn't overwritten
+            assert backup_path.read_text() == original_content
+
+    def test_backup_checks_stem_for_different_extensions(self) -> None:
+        """Test that backup doesn't create new file if same stem exists."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            backup_dir = temp_path / "backup"
+
+            # Create original poster.png in backup
+            backup_path_png = backup_dir / "poster.png"
+            backup_path_png.parent.mkdir(parents=True)
+            backup_path_png.write_bytes(b"PNG original")
+
+            # Try to backup poster.jpg (same stem, different extension)
+            file_path_jpg = temp_path / "poster.jpg"
+            file_path_jpg.write_bytes(b"JPG new")
+
+            result = create_backup(file_path_jpg, backup_dir, temp_path)
+            assert result is True
+
+            # Verify original backup still exists and wasn't modified
+            assert backup_path_png.exists()
+            assert backup_path_png.read_bytes() == b"PNG original"
+
+            # Verify new backup wasn't created
+            backup_path_jpg = backup_dir / "poster.jpg"
+            assert not backup_path_jpg.exists()
