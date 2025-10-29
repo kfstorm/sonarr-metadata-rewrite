@@ -9,8 +9,9 @@ Sonarr Metadata Rewrite - A compatibility layer that monitors
 Sonarr-generated .nfo files and overwrites them with TMDB translations in
 desired languages, and rewrites poster/clearlogo images to language-specific
 variants when available. This addresses [Sonarr Issue #269](
-https://github.com/Sonarr/Sonarr/issues/269) which requests multilingual
-metadata support.
+https://github.com/Sonarr/Sonarr/issues/269) (multilingual metadata) and
+[Sonarr Issue #6663](https://github.com/Sonarr/Sonarr/issues/6663)
+(localized images).
 
 The project includes a metadata translation service and an image rewrite
 pipeline with real-time file monitoring, TMDB API integration, intelligent
