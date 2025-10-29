@@ -42,7 +42,7 @@ class MetadataProcessor:
         """
 
         @retry(
-            timeout=10.0,
+            timeout=3.0,
             interval=0.5,
             log_interval=3.0,
             exceptions=(ET.ParseError, OSError),

@@ -143,7 +143,7 @@ class ImageProcessor:
             TmdbIds if resolved, None otherwise
         """
 
-        @retry(timeout=30.0, interval=1.0, exceptions=(FileNotFoundError,))
+        @retry(timeout=5.0, interval=1.0, exceptions=(FileNotFoundError,))
         def _find_and_extract_tmdb_id() -> TmdbIds:
             """
             Find and extract TMDB ID from tvshow.nfo file.
