@@ -129,10 +129,7 @@ class ImageProcessor:
             # Check if current file matches candidate
             if image_path.exists():
                 current_marker = read_embedded_marker(image_path)
-                if (
-                    current_marker
-                    and current_marker.get("file_path") == candidate.file_path
-                ):
+                if current_marker and current_marker.file_path == candidate.file_path:
                     lang_str = f"{candidate.iso_639_1}-{candidate.iso_3166_1}"
                     return ImageProcessResult(
                         success=True,
@@ -248,11 +245,7 @@ class ImageProcessor:
         raw_bytes = download()
 
         # Build marker
-        marker = {
-            "file_path": candidate.file_path,
-            "iso_639_1": candidate.iso_639_1 or "",
-            "iso_3166_1": candidate.iso_3166_1 or "",
-        }
+        marker = candidate
 
         # Compute destination path with correct extension
         # Extract extension from candidate.file_path

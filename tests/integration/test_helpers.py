@@ -11,6 +11,7 @@ from fast_langdetect import (  # type: ignore[import-untyped]
 )
 
 from sonarr_metadata_rewrite.image_utils import read_embedded_marker
+from sonarr_metadata_rewrite.models import ImageCandidate
 from sonarr_metadata_rewrite.nfo_utils import find_target_files, is_nfo_file
 from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.series_manager import SeriesManager
@@ -394,12 +395,12 @@ def verify_images(
         AssertionError: If images don't match expected state
     """
 
-    def get_marker_language(marker: dict[str, str] | None) -> str:
+    def get_marker_language(marker: ImageCandidate | None) -> str:
         """Extract language code from marker (e.g., 'zh-CN')."""
         if not marker:
             return ""
-        iso_639_1 = str(marker.get("iso_639_1", ""))
-        iso_3166_1 = str(marker.get("iso_3166_1", ""))
+        iso_639_1 = marker.iso_639_1 or ""
+        iso_3166_1 = marker.iso_3166_1 or ""
         language_parts = [p for p in [iso_639_1, iso_3166_1] if p]
         return "-".join(language_parts) if language_parts else ""
 

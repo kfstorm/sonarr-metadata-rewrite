@@ -13,6 +13,7 @@ from sonarr_metadata_rewrite.image_utils import (
     embed_marker_and_atomic_write,
     read_embedded_marker,
 )
+from sonarr_metadata_rewrite.models import ImageCandidate
 
 
 def _create_image_bytes(size: tuple[int, int], color: str, fmt: str) -> bytes:
@@ -30,9 +31,9 @@ class TestReadEmbeddedMarker:
         """Test reading marker from PNG with tEXt chunk."""
         # Create PNG with tEXt chunk containing JSON marker
         marker_data = {
-            "rewritten_by": "test",
-            "tmdb_id": "12345",
-            "language": "en-US",
+            "file_path": "/test/path.png",
+            "iso_639_1": "en",
+            "iso_3166_1": "US",
         }
         png_path = tmp_path / "test.png"
 
@@ -44,14 +45,16 @@ class TestReadEmbeddedMarker:
         # Read marker
         result = read_embedded_marker(png_path)
 
-        assert result == marker_data
+        assert result == ImageCandidate(
+            file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
+        )
 
     def test_read_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test reading marker from JPEG with EXIF UserComment."""
         marker_data = {
-            "rewritten_by": "test",
-            "tmdb_id": "67890",
-            "language": "ja-JP",
+            "file_path": "/test/path.jpg",
+            "iso_639_1": "ja",
+            "iso_3166_1": "JP",
         }
         jpeg_path = tmp_path / "test.jpg"
 
@@ -67,7 +70,9 @@ class TestReadEmbeddedMarker:
         # Read marker
         result = read_embedded_marker(jpeg_path)
 
-        assert result == marker_data
+        assert result == ImageCandidate(
+            file_path="/test/path.jpg", iso_639_1="ja", iso_3166_1="JP"
+        )
 
     def test_read_no_marker_returns_none(self, tmp_path: Path) -> None:
         """Test reading from image without marker returns None."""
@@ -110,7 +115,11 @@ class TestReadEmbeddedMarker:
 
     def test_read_jpeg_with_unicode_encoded_user_comment(self, tmp_path: Path) -> None:
         """Test reading JPEG with UNICODE-prefixed UserComment."""
-        marker_data = {"test": "unicode"}
+        marker_data = {
+            "file_path": "/unicode/test.jpg",
+            "iso_639_1": None,
+            "iso_3166_1": None,
+        }
         jpeg_path = tmp_path / "unicode.jpg"
 
         img = Image.new("RGB", (100, 100), color="blue")
@@ -124,11 +133,17 @@ class TestReadEmbeddedMarker:
         img.save(jpeg_path, "JPEG", exif=exif_bytes)
 
         result = read_embedded_marker(jpeg_path)
-        assert result == marker_data
+        assert result == ImageCandidate(
+            file_path="/unicode/test.jpg", iso_639_1=None, iso_3166_1=None
+        )
 
     def test_read_jpeg_with_ascii_encoded_user_comment(self, tmp_path: Path) -> None:
         """Test reading JPEG with ASCII prefix."""
-        marker_data = {"test": "ascii"}
+        marker_data = {
+            "file_path": "/ascii/test.jpg",
+            "iso_639_1": None,
+            "iso_3166_1": None,
+        }
         jpeg_path = tmp_path / "ascii.jpg"
 
         img = Image.new("RGB", (100, 100), color="green")
@@ -142,7 +157,9 @@ class TestReadEmbeddedMarker:
         img.save(jpeg_path, "JPEG", exif=exif_bytes)
 
         result = read_embedded_marker(jpeg_path)
-        assert result == marker_data
+        assert result == ImageCandidate(
+            file_path="/ascii/test.jpg", iso_639_1=None, iso_3166_1=None
+        )
 
 
 class TestEmbedMarkerAndAtomicWrite:
@@ -150,11 +167,11 @@ class TestEmbedMarkerAndAtomicWrite:
 
     def test_embed_png_with_marker(self, tmp_path: Path) -> None:
         """Test embedding marker in PNG and writing atomically."""
-        marker_data = {
-            "rewritten_by": "test",
-            "tmdb_id": "11111",
-            "language": "zh-CN",
-        }
+        marker_data = ImageCandidate(
+            file_path="/test/path.png",
+            iso_639_1="zh",
+            iso_3166_1="CN",
+        )
         dst = tmp_path / "output.png"
 
         # Create PNG bytes
@@ -171,11 +188,11 @@ class TestEmbedMarkerAndAtomicWrite:
 
     def test_embed_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test embedding marker in JPEG via EXIF UserComment."""
-        marker_data = {
-            "rewritten_by": "test",
-            "tmdb_id": "22222",
-            "language": "fr-FR",
-        }
+        marker_data = ImageCandidate(
+            file_path="/test/path.jpg",
+            iso_639_1="fr",
+            iso_3166_1="FR",
+        )
         dst = tmp_path / "output.jpg"
 
         # Create JPEG bytes
@@ -192,7 +209,9 @@ class TestEmbedMarkerAndAtomicWrite:
 
     def test_atomic_write_uses_temp_file(self, tmp_path: Path) -> None:
         """Test that atomic write uses temporary file and os.replace()."""
-        marker_data = {"rewritten_by": "test"}
+        marker_data = ImageCandidate(
+            file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
+        )
         dst = tmp_path / "atomic.png"
 
         raw_bytes = _create_image_bytes((30, 30), "white", "PNG")
@@ -209,7 +228,9 @@ class TestEmbedMarkerAndAtomicWrite:
 
     def test_invalid_image_data_raises_error(self, tmp_path: Path) -> None:
         """Test that invalid image data raises appropriate exception."""
-        marker_data = {"rewritten_by": "test"}
+        marker_data = ImageCandidate(
+            file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
+        )
         dst = tmp_path / "invalid.png"
 
         # Provide corrupted/invalid image bytes
@@ -220,7 +241,9 @@ class TestEmbedMarkerAndAtomicWrite:
 
     def test_embed_marker_in_unsupported_format(self, tmp_path: Path) -> None:
         """Test embedding marker in unsupported format saves as-is."""
-        marker_data = {"test": "unsupported"}
+        marker_data = ImageCandidate(
+            file_path="/test/path.bmp", iso_639_1="en", iso_3166_1="US"
+        )
         dst = tmp_path / "output.bmp"
 
         # Create BMP image bytes
@@ -239,7 +262,9 @@ class TestEmbedMarkerAndAtomicWrite:
 
     def test_atomic_write_cleanup_on_error(self, tmp_path: Path) -> None:
         """Test temp file cleanup on write error."""
-        marker_data = {"test": "cleanup"}
+        marker_data = ImageCandidate(
+            file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
+        )
         dst = tmp_path / "error.png"
 
         raw_bytes = _create_image_bytes((30, 30), "white", "PNG")

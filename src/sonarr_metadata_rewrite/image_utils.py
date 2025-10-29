@@ -3,21 +3,24 @@
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
 
 import piexif  # type: ignore[import-untyped]
 from PIL import Image, PngImagePlugin
 
+from sonarr_metadata_rewrite.models import ImageCandidate
 
-def read_embedded_marker(path: Path) -> dict[str, str] | None:
+
+def read_embedded_marker(path: Path) -> ImageCandidate | None:
     """Read embedded marker from image metadata.
 
     Args:
         path: Path to image file
 
     Returns:
-        Parsed JSON marker dict if present, None otherwise
+        ImageCandidate if marker is present, None otherwise
     """
     if not path.exists():
         return None
@@ -28,7 +31,7 @@ def read_embedded_marker(path: Path) -> dict[str, str] | None:
                 # Check for tEXt or iTXt chunks
                 marker_text = img.info.get("sonarr_metadata_marker")
                 if marker_text:
-                    return json.loads(marker_text)
+                    return ImageCandidate(**json.loads(marker_text))
 
             elif img.format == "JPEG":
                 # Check EXIF UserComment
@@ -47,7 +50,7 @@ def read_embedded_marker(path: Path) -> dict[str, str] | None:
                                 user_comment = user_comment[8:]
                             try:
                                 marker_text = user_comment.decode("utf-8")
-                                return json.loads(marker_text)
+                                return ImageCandidate(**json.loads(marker_text))
                             except (UnicodeDecodeError, json.JSONDecodeError):
                                 pass
     except Exception:
@@ -58,16 +61,16 @@ def read_embedded_marker(path: Path) -> dict[str, str] | None:
 
 
 def embed_marker_and_atomic_write(
-    raw_bytes: bytes, dst: Path, marker: dict[str, str]
+    raw_bytes: bytes, dst: Path, marker: ImageCandidate
 ) -> None:
     """Embed marker into image and write atomically.
 
     Args:
         raw_bytes: Raw image bytes to process
         dst: Destination path for final image
-        marker: Marker dictionary to embed as JSON (values must be JSON-serializable)
+        marker: ImageCandidate to embed as JSON
     """
-    marker_json = json.dumps(marker, separators=(",", ":"))
+    marker_json = json.dumps(asdict(marker), separators=(",", ":"))
 
     # Load image from bytes
     img = Image.open(BytesIO(raw_bytes))

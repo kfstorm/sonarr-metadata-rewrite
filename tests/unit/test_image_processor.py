@@ -168,8 +168,7 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/same_poster.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        marker = {"file_path": "/same_poster.jpg"}
-        embed_marker_and_atomic_write(output.getvalue(), poster_path, marker)
+        embed_marker_and_atomic_write(output.getvalue(), poster_path, candidate)
 
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
@@ -261,7 +260,7 @@ class TestProcessSuccessScenarios:
         current_output = BytesIO()
         current_img.save(current_output, format="JPEG")
 
-        marker = {"file_path": "/ja.jpg", "language": "ja-JP"}
+        marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
         embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
 
         create_test_nfo(nfo_path, 12345)
@@ -328,7 +327,7 @@ class TestProcessSuccessScenarios:
         current_output = BytesIO()
         current_img.save(current_output, format="JPEG")
 
-        marker = {"file_path": "/ja.jpg", "language": "ja-JP"}
+        marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
         embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
 
         create_test_nfo(nfo_path, 12345)
@@ -370,7 +369,7 @@ class TestProcessSuccessScenarios:
         current_output = BytesIO()
         current_img.save(current_output, format="JPEG")
 
-        marker = {"file_path": "/ja.jpg", "language": "ja-JP"}
+        marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
         embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
 
         create_test_nfo(nfo_path, 12345)
