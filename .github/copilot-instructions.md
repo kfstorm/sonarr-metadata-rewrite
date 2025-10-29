@@ -26,9 +26,14 @@ Must-follow checklist (Copilot MUST enforce)
 - File operations and behavior:
   - Respect atomic file write behavior, optional backups, and reprocessing-avoidance logic described in CLAUDE.md.
 - API usage:
-  - Follow TMDB integration rules: use /tv/{id}/translations and episode endpoints, handle HTTP 429 with exponential backoff, and cache translations where appropriate.
+  - Follow TMDB integration rules:
+    - Text: use /tv/{id}/translations and episode endpoints; handle HTTP 429 with exponential backoff; cache responses.
+    - Images: use /tv/{id}/images and /tv/{id}/season/{season}/images. Do NOT pass include_image_language due to TMDB bugs—fetch all and select locally by preferred_languages.
+    - When rewriting images, embed a JSON marker in PNG tEXt or JPEG EXIF UserComment indicating TMDB file_path and language; skip rewrite if existing marker already matches selection.
 - Project conventions:
   - Follow repository layout (src/ package), versioning (_version.py via Hatch/VCS tags), and module separation.
+  - preferred_languages is a list[str] in code but provided as a comma-separated env var (no JSON). A custom env source parses it—don’t change this behavior.
+  - Some service entrypoints are async; use asyncio.run at the CLI boundary instead of making long-running sync loops.
 
 Branch, commit, and PR conventions
 - Branch name: kebab-case with prefix: feat/, fix/, chore/, docs/, test/ (e.g., feat/add-tmdb-cache).

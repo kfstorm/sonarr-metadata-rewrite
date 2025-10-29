@@ -6,6 +6,8 @@
 Ever been frustrated that Sonarr only gives you English metadata for your TV
 shows? This tool fixes that by watching for Sonarr's `.nfo` files and
 automatically replacing them with translations in whatever language you prefer.
+It can also rewrite poster and clearlogo images to language-specific variants
+when available (e.g., `poster.jpg`, `clearlogo.png`, `season01-poster.jpg`).
 
 It's my solution to [Sonarr Issue #269](
 https://github.com/Sonarr/Sonarr/issues/269) - turns out a lot of people want
@@ -19,6 +21,8 @@ The tool runs as a background service that:
 - Watches your media folders for when Sonarr creates or updates `.nfo` files
 - Grabs the TMDB ID from those files and fetches translations from TMDB's API
 - Replaces the English metadata with your preferred language(s)
+- Rewrites poster and clearlogo images based on your preferred language-country
+  codes (e.g., `en-US`, `ja-JP`) when such variants exist on TMDB
 - Does this fast enough that you barely notice it happening
 - Keeps backups of the original files in case you want them back
 - Caches everything so it doesn't spam TMDB's API
@@ -98,6 +102,9 @@ PERIODIC_SCAN_INTERVAL_SECONDS=86400  # How often to scan directory (default: da
 ENABLE_FILE_MONITOR=true              # Real-time file monitoring (default: true)
 ENABLE_FILE_SCANNER=true              # Periodic directory scanning (default: true)
 
+# Images
+ENABLE_IMAGE_REWRITE=true             # Rewrite posters/clearlogos (default: true)
+
 # Caching & Storage
 CACHE_DURATION_HOURS=720              # Cache translations (default: 30 days)
 CACHE_DIR=./cache                     # Cache directory (default: ./cache)
@@ -109,7 +116,8 @@ TMDB_MAX_RETRY_DELAY=60.0             # Max retry delay (default: 60.0)
 
 # Backup
 ORIGINAL_FILES_BACKUP_DIR=./backups   # Backup original files (default: ./backups)
-                                      # Set to empty string to disable backups
+                                      # Applies to both .nfo and images. Set to
+                                      # empty string to disable backups.
 
 # Service Mode
 SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'
@@ -126,6 +134,24 @@ SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'
 
 You can list multiple languages separated by commas - it'll try them in
 order.
+
+### Which images are rewritten?
+
+If image rewriting is enabled, the service recognizes these filenames:
+
+- Series-level: `poster.*`, `clearlogo.*`
+- Season-level: `seasonNN-poster.*` (e.g., `season01-poster.jpg`)
+- Specials: `season-specials-poster.*`
+
+Supported extensions: `.jpg`, `.jpeg`, `.png`.
+
+When rewriting, the tool selects the first TMDB image that exactly matches your
+preferred language-country codes in order. It then writes the image atomically,
+embeds a small JSON marker in the image metadata indicating the TMDB file path
+and language, and normalizes the extension to match TMDB while preserving the
+original filename stem. If the existing image already matches the selected
+candidate (based on the embedded marker), it is skipped to avoid unnecessary
+writes.
 
 ### File Permissions (Important!)
 
@@ -180,7 +206,7 @@ improve your experience:
 # container restarts)
 -v sonarr-metadata-cache:/app/cache
 
-# Backup directory (highly recommended - keeps original .nfo files safe)
+# Backup directory (highly recommended - keeps original .nfo and image files safe)
 -v sonarr-metadata-backups:/app/backups
 ```
 
@@ -218,8 +244,8 @@ docker stop sonarr-metadata-rewrite
 
 The service has a few main parts:
 
-**File monitoring** - Uses Python's `watchdog` library to watch for file
-changes in real-time
+**File monitoring** - Uses Python's `watchdog` to watch for file changes
+(.nfo and image files) in real-time
 
 **TMDB integration** - Extracts TMDB IDs from Sonarr's XML files and
 fetches translations via their API
@@ -228,19 +254,19 @@ fetches translations via their API
 repeatedly for the same content
 
 **Batch processing** - Also scans your existing files periodically to catch
-anything it might have missed
+anything it might have missed (both .nfo and image files)
 
-**Safe file handling** - Does atomic writes and keeps backups so you never
-lose data
+**Safe file handling** - Does atomic writes, embeds tiny markers in images to
+avoid reprocessing, and keeps backups so you never lose data
 
 The whole thing is designed to be invisible - just set it up once and forget
 about it.
 
-## Going back to English
+## Restoring originals (rollback)
 
-If you want to restore Sonarr's original English metadata, you can use the
-built-in rollback functionality to automatically restore all original files
-from backups.
+If you want to restore Sonarr's original English metadata (and images), you can
+use the built-in rollback functionality to automatically restore all original
+files from backups.
 
 ### Automated Rollback (Recommended)
 
@@ -270,7 +296,7 @@ environment:
 ```
 
 The rollback service will:
-- Restore all original .nfo files from the backup directory
+- Restore all original .nfo and image files from the backup directory
 - Skip any shows/episodes that have been deleted
 - Log the restoration progress
 - Hang after completion (preventing restart loops)

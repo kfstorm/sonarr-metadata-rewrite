@@ -7,13 +7,14 @@ code in this repository.
 
 Sonarr Metadata Rewrite - A compatibility layer that monitors
 Sonarr-generated .nfo files and overwrites them with TMDB translations in
-desired languages. This addresses [Sonarr Issue #269](
+desired languages, and rewrites poster/clearlogo images to language-specific
+variants when available. This addresses [Sonarr Issue #269](
 https://github.com/Sonarr/Sonarr/issues/269) which requests multilingual
 metadata support.
 
-The project includes a metadata translation service with real-time file
-monitoring, TMDB API integration, intelligent caching, comprehensive error
-handling, and reprocessing avoidance capabilities.
+The project includes a metadata translation service and an image rewrite
+pipeline with real-time file monitoring, TMDB API integration, intelligent
+caching, comprehensive error handling, and reprocessing avoidance.
 
 ## Essential Development Commands
 
@@ -69,11 +70,12 @@ uv run sonarr-metadata-rewrite
 
 ### Current Implementation
 
-Metadata translation service with Click framework providing:
+Metadata translation and image rewrite service with Click framework providing:
 
 - Entry point: `sonarr_metadata_rewrite.main:cli` command that runs a
   persistent service (CLI: `sonarr-metadata-rewrite`)
-- Real-time file monitoring with watchdog for immediate translation
+- Real-time file monitoring with watchdog for immediate processing (.nfo and
+  rewritable images)
 - Periodic directory scanning for batch processing of existing files
 - TMDB API integration with intelligent caching and exponential backoff retry
   for rate limit handling
@@ -86,57 +88,60 @@ Metadata translation service with Click framework providing:
 ### Core Components
 
 1. **CLI Interface** (`main.py`)
-   - Click-based command that runs a persistent service
-   - Comprehensive configuration validation on startup
-   - Signal handlers for graceful shutdown
-   - Error handling with proper exit codes
+Click-based command that runs a persistent service. Performs comprehensive
+configuration validation on startup, installs signal handlers for graceful
+shutdown, starts the service via `asyncio.run(service.start())`, and uses
+proper exit codes on failure.
 
-2. **RewriteService** (`rewrite_service.py`)
-   - Main orchestrator coordinating all metadata translation components
-   - Manages file monitoring, scanning, and processing lifecycle
-   - Handles service startup/shutdown and resource cleanup
+1. **RewriteService** (`rewrite_service.py`)
+Orchestrator coordinating metadata and image processing components. Manages
+file monitoring, scanning, and processing lifecycle, and handles
+startup/shutdown and resource cleanup.
 
-3. **MetadataProcessor** (`metadata_processor.py`)
-   - Complete .nfo file processing workflow
-   - TMDB ID extraction from XML files
-   - Translation selection based on language preferences
-   - Atomic file writes with optional backup creation
+1. **MetadataProcessor** (`metadata_processor.py`)
+Complete .nfo file processing workflow: extract TMDB IDs from XML, select
+translation based on language preferences, and write atomically with optional
+backup creation.
 
-4. **Translator** (`translator.py`)
-   - TMDB API client with httpx for reliable HTTP requests
-   - Intelligent translation caching with diskcache for performance
-   - Exponential backoff retry logic for rate limit handling (HTTP 429)
-   - Support for both series and episode translations
-   - Error handling and graceful API failure recovery
+1. **Translator** (`translator.py`)
+TMDB API client using httpx with diskcache-backed caching and exponential
+backoff for HTTP 429. Supports series and episode translations. For images,
+fetches `/tv/{id}/images` or `/tv/{id}/season/{s}/images`, filters locally for
+preferred language-country (e.g., `en-US`) and chooses the first exact match;
+does not pass `include_image_language` due to TMDB API issues.
 
-5. **FileMonitor** (`file_monitor.py`)
-   - Real-time file system monitoring using watchdog
-   - Immediate processing of .nfo file creation/modification events
-   - Recursive directory watching with event filtering
+1. **FileMonitor** (`file_monitor.py`)
+Real-time file system monitoring using watchdog. Processes .nfo and image files
+on close/move events. Recursive directory watching.
 
-6. **FileScanner** (`file_scanner.py`)
-   - Periodic directory scanning for batch processing
-   - Configurable scan intervals for existing file processing
-   - Thread-based background scanning with graceful shutdown
+1. **FileScanner** (`file_scanner.py`)
+Periodic directory scanning for batch processing. Scans for both `.nfo` files
+and rewritable images. Configurable scan intervals, thread-based background
+scanning with graceful shutdown.
 
-7. **Configuration** (`config.py`)
-   - Pydantic Settings-based configuration management
-   - Environment variable loading with .env file support
-   - Comprehensive validation for all required settings
+1. **Configuration** (`config.py`)
+Pydantic Settings-based configuration with custom env source parsing
+`PREFERRED_LANGUAGES` as a comma-separated string (not JSON) into `list[str]`.
+Includes `ENABLE_IMAGE_REWRITE` flag (default: true). Loads from .env and
+performs comprehensive validation.
 
-8. **Data Models** (`models.py`)
-   - TmdbIds: TMDB identifier structures for series/episodes
-   - TranslatedContent: Translated metadata containers
-   - ProcessResult: Processing outcome tracking with success/failure states
+1. **Data Models** (`models.py`)
+TmdbIds: TMDB identifier structures for series/episodes. TranslatedContent:
+Translated metadata containers. ProcessResult: base outcome. MetadataProcessResult:
+NFO-specific. ImageCandidate: TMDB image candidate (file_path, iso_639_1,
+iso_3166_1). ImageProcessResult: image-specific outcome.
 
-9. **Version Management** (`_version.py`)
-   - Hatch-generated version file from VCS tags
-   - Dynamic version handling with fallback for development
+1. **Version Management** (`_version.py`)
+Hatch-generated version file from VCS tags with dynamic version handling and
+development fallback.
 
 ### TMDB API Integration Design
 
-- **Target Endpoints**: `/tv/{series_id}/translations` and
+- **Text endpoints**: `/tv/{series_id}/translations` and
   `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`
+- **Image endpoints**: `/tv/{series_id}/images` and `/tv/{series_id}/season/{season_number}/images`
+  - Don’t pass `include_image_language`; fetch all and filter client-side in
+    code due to TMDB API quirk
 - **Rate Limits**: TMDB has rate limits, and explicit rate limiting with
   exponential backoff retry is implemented to handle HTTP 429 responses
 - **Language Codes**: ISO 639-1 format with optional country codes (e.g.,
@@ -149,8 +154,8 @@ Metadata translation service with Click framework providing:
 - **Package Manager**: uv with pyproject.toml dependency management
 - **Code Quality**: Black (line-length: 88), Ruff (E/W/F/I/B/C4/UP rules),
   MyPy (strict typing) with Pydantic plugin
-- **Architecture**: Tach module dependency enforcement with tach.toml for 9
-  modules (including _version)
+- **Architecture**: Tach module dependency enforcement with tach.toml for
+  module boundaries (including `_version`)
 - **Testing**: pytest with coverage, separate unit/integration test
   directories with shared container infrastructure
 - **Integration Testing**: Docker-based Sonarr integration with comprehensive
@@ -171,6 +176,8 @@ src/sonarr_metadata_rewrite/
 ├── metadata_processor.py (file processing workflow)
 ├── file_monitor.py (real-time monitoring)
 ├── file_scanner.py (periodic scanning)
+├── image_utils.py (image metadata embed/read helpers)
+├── image_processor.py (poster/clearlogo rewrite)
 └── rewrite_service.py (service orchestrator)
 tests/
 ├── unit/ (fast unit tests for all modules)
@@ -180,17 +187,32 @@ tests/
 scripts/ (development automation)
 ```
 
+### Image Rewriting Design
+
+- Target filenames: `poster.*`, `clearlogo.*`, `seasonNN-poster.*`,
+  `season-specials-poster.*` where extension is one of `.jpg`, `.jpeg`, `.png`
+- TMDB base URL: `https://image.tmdb.org/t/p/original`; use candidate `file_path`
+- Selection policy: match exact language-country in order of `preferred_languages`
+- Reprocessing avoidance: embed marker with `file_path`, `iso_639_1`, `iso_3166_1`
+  in PNG tEXt or JPEG EXIF UserComment; if marker matches current selection,
+  skip writing
+- Atomic writes: write to temp file and replace; normalize extension according
+  to TMDB candidate while preserving original stem
+- Backups: if `ORIGINAL_FILES_BACKUP_DIR` is set, copy original before rewrite
+- Rollback: restores both `.nfo` and image files; removes conflicting ext variants
+
 ### Key Technical Constraints
 
 - **Python**: >=3.10 with strict typing enforcement
 - **Dependencies**: Core runtime deps (Click, Pydantic, httpx, watchdog,
-  diskcache)
+  diskcache) plus Pillow and piexif for image processing
 - **TMDB Rate Limits**: TMDB has rate limits, and explicit rate limiting with
   exponential backoff retry is implemented - the service automatically retries
   rate-limited requests with configurable delays
 - **File Format**: Sonarr generates XML .nfo files with TMDB IDs
-- **Target Files**: `tvshow.nfo` (series) and episode-specific .nfo files
+- **Target Files**: `tvshow.nfo` (series), episode-specific .nfo files, and
+  image files matching the patterns above
 - **Service Architecture**: Long-running daemon process with graceful
   shutdown support
-- **Reprocessing Avoidance**: Implemented to prevent unnecessary file
-  updates and API calls
+- **Reprocessing Avoidance**: Implemented to prevent unnecessary API calls and
+  file writes for both text and images
