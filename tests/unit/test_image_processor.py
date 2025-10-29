@@ -3,12 +3,14 @@
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
 
 import httpx
 import pytest
+from PIL import Image
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
@@ -61,10 +63,6 @@ def create_test_nfo(path: Path, tmdb_id: int) -> None:
 
 def create_test_image(path: Path) -> None:
     """Create a minimal test image file."""
-    from io import BytesIO
-
-    from PIL import Image
-
     img = Image.new("RGB", (100, 100), color="red")
     output = BytesIO()
     img.save(output, format="JPEG")
@@ -94,9 +92,6 @@ class TestProcessSuccessScenarios:
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real image data
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="blue")
         output = BytesIO()
@@ -134,9 +129,6 @@ class TestProcessSuccessScenarios:
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real PNG data
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="red")
         output = BytesIO()
@@ -173,9 +165,6 @@ class TestProcessSuccessScenarios:
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real image
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="green")
         output = BytesIO()
@@ -215,9 +204,6 @@ class TestProcessSuccessScenarios:
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
         # Mock HTTP download with real PNG data
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="purple")
         output = BytesIO()
@@ -252,9 +238,6 @@ class TestProcessSuccessScenarios:
         create_test_nfo(nfo_path, 12345)
 
         # Create image with marker
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="blue")
         output = BytesIO()
@@ -375,9 +358,6 @@ class TestProcessSuccessScenarios:
         )
 
         # Create real image bytes for successful download
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="purple")
         output = BytesIO()
@@ -552,9 +532,6 @@ class TestDownloadAndWriteImage:
         )
 
         # Mock HTTP response with PNG data
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (50, 50), color="green")
         output = BytesIO()
@@ -582,9 +559,6 @@ class TestDownloadAndWriteImage:
         )
 
         # Create real image bytes
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (50, 50), color="yellow")
         output = BytesIO()
@@ -680,9 +654,6 @@ class TestErrorScenarios:
         )
 
         # Create real image bytes
-        from io import BytesIO
-
-        from PIL import Image
 
         img = Image.new("RGB", (100, 100), color="orange")
         output = BytesIO()

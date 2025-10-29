@@ -7,7 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TranslatedContent, TranslatedString
+from sonarr_metadata_rewrite.models import (
+    ImageProcessResult,
+    ProcessResult,
+    TranslatedContent,
+    TranslatedString,
+)
 from sonarr_metadata_rewrite.rewrite_service import RewriteService
 
 
@@ -221,8 +226,6 @@ def test_process_file_callback_logs_image_success(
     poster_path.write_bytes(b"fake image")
 
     with patch.object(rewrite_service.image_processor, "process") as mock_image_process:
-        from sonarr_metadata_rewrite.models import ImageProcessResult
-
         # Mock successful image processing
         mock_image_process.return_value = ImageProcessResult(
             success=True,
@@ -249,8 +252,6 @@ def test_process_file_callback_logs_image_failure(
     logo_path.write_bytes(b"fake image")
 
     with patch.object(rewrite_service.image_processor, "process") as mock_image_process:
-        from sonarr_metadata_rewrite.models import ImageProcessResult
-
         # Mock failed image processing
         mock_image_process.return_value = ImageProcessResult(
             success=False,
@@ -286,8 +287,6 @@ def test_integration_both_processors_working(
         ) as mock_metadata,
         patch.object(rewrite_service.image_processor, "process") as mock_image,
     ):
-        from sonarr_metadata_rewrite.models import ImageProcessResult, ProcessResult
-
         # Mock successful NFO processing
         mock_metadata.return_value = ProcessResult(
             success=True, file_path=nfo_path, message="NFO processed"

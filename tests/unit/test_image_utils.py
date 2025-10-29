@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
+import piexif  # type: ignore[import-untyped]
 import pytest
 from PIL import Image, PngImagePlugin
 
@@ -47,8 +48,6 @@ class TestReadEmbeddedMarker:
 
     def test_read_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test reading marker from JPEG with EXIF UserComment."""
-        import piexif  # type: ignore[import-untyped]
-
         marker_data = {
             "rewritten_by": "test",
             "tmdb_id": "67890",

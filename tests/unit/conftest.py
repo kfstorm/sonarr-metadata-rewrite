@@ -2,7 +2,7 @@
 
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
 
+import sonarr_metadata_rewrite.image_processor
 import sonarr_metadata_rewrite.metadata_processor
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.retry_utils import retry
@@ -67,11 +68,6 @@ def patch_retry_timeout() -> Generator[None, None, None]:
 @pytest.fixture(autouse=True)
 def patch_image_download_retry() -> Generator[None, None, None]:
     """Patch retry decorator in image processor to use minimal timeout for tests."""
-    from collections.abc import Callable
-    from typing import Any
-
-    import sonarr_metadata_rewrite.image_processor
-
     original_retry = sonarr_metadata_rewrite.image_processor.retry
 
     def fast_retry(

@@ -1,5 +1,6 @@
 """Main CLI entry point for sonarr-metadata-rewrite."""
 
+import asyncio
 import logging
 import signal
 import sys
@@ -76,8 +77,6 @@ def cli() -> None:
         signal.signal(signal.SIGTERM, signal_handler)
 
         # Start the service (requires async context)
-        import asyncio
-
         asyncio.run(service.start())
         click.echo("✅ Service started successfully")
         click.echo("Press Ctrl+C to stop the service")

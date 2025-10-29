@@ -8,7 +8,12 @@ import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent, TranslatedString
+from sonarr_metadata_rewrite.models import (
+    ImageCandidate,
+    TmdbIds,
+    TranslatedContent,
+    TranslatedString,
+)
 
 if TYPE_CHECKING:
     from sonarr_metadata_rewrite.models import ImageCandidate
@@ -289,8 +294,6 @@ class Translator:
         Returns:
             ImageCandidate with file_path and language info, or None if no match
         """
-        from sonarr_metadata_rewrite.models import ImageCandidate
-
         # Determine endpoint based on kind and season
         if kind == "poster" and tmdb_ids.season is not None:
             endpoint = f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}/images"
