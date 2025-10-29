@@ -6,10 +6,7 @@ import time
 from pathlib import Path
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import (
-    find_nfo_files,
-    find_rewritable_images,
-)
+from sonarr_metadata_rewrite.nfo_utils import find_target_files
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +42,7 @@ class RollbackService:
         )
 
         # Find all .nfo and image files in backup directory
-        nfo_backup_files = find_nfo_files(self.settings.original_files_backup_dir)
-        image_backup_files = find_rewritable_images(
-            self.settings.original_files_backup_dir
-        )
-        backup_files = nfo_backup_files + image_backup_files
+        backup_files = find_target_files(self.settings.original_files_backup_dir)
 
         if not backup_files:
             logger.info(
@@ -57,10 +50,7 @@ class RollbackService:
             )
             return
 
-        logger.info(
-            f"Found {len(backup_files)} backup files to restore "
-            f"({len(nfo_backup_files)} NFO, {len(image_backup_files)} images)"
-        )
+        logger.info(f"Found {len(backup_files)} backup files to restore")
 
         restored_count = 0
         failed_count = 0

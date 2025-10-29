@@ -4,8 +4,7 @@ import tempfile
 from pathlib import Path
 
 from sonarr_metadata_rewrite.nfo_utils import (
-    find_nfo_files,
-    find_rewritable_images,
+    find_target_files,
     is_nfo_file,
     is_rewritable_image,
 )
@@ -41,7 +40,7 @@ class TestIsNfoFile:
 
 
 class TestFindNfoFiles:
-    """Test find_nfo_files function."""
+    """Test finding NFO files via find_target_files + filter."""
 
     def test_find_both_case_variations(self) -> None:
         """Test that both .nfo and .NFO files are found."""
@@ -57,7 +56,11 @@ class TestFindNfoFiles:
             nfo_uppercase.touch()
             txt_file.touch()
 
-            found_files = find_nfo_files(temp_path, recursive=False)
+            found_files = [
+                p
+                for p in find_target_files(temp_path, recursive=False)
+                if is_nfo_file(p)
+            ]
 
             # Should find both NFO files but not the txt file
             assert len(found_files) == 2
@@ -80,13 +83,17 @@ class TestFindNfoFiles:
             sub_nfo.touch()
 
             # Test recursive (default)
-            found_files = find_nfo_files(temp_path)
+            found_files = [p for p in find_target_files(temp_path) if is_nfo_file(p)]
             assert len(found_files) == 2
             assert root_nfo in found_files
             assert sub_nfo in found_files
 
             # Test non-recursive
-            found_files_non_recursive = find_nfo_files(temp_path, recursive=False)
+            found_files_non_recursive = [
+                p
+                for p in find_target_files(temp_path, recursive=False)
+                if is_nfo_file(p)
+            ]
             assert len(found_files_non_recursive) == 1
             assert root_nfo in found_files_non_recursive
             assert sub_nfo not in found_files_non_recursive
@@ -94,14 +101,14 @@ class TestFindNfoFiles:
     def test_nonexistent_directory(self) -> None:
         """Test behavior with non-existent directory."""
         nonexistent_path = Path("/nonexistent/directory")
-        found_files = find_nfo_files(nonexistent_path)
+        found_files = [p for p in find_target_files(nonexistent_path) if is_nfo_file(p)]
         assert found_files == []
 
     def test_empty_directory(self) -> None:
         """Test behavior with empty directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            found_files = find_nfo_files(temp_path)
+            found_files = [p for p in find_target_files(temp_path) if is_nfo_file(p)]
             assert found_files == []
 
     def test_deduplicate_on_case_insensitive_filesystem(self) -> None:
@@ -113,7 +120,7 @@ class TestFindNfoFiles:
             nfo_file = temp_path / "test.nfo"
             nfo_file.touch()
 
-            found_files = find_nfo_files(temp_path)
+            found_files = [p for p in find_target_files(temp_path) if is_nfo_file(p)]
 
             # Should find the file only once, even if filesystem is case-insensitive
             assert len(found_files) >= 1
@@ -170,7 +177,7 @@ class TestIsRewritableImage:
 
 
 class TestFindRewritableImages:
-    """Test find_rewritable_images function."""
+    """Test finding rewritable images via find_target_files + filter."""
 
     def test_find_poster_and_clearlogo(self) -> None:
         """Test finding both poster and clearlogo files."""
@@ -185,7 +192,9 @@ class TestFindRewritableImages:
             banner = temp_path / "banner.jpg"  # Should not be found
             banner.touch()
 
-            found_files = find_rewritable_images(temp_path)
+            found_files = [
+                p for p in find_target_files(temp_path) if is_rewritable_image(p)
+            ]
             found_names = {f.name for f in found_files}
 
             assert "poster.jpg" in found_names
@@ -205,7 +214,9 @@ class TestFindRewritableImages:
             s_sp = temp_path / "season-specials-poster.jpg"
             s_sp.touch()
 
-            found_files = find_rewritable_images(temp_path)
+            found_files = [
+                p for p in find_target_files(temp_path) if is_rewritable_image(p)
+            ]
             found_names = {f.name for f in found_files}
 
             assert "season01-poster.jpg" in found_names
@@ -229,7 +240,11 @@ class TestFindRewritableImages:
             poster2 = season2_dir / "season02-poster.jpg"
             poster2.touch()
 
-            found_files = find_rewritable_images(temp_path, recursive=True)
+            found_files = [
+                p
+                for p in find_target_files(temp_path, recursive=True)
+                if is_rewritable_image(p)
+            ]
             assert len(found_files) == 2
 
     def test_non_recursive_search(self) -> None:
@@ -247,7 +262,11 @@ class TestFindRewritableImages:
             nested_poster = season_dir / "season01-poster.jpg"
             nested_poster.touch()
 
-            found_files = find_rewritable_images(temp_path, recursive=False)
+            found_files = [
+                p
+                for p in find_target_files(temp_path, recursive=False)
+                if is_rewritable_image(p)
+            ]
             assert len(found_files) == 1
             assert found_files[0].name == "poster.jpg"
 
@@ -255,5 +274,7 @@ class TestFindRewritableImages:
         """Test behavior with empty directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            found_files = find_rewritable_images(temp_path)
+            found_files = [
+                p for p in find_target_files(temp_path) if is_rewritable_image(p)
+            ]
             assert found_files == []

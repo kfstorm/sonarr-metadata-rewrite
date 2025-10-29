@@ -11,7 +11,7 @@ from fast_langdetect import (  # type: ignore[import-untyped]
 )
 
 from sonarr_metadata_rewrite.image_utils import read_embedded_marker
-from sonarr_metadata_rewrite.nfo_utils import find_nfo_files
+from sonarr_metadata_rewrite.nfo_utils import find_target_files, is_nfo_file
 from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
@@ -91,7 +91,9 @@ def wait_for_nfo_files(
 
     @retry(timeout=timeout, interval=0.5, log_interval=1.0)
     def check_nfo_files() -> list[Path]:
-        nfo_files = find_nfo_files(series_path)
+        nfo_files = [
+            p for p in find_target_files(series_path, recursive=True) if is_nfo_file(p)
+        ]
         assert len(nfo_files) == expected_count, (
             f"Expected exactly {expected_count} .nfo files, but found "
             f"{len(nfo_files)} in {series_path}. Files found: {nfo_files}"

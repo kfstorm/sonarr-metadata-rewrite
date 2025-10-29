@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from watchdog.observers.api import BaseObserver
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.nfo_utils import is_nfo_file, is_rewritable_image
+from sonarr_metadata_rewrite.nfo_utils import is_target_file
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class MediaFileHandler(FileSystemEventHandler):
             )
         )
 
-        if is_nfo_file(file_path) or is_rewritable_image(file_path):
+        if is_target_file(file_path):
             try:
                 self.callback(file_path)
             except Exception:

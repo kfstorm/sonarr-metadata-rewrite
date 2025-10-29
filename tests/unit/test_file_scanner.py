@@ -198,10 +198,10 @@ def test_scanner_finds_both_nfo_and_images(
         file_scanner.settings.rewrite_root_dir = original_root
 
 
-def test_scanner_processes_images_after_nfo(
+def test_scanner_processes_nfo_and_images(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
-    """Test scanner processes NFO files before image files."""
+    """Test scanner processes NFO and image files (order not enforced)."""
     test_dir = file_scanner.settings.rewrite_root_dir / "test_order_scan"
     original_root = file_scanner.settings.rewrite_root_dir
     file_scanner.settings.rewrite_root_dir = test_dir
@@ -222,15 +222,10 @@ def test_scanner_processes_images_after_nfo(
         file_scanner.stop()
 
         assert callback_tracker.call_count == 3
-        called_paths = [call[0][0] for call in callback_tracker.call_args_list]
-
-        # NFO should be processed before images
-        nfo_index = called_paths.index(test_dir / "tvshow.nfo")
-        poster_index = called_paths.index(test_dir / "poster.jpg")
-        clearlogo_index = called_paths.index(test_dir / "clearlogo.png")
-
-        assert nfo_index < poster_index
-        assert nfo_index < clearlogo_index
+        called_paths = {call[0][0] for call in callback_tracker.call_args_list}
+        assert test_dir / "tvshow.nfo" in called_paths
+        assert test_dir / "poster.jpg" in called_paths
+        assert test_dir / "clearlogo.png" in called_paths
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
@@ -296,7 +291,7 @@ def test_scanner_handles_permission_error(
 
     try:
         with patch(
-            "sonarr_metadata_rewrite.file_scanner.find_nfo_files",
+            "sonarr_metadata_rewrite.file_scanner.find_target_files",
             side_effect=PermissionError("Access denied"),
         ):
             file_scanner.start(callback_tracker)

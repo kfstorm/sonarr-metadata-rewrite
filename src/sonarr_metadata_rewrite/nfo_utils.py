@@ -74,60 +74,37 @@ def is_rewritable_image(file_path: Path) -> bool:
     return bool(kind)
 
 
-def find_nfo_files(directory: Path, recursive: bool = True) -> list[Path]:
-    """Find all .nfo and .NFO files in a directory (case-insensitive).
+def find_target_files(directory: Path, recursive: bool = True) -> list[Path]:
+    """Find all target files (.nfo and rewritable images) in one pass.
+
+    This consolidates file system traversal to avoid duplicated logic.
 
     Args:
         directory: Directory to search in
         recursive: Whether to search recursively in subdirectories
 
     Returns:
-        List of paths to all NFO files found
+        List of paths to all NFO files and rewritable image files found
     """
     if not directory.exists():
         return []
 
-    if recursive:
-        # Use rglob to find all files, then filter by case-insensitive extension
-        all_files = directory.rglob("*")
-    else:
-        # Use glob for non-recursive search
-        all_files = directory.glob("*")
+    all_entries = directory.rglob("*") if recursive else directory.glob("*")
 
-    # Filter files that have .nfo extension (case-insensitive)
-    nfo_files = []
-    for file_path in all_files:
-        if file_path.is_file() and is_nfo_file(file_path):
-            nfo_files.append(file_path)
+    results: list[Path] = []
+    for file_path in all_entries:
+        if not file_path.is_file():
+            continue
 
-    return nfo_files
+        if is_target_file(file_path):
+            results.append(file_path)
+
+    return results
 
 
-def find_rewritable_images(directory: Path, recursive: bool = True) -> list[Path]:
-    """Find all rewritable image files in a directory.
-
-    Args:
-        directory: Directory to search in
-        recursive: Whether to search recursively in subdirectories
-
-    Returns:
-        List of paths to all rewritable image files found
-    """
-    if not directory.exists():
-        return []
-
-    if recursive:
-        all_files = directory.rglob("*")
-    else:
-        all_files = directory.glob("*")
-
-    # Filter for rewritable images (poster/clearlogo patterns)
-    images = []
-    for file_path in all_files:
-        if file_path.is_file() and is_rewritable_image(file_path):
-            images.append(file_path)
-
-    return images
+def is_target_file(file_path: Path) -> bool:
+    """Return True if path is a target file (.nfo or rewritable image)."""
+    return is_nfo_file(file_path) or is_rewritable_image(file_path)
 
 
 def extract_tmdb_id(nfo_path: Path) -> int | None:
