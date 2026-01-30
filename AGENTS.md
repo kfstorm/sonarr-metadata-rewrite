@@ -1,7 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with
-code in this repository.
+This file provides guidance for AI agents working with code in this repository.
 
 ## Project Overview
 
@@ -168,7 +167,7 @@ development fallback.
 - **Text endpoints**: `/tv/{series_id}/translations` and
   `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`
 - **Image endpoints**: `/tv/{series_id}/images` and `/tv/{series_id}/season/{season_number}/images`
-  - Don’t pass `include_image_language`; fetch all and filter client-side in
+  - Don't pass `include_image_language`; fetch all and filter client-side in
     code due to TMDB API quirk
 - **Rate Limits**: TMDB has rate limits, and explicit rate limiting with
   exponential backoff retry is implemented to handle HTTP 429 responses
