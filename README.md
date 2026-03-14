@@ -104,7 +104,8 @@ PERIODIC_SCAN_INTERVAL_SECONDS=86400  # How often to scan directory (default: da
 ENABLE_FILE_MONITOR=true              # Real-time file monitoring (default: true)
 ENABLE_FILE_SCANNER=true              # Periodic directory scanning (default: true)
 
-# Images
+# NFO & Images
+ENABLE_NFO_REWRITE=true               # Translate NFO files (default: true)
 ENABLE_IMAGE_REWRITE=true             # Rewrite posters/clearlogos (default: true)
 
 # Caching & Storage

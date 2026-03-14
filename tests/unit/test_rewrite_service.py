@@ -418,3 +418,53 @@ def test_image_processing_skipped_when_disabled(
         assert result.success is True
         assert result.file_modified is False
         assert "disabled" in result.message
+
+
+def test_nfo_processing_skipped_when_disabled(
+    rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """When enable_nfo_rewrite is False, NFO files should be skipped."""
+    # Disable NFO rewriting
+    rewrite_service.settings.enable_nfo_rewrite = False
+
+    # Create an NFO file
+    nfo_path = tmp_path / "tvshow.nfo"
+    nfo_path.write_text("<tvshow></tvshow>")
+
+    with (
+        patch.object(rewrite_service.metadata_processor, "process_file") as mock_meta,
+        patch.object(rewrite_service.image_processor, "process") as mock_image,
+    ):
+        result = rewrite_service._process_file(nfo_path)
+
+        # Metadata processor should not be called when disabled
+        mock_meta.assert_not_called()
+        mock_image.assert_not_called()
+
+        # Should return a success skip result
+        assert result.success is True
+        assert result.file_modified is False
+        assert "disabled" in result.message
+
+
+def test_nfo_processing_enabled_by_default(
+    rewrite_service: RewriteService, tmp_path: Path
+) -> None:
+    """NFO rewrite should be enabled by default."""
+    assert rewrite_service.settings.enable_nfo_rewrite is True
+
+    nfo_path = tmp_path / "tvshow.nfo"
+    nfo_path.write_text("<tvshow></tvshow>")
+
+    mock_result = ProcessResult(
+        success=True,
+        file_path=nfo_path,
+        message="NFO processed",
+        file_modified=True,
+    )
+    with patch.object(
+        rewrite_service.metadata_processor, "process_file", return_value=mock_result
+    ) as mock_meta:
+        result = rewrite_service._process_file(nfo_path)
+        mock_meta.assert_called_once_with(nfo_path)
+        assert result.success is True
