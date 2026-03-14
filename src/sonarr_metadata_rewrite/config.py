@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     enable_file_scanner: bool = Field(
         default=True, description="Enable periodic directory scanning"
     )
+    enable_nfo_rewrite: bool = Field(
+        default=True, description="Enable NFO file translation"
+    )
     enable_image_rewrite: bool = Field(
         default=True, description="Enable image rewriting (posters and clearlogos)"
     )

@@ -87,6 +87,14 @@ class RewriteService:
     def _process_file(self, file_path: Path) -> ProcessResult:
         """Process a single file (NFO or image)."""
         if is_nfo_file(file_path):
+            # Gate NFO rewriting by configuration
+            if not self.settings.enable_nfo_rewrite:
+                return ProcessResult(
+                    success=True,
+                    file_path=file_path,
+                    message="NFO rewrite disabled; skipped",
+                    file_modified=False,
+                )
             return self.metadata_processor.process_file(file_path)
         else:
             # Gate image rewriting by configuration
