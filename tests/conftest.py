@@ -122,6 +122,23 @@ SAMPLE_EPISODE_NO_TMDB_ID_NFO = """<?xml version="1.0" encoding="utf-8"?>
 </episodedetails>
 """
 
+SAMPLE_MULTI_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Walter White begins a new life in crime.</plot>
+  <season>1</season>
+  <episode>1</episode>
+  <uniqueid type="tvdb" default="true">349232</uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>Cat's in the Bag...</title>
+  <plot>Walt and Jesse deal with the aftermath.</plot>
+  <season>1</season>
+  <episode>2</episode>
+  <uniqueid type="tvdb" default="true">349233</uniqueid>
+</episodedetails>
+"""
+
 # Map of sample names to content
 SAMPLE_DATA = {
     "tvshow.nfo": SAMPLE_TVSHOW_NFO,
@@ -131,6 +148,7 @@ SAMPLE_DATA = {
     "imdb_only.nfo": SAMPLE_IMDB_ONLY_NFO,
     "invalid.nfo": SAMPLE_INVALID_NFO,
     "episode_no_tmdb_id.nfo": SAMPLE_EPISODE_NO_TMDB_ID_NFO,
+    "multi_episode.nfo": SAMPLE_MULTI_EPISODE_NFO,
 }
 
 

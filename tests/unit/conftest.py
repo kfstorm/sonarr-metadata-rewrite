@@ -6,7 +6,6 @@ from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
-from xml.etree.ElementTree import ElementTree
 
 import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -14,6 +13,7 @@ from diskcache import Cache  # type: ignore[import-untyped]
 import sonarr_metadata_rewrite.image_processor
 import sonarr_metadata_rewrite.metadata_processor
 from sonarr_metadata_rewrite.config import Settings
+from sonarr_metadata_rewrite.file_utils import _parse_nfo_documents
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
 
@@ -41,15 +41,15 @@ def patch_time_sleep() -> Generator[None, None, None]:
 def patch_retry_timeout() -> Generator[None, None, None]:
     """Reduce retry timeout for unit tests to speed up failure cases."""
 
-    def fast_parse_nfo_with_retry(nfo_path: Path) -> "ElementTree[ET.Element]":
+    def fast_parse_nfo_with_retry(nfo_path: Path) -> Any:
         @retry(
             timeout=0.1,  # Very short timeout for unit tests
             interval=0.01,  # Very short interval
             log_interval=0.05,
             exceptions=(ET.ParseError, OSError),
         )
-        def parse_file() -> "ElementTree[ET.Element]":
-            return ET.parse(nfo_path)
+        def parse_file() -> Any:
+            return _parse_nfo_documents(nfo_path)
 
         return parse_file()
 

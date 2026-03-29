@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from xml.etree.ElementTree import ElementTree  # noqa: F401
 
-from sonarr_metadata_rewrite.models import MetadataInfo
+from sonarr_metadata_rewrite.models import EpisodeMetadataInfo, MetadataInfo
 from sonarr_metadata_rewrite.retry_utils import retry
 
 # Supported image extensions (lowercase with leading dot)
@@ -111,14 +111,14 @@ def is_target_file(file_path: Path) -> bool:
     return is_nfo_file(file_path) or is_rewritable_image(file_path)
 
 
-def parse_nfo_with_retry(nfo_path: Path) -> "ElementTree[ET.Element]":
+def parse_nfo_with_retry(nfo_path: Path) -> MetadataInfo:
     """Parse NFO file with retry logic for incomplete/corrupt files.
 
     Args:
         nfo_path: Path to .nfo file to parse
 
     Returns:
-        Parsed XML tree
+        Parsed metadata information
 
     Raises:
         ET.ParseError: If file remains corrupt after retries
@@ -131,8 +131,8 @@ def parse_nfo_with_retry(nfo_path: Path) -> "ElementTree[ET.Element]":
         log_interval=3.0,
         exceptions=(ET.ParseError, OSError),
     )
-    def parse_file() -> "ElementTree[ET.Element]":
-        return ET.parse(nfo_path)
+    def parse_file() -> MetadataInfo:
+        return _parse_nfo_documents(nfo_path)
 
     return parse_file()
 
@@ -146,19 +146,93 @@ def extract_metadata_info(nfo_path: Path) -> MetadataInfo:
     Returns:
         MetadataInfo object with all extracted data
     """
-    tree = parse_nfo_with_retry(nfo_path)
-    root = tree.getroot()
+    return parse_nfo_with_retry(nfo_path)
 
-    # Determine file type from root tag
-    file_type = root.tag if root.tag in ("tvshow", "episodedetails") else "unknown"
 
-    info = MetadataInfo(file_type=file_type, xml_tree=tree)  # type: ignore[arg-type]
+def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
+    """Parse one or more adjacent XML documents from an NFO file."""
+    raw_content = nfo_path.read_text(encoding="utf-8")
+    normalized_content = raw_content.strip()
+    normalized_content = re.sub(r"<\?xml[^>]*\?>", "", normalized_content).strip()
+    wrapped_content = f"<nfo-root>{normalized_content}</nfo-root>"
+    wrapped_root = ET.fromstring(wrapped_content)
 
-    # Extract all uniqueid elements
+    if not list(wrapped_root):
+        raise ET.ParseError("No XML document found")
+
+    if len(wrapped_root) == 1 and wrapped_root[0].tag == "tvshow":
+        return _extract_tvshow_metadata(wrapped_root[0])
+
+    if all(child.tag == "episodedetails" for child in wrapped_root):
+        return _extract_episode_metadata(wrapped_root)
+
+    if len(wrapped_root) == 1 and wrapped_root[0].tag == "episodedetails":
+        return _extract_episode_metadata(wrapped_root)
+
+    raise ET.ParseError("Unsupported NFO root structure")
+
+
+def _extract_tvshow_metadata(root: ET.Element) -> MetadataInfo:
+    """Extract metadata from a single tvshow document."""
+    info = MetadataInfo(
+        file_type="tvshow",
+        xml_tree=ET.ElementTree(ET.fromstring(ET.tostring(root, encoding="unicode"))),
+    )
+    _populate_common_metadata(info, root)
+    return info
+
+
+def _extract_episode_metadata(root: ET.Element) -> MetadataInfo:
+    """Extract metadata from one or more episode documents."""
+    episode_entries = [_build_episode_entry(child) for child in root]
+    first_entry = episode_entries[0]
+    info = MetadataInfo(
+        tmdb_id=first_entry.tmdb_id,
+        tvdb_id=first_entry.tvdb_id,
+        imdb_id=first_entry.imdb_id,
+        file_type="episodedetails",
+        season=first_entry.season,
+        episode=first_entry.episode,
+        title=first_entry.title,
+        description=first_entry.description,
+        xml_tree=first_entry.xml_tree,
+        episode_entries=episode_entries,
+    )
+
+    for entry in episode_entries[1:]:
+        if info.tmdb_id is None:
+            info.tmdb_id = entry.tmdb_id
+        if info.tvdb_id is None:
+            info.tvdb_id = entry.tvdb_id
+        if info.imdb_id is None:
+            info.imdb_id = entry.imdb_id
+
+    return info
+
+
+def _build_episode_entry(root: ET.Element) -> EpisodeMetadataInfo:
+    """Build a single episode metadata entry from an XML root."""
+    tree = ET.ElementTree(ET.fromstring(ET.tostring(root, encoding="unicode")))
+    entry = EpisodeMetadataInfo(xml_tree=tree)
+    _populate_common_metadata(entry, root)
+
+    season_element = root.find("season")
+    episode_element = root.find("episode")
+    if season_element is not None and season_element.text:
+        entry.season = int(season_element.text.strip())
+    if episode_element is not None and episode_element.text:
+        entry.episode = int(episode_element.text.strip())
+
+    return entry
+
+
+def _populate_common_metadata(
+    info: MetadataInfo | EpisodeMetadataInfo, root: ET.Element
+) -> None:
+    """Populate shared metadata fields from a root element."""
     for uniqueid in root.findall(".//uniqueid"):
         id_type = uniqueid.get("type", "").lower()
         id_value = uniqueid.text
-
         if not id_value or not id_value.strip():
             continue
 
@@ -169,24 +243,10 @@ def extract_metadata_info(nfo_path: Path) -> MetadataInfo:
         elif id_type == "imdb":
             info.imdb_id = id_value.strip()
 
-    # Extract title
     title_element = root.find("title")
     if title_element is not None and title_element.text:
         info.title = title_element.text.strip()
 
-    # Extract plot/description
     plot_element = root.find("plot")
     if plot_element is not None and plot_element.text:
         info.description = plot_element.text.strip()
-
-    # For episode files, extract season/episode numbers
-    if file_type == "episodedetails":
-        season_element = root.find("season")
-        episode_element = root.find("episode")
-
-        if season_element is not None and season_element.text:
-            info.season = int(season_element.text.strip())
-        if episode_element is not None and episode_element.text:
-            info.episode = int(episode_element.text.strip())
-
-    return info

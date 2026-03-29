@@ -4,12 +4,15 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.test_helpers import (
     SeriesWithNfos,
     ServiceRunner,
+    create_fake_multi_episode_file,
     verify_images,
     verify_translations,
+    wait_for_nfo_files,
 )
 
 
@@ -245,3 +248,80 @@ def test_advanced_translation_scenarios(
                 expected_language,
                 possible_languages=list(possible_languages),
             )
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_multi_episode_nfo_rewrite_and_rollback(
+    temp_media_root: Path,
+    configured_sonarr_container: SonarrClient,
+    tmp_path: Path,
+) -> None:
+    """Test rewrite and rollback for Sonarr-style multi-episode NFO files."""
+    backup_dir = tmp_path / "multi_episode_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    with SeriesManager(
+        configured_sonarr_container,
+        BREAKING_BAD_TVDB_ID,
+        "/tv",
+        temp_media_root,
+    ) as series:
+        create_fake_multi_episode_file(
+            temp_media_root,
+            series.slug,
+            season=1,
+            first_episode=1,
+            last_episode=2,
+            title="Pilot + Cat's in the Bag",
+        )
+
+        scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
+        assert scan_success, "Failed to trigger disk scan"
+
+        series_path = temp_media_root / series.slug
+        nfo_files = wait_for_nfo_files(series_path, expected_count=2, timeout=30.0)
+        multi_episode_nfos = [
+            nfo_file for nfo_file in nfo_files if "E01-E02" in nfo_file.name
+        ]
+        assert (
+            len(multi_episode_nfos) == 1
+        ), f"Expected one Sonarr-generated multi-episode NFO, got {nfo_files}"
+        multi_episode_nfo = multi_episode_nfos[0]
+
+        original_content = multi_episode_nfo.read_text(encoding="utf-8")
+        assert original_content.count("<episodedetails>") == 2
+        assert "</episodedetails>\n<episodedetails>" in original_content
+
+        with ServiceRunner(
+            temp_media_root,
+            {
+                "ENABLE_FILE_MONITOR": "false",
+                "ORIGINAL_FILES_BACKUP_DIR": str(backup_dir),
+            },
+        ):
+            verify_translations(
+                nfo_files,
+                expected_language="zh",
+                possible_languages=["zh", "en"],
+            )
+            rewritten_content = multi_episode_nfo.read_text(encoding="utf-8")
+            assert rewritten_content.count("<episodedetails>") == 2
+            assert "</episodedetails>\n<episodedetails>" in rewritten_content
+
+        with ServiceRunner(
+            temp_media_root,
+            {
+                "SERVICE_MODE": "rollback",
+                "ENABLE_FILE_MONITOR": "false",
+                "ORIGINAL_FILES_BACKUP_DIR": str(backup_dir),
+            },
+        ):
+            verify_translations(
+                nfo_files,
+                expected_language="en",
+                possible_languages=["zh", "en"],
+            )
+            rolled_back_content = multi_episode_nfo.read_text(encoding="utf-8")
+            assert rolled_back_content.count("<episodedetails>") == 2
+            assert "</episodedetails>\n<episodedetails>" in rolled_back_content

@@ -57,6 +57,21 @@ class MetadataInfo:
 
     # Raw XML for writing
     xml_tree: ET.ElementTree | None = None
+    episode_entries: list["EpisodeMetadataInfo"] | None = None
+
+
+@dataclass
+class EpisodeMetadataInfo:
+    """Episode metadata extracted from an episode NFO document."""
+
+    tmdb_id: int | None = None
+    tvdb_id: int | None = None
+    imdb_id: str | None = None
+    season: int | None = None
+    episode: int | None = None
+    title: str = ""
+    description: str = ""
+    xml_tree: ET.ElementTree | None = None
 
 
 @dataclass
