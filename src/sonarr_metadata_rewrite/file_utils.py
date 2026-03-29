@@ -213,6 +213,7 @@ def _build_episode_entry(root: ET.Element) -> EpisodeMetadataInfo:
     entry = EpisodeMetadataInfo(xml_tree=tree)
     _populate_common_metadata(entry, root)
 
+    # For episode files, extract season/episode numbers
     season_element = root.find("season")
     episode_element = root.find("episode")
     if season_element is not None and season_element.text:
@@ -227,6 +228,7 @@ def _populate_common_metadata(
     info: MetadataInfo | EpisodeMetadataInfo, root: ET.Element
 ) -> None:
     """Populate shared metadata fields from a root element."""
+    # Extract all uniqueid elements
     for uniqueid in root.findall(".//uniqueid"):
         id_type = uniqueid.get("type", "").lower()
         id_value = uniqueid.text
@@ -240,10 +242,12 @@ def _populate_common_metadata(
         elif id_type == "imdb":
             info.imdb_id = id_value.strip()
 
+    # Extract title
     title_element = root.find("title")
     if title_element is not None and title_element.text:
         info.title = title_element.text.strip()
 
+    # Extract plot/description
     plot_element = root.find("plot")
     if plot_element is not None and plot_element.text:
         info.description = plot_element.text.strip()

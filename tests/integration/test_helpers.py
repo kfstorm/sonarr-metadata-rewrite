@@ -355,19 +355,23 @@ def verify_translations(
                 title = entry.get("title", "").strip()
                 plot = entry.get("plot", "").strip()
 
+                # Ensure we have content to detect
                 assert title, f"NFO file {nfo_file} has no title"
                 assert plot, f"NFO file {nfo_file} has no plot"
 
+                # Detect language in title and plot
                 try:
                     title_matches, title_langs = check_language(title)
                     plot_matches, plot_langs = check_language(plot)
 
+                    # Both title and plot must match
                     if not (title_matches and plot_matches):
                         error_parts = [
                             f"Language mismatch in {nfo_file.name}. "
                             f"Expected {expected_language}"
                         ]
 
+                        # Show detection results (only for fields that were detected)
                         if not title_matches and title_langs is not None:
                             error_parts.append(f"title_langs={title_langs}")
                         if not plot_matches and plot_langs is not None:
