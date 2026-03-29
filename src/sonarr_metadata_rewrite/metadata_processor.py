@@ -9,6 +9,7 @@ from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_utils import extract_metadata_info
 from sonarr_metadata_rewrite.models import (
+    EpisodeMetadataInfo,
     MetadataInfo,
     MetadataProcessResult,
     TmdbIds,
@@ -39,129 +40,12 @@ class MetadataProcessor:
         tmdb_ids = None
         metadata_info = None
         try:
-            # Extract all metadata in single parse (including content for comparison)
             metadata_info = extract_metadata_info(nfo_path)
 
-            # Build TMDB IDs from parsed metadata using hierarchical resolution
-            tmdb_ids = self._build_tmdb_ids_from_metadata(metadata_info, nfo_path)
-            if not tmdb_ids:
-                return MetadataProcessResult(
-                    success=False,
-                    file_path=nfo_path,
-                    message="No TMDB ID found in .nfo file",
-                    file_modified=False,
-                    translated_content=None,
-                )
+            if metadata_info.file_type == "episodedetails":
+                return self._process_episode_file(nfo_path, metadata_info)
 
-            # Get translations from TMDB API
-            all_translations = self.translator.get_translations(tmdb_ids)
-
-            # Apply language preferences to find best translation
-            selected_translation = self._select_preferred_translation(all_translations)
-
-            if not selected_translation:
-                # No preferred translation found - try to revert to original backup
-                original_metadata = self._get_backup_metadata_info(nfo_path)
-                if original_metadata:
-                    # Only revert if current content is different from original
-                    if (
-                        metadata_info.title != original_metadata.title
-                        or metadata_info.description != original_metadata.description
-                    ):
-                        selected_translation = TranslatedContent(
-                            title=TranslatedString(
-                                content=original_metadata.title, language="original"
-                            ),
-                            description=TranslatedString(
-                                content=original_metadata.description,
-                                language="original",
-                            ),
-                        )
-                        # Continue to write original content back
-                    else:
-                        # Already showing original content
-                        preferred_langs = ", ".join(self.settings.preferred_languages)
-                        available_langs = (
-                            ", ".join(sorted(all_translations.keys()))
-                            if all_translations
-                            else "none"
-                        )
-                        return MetadataProcessResult(
-                            success=False,
-                            file_path=nfo_path,
-                            message=(
-                                f"File unchanged - content already matches original "
-                                f"and "
-                                f"no translation available in preferred languages "
-                                f"[{preferred_langs}]. "
-                                f"Available: [{available_langs}]"
-                            ),
-                            tmdb_ids=tmdb_ids,
-                            file_modified=False,
-                            translated_content=None,
-                        )
-                else:
-                    # No backup available - return existing failure result
-                    preferred_langs = ", ".join(self.settings.preferred_languages)
-                    available_langs = (
-                        ", ".join(sorted(all_translations.keys()))
-                        if all_translations
-                        else "none"
-                    )
-                    return MetadataProcessResult(
-                        success=False,
-                        file_path=nfo_path,
-                        message=(
-                            f"File unchanged - no translation available in preferred "
-                            f"languages [{preferred_langs}]. "
-                            f"Available: [{available_langs}]"
-                        ),
-                        tmdb_ids=tmdb_ids,
-                        file_modified=False,
-                        translated_content=None,
-                    )
-
-            # Apply fallback logic for empty translation fields
-            selected_translation = self._apply_fallback_to_translation(
-                metadata_info, selected_translation
-            )
-
-            # Check if content matches final translation after fallback
-            if (
-                metadata_info.title == selected_translation.title.content
-                and metadata_info.description
-                == selected_translation.description.content
-            ):
-                return MetadataProcessResult(
-                    success=True,
-                    file_path=nfo_path,
-                    message="Content already matches preferred translation",
-                    tmdb_ids=tmdb_ids,
-                    file_modified=False,
-                    translated_content=selected_translation,
-                )
-
-            # Create backup if enabled
-            backup_created = create_backup(
-                nfo_path,
-                self.settings.original_files_backup_dir,
-                self.settings.rewrite_root_dir,
-            )
-
-            # Write translated metadata using cached XML tree
-            self._write_translated_metadata_with_tree(
-                metadata_info.xml_tree, nfo_path, selected_translation
-            )
-
-            return MetadataProcessResult(
-                success=True,
-                file_path=nfo_path,
-                message=self._build_success_message(selected_translation),
-                tmdb_ids=tmdb_ids,
-                backup_created=backup_created,
-                file_modified=True,
-                translated_content=selected_translation,
-            )
+            return self._process_single_metadata_file(nfo_path, metadata_info)
 
         except Exception as e:
             return MetadataProcessResult(
@@ -173,6 +57,254 @@ class MetadataProcessor:
                 file_modified=False,
                 translated_content=None,
             )
+
+    def _process_single_metadata_file(
+        self, nfo_path: Path, metadata_info: MetadataInfo
+    ) -> MetadataProcessResult:
+        """Process a single-document metadata file."""
+        tmdb_ids = None
+
+        # Extract all metadata in single parse (including content for comparison)
+        tmdb_ids = self._build_tmdb_ids_from_metadata(metadata_info, nfo_path)
+        if not tmdb_ids:
+            return MetadataProcessResult(
+                success=False,
+                file_path=nfo_path,
+                message="No TMDB ID found in .nfo file",
+                file_modified=False,
+                translated_content=None,
+            )
+
+        all_translations = self.translator.get_translations(tmdb_ids)
+        selected_translation = self._select_preferred_translation(all_translations)
+
+        if not selected_translation:
+            original_metadata = self._get_backup_metadata_info(nfo_path)
+            if original_metadata:
+                if (
+                    metadata_info.title != original_metadata.title
+                    or metadata_info.description != original_metadata.description
+                ):
+                    selected_translation = TranslatedContent(
+                        title=TranslatedString(
+                            content=original_metadata.title, language="original"
+                        ),
+                        description=TranslatedString(
+                            content=original_metadata.description,
+                            language="original",
+                        ),
+                    )
+                else:
+                    preferred_langs = ", ".join(self.settings.preferred_languages)
+                    available_langs = (
+                        ", ".join(sorted(all_translations.keys()))
+                        if all_translations
+                        else "none"
+                    )
+                    return MetadataProcessResult(
+                        success=False,
+                        file_path=nfo_path,
+                        message=(
+                            f"File unchanged - content already matches original and "
+                            f"no translation available in preferred languages "
+                            f"[{preferred_langs}]. "
+                            f"Available: [{available_langs}]"
+                        ),
+                        tmdb_ids=tmdb_ids,
+                        file_modified=False,
+                        translated_content=None,
+                    )
+            else:
+                preferred_langs = ", ".join(self.settings.preferred_languages)
+                available_langs = (
+                    ", ".join(sorted(all_translations.keys()))
+                    if all_translations
+                    else "none"
+                )
+                return MetadataProcessResult(
+                    success=False,
+                    file_path=nfo_path,
+                    message=(
+                        f"File unchanged - no translation available in preferred "
+                        f"languages [{preferred_langs}]. Available: [{available_langs}]"
+                    ),
+                    tmdb_ids=tmdb_ids,
+                    file_modified=False,
+                    translated_content=None,
+                )
+
+        selected_translation = self._apply_fallback_to_translation(
+            metadata_info, selected_translation
+        )
+
+        if (
+            metadata_info.title == selected_translation.title.content
+            and metadata_info.description == selected_translation.description.content
+        ):
+            return MetadataProcessResult(
+                success=True,
+                file_path=nfo_path,
+                message="Content already matches preferred translation",
+                tmdb_ids=tmdb_ids,
+                file_modified=False,
+                translated_content=selected_translation,
+            )
+
+        backup_created = create_backup(
+            nfo_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dir,
+        )
+
+        self._write_translated_metadata_with_tree(
+            metadata_info.xml_tree, nfo_path, selected_translation
+        )
+
+        return MetadataProcessResult(
+            success=True,
+            file_path=nfo_path,
+            message=self._build_success_message(selected_translation),
+            tmdb_ids=tmdb_ids,
+            backup_created=backup_created,
+            file_modified=True,
+            translated_content=selected_translation,
+        )
+
+    def _process_episode_file(
+        self, nfo_path: Path, metadata_info: MetadataInfo
+    ) -> MetadataProcessResult:
+        """Process one or more episode documents from a single NFO file."""
+        episode_entries = metadata_info.episode_entries or []
+        series_tmdb_id = self._resolve_tmdb_id_with_metadata(metadata_info, nfo_path)
+        if series_tmdb_id is None:
+            return MetadataProcessResult(
+                success=False,
+                file_path=nfo_path,
+                message="No TMDB ID found in .nfo file",
+                file_modified=False,
+                translated_content=None,
+            )
+
+        selected_translation: TranslatedContent | None = None
+        updated_translations: dict[int, TranslatedContent] = {}
+        translated_count = 0
+        unchanged_count = 0
+        unavailable_count = 0
+        first_tmdb_ids: TmdbIds | None = None
+
+        backup_metadata = self._get_backup_metadata_info(nfo_path)
+
+        for index, entry in enumerate(episode_entries):
+            if entry.season is None or entry.episode is None:
+                unavailable_count += 1
+                continue
+
+            entry_tmdb_ids = TmdbIds(
+                series_id=series_tmdb_id,
+                season=entry.season,
+                episode=entry.episode,
+            )
+            if first_tmdb_ids is None:
+                first_tmdb_ids = entry_tmdb_ids
+
+            all_translations = self.translator.get_translations(entry_tmdb_ids)
+            entry_translation = self._select_preferred_translation(all_translations)
+
+            entry_metadata = self._build_episode_metadata_info(entry, series_tmdb_id)
+            if not entry_translation:
+                backup_entry = self._find_matching_backup_episode(
+                    backup_metadata, entry
+                )
+                if backup_entry and (
+                    entry.title != backup_entry.title
+                    or entry.description != backup_entry.description
+                ):
+                    entry_translation = TranslatedContent(
+                        title=TranslatedString(
+                            content=backup_entry.title, language="original"
+                        ),
+                        description=TranslatedString(
+                            content=backup_entry.description,
+                            language="original",
+                        ),
+                    )
+                else:
+                    unavailable_count += 1
+                    continue
+
+            entry_translation = self._apply_fallback_to_translation(
+                entry_metadata, entry_translation
+            )
+            if selected_translation is None:
+                selected_translation = entry_translation
+
+            if (
+                entry.title == entry_translation.title.content
+                and entry.description == entry_translation.description.content
+            ):
+                unchanged_count += 1
+                translated_count += 1
+                continue
+
+            updated_translations[index] = entry_translation
+            translated_count += 1
+
+        if not updated_translations and translated_count == 0:
+            preferred_langs = ", ".join(self.settings.preferred_languages)
+            return MetadataProcessResult(
+                success=False,
+                file_path=nfo_path,
+                message=(
+                    "File unchanged - no episode translation available in preferred "
+                    f"languages [{preferred_langs}]"
+                ),
+                tmdb_ids=first_tmdb_ids,
+                file_modified=False,
+                translated_content=None,
+            )
+
+        if not updated_translations:
+            message = self._build_multi_episode_message(
+                updated_count=0,
+                translated_count=translated_count,
+                unchanged_count=unchanged_count,
+                unavailable_count=unavailable_count,
+                episode_count=len(episode_entries),
+            )
+            return MetadataProcessResult(
+                success=True,
+                file_path=nfo_path,
+                message=message,
+                tmdb_ids=first_tmdb_ids,
+                file_modified=False,
+                translated_content=selected_translation,
+            )
+
+        backup_created = create_backup(
+            nfo_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dir,
+        )
+        self._write_translated_episode_entries(
+            episode_entries, nfo_path, updated_translations
+        )
+
+        message = self._build_multi_episode_message(
+            updated_count=len(updated_translations),
+            translated_count=translated_count,
+            unchanged_count=unchanged_count,
+            unavailable_count=unavailable_count,
+            episode_count=len(episode_entries),
+        )
+        return MetadataProcessResult(
+            success=True,
+            file_path=nfo_path,
+            message=message,
+            tmdb_ids=first_tmdb_ids,
+            backup_created=backup_created,
+            file_modified=True,
+            translated_content=selected_translation,
+        )
 
     def _resolve_tmdb_id_with_metadata(
         self, metadata_info: MetadataInfo, nfo_path: Path
@@ -426,6 +558,38 @@ class MetadataProcessor:
 
         return None
 
+    def _build_episode_metadata_info(
+        self, entry: EpisodeMetadataInfo, series_tmdb_id: int
+    ) -> MetadataInfo:
+        """Convert an episode entry into MetadataInfo for shared helpers."""
+        return MetadataInfo(
+            tmdb_id=series_tmdb_id,
+            tvdb_id=entry.tvdb_id,
+            imdb_id=entry.imdb_id,
+            file_type="episodedetails",
+            season=entry.season,
+            episode=entry.episode,
+            title=entry.title,
+            description=entry.description,
+            xml_tree=entry.xml_tree,
+        )
+
+    def _find_matching_backup_episode(
+        self, backup_metadata: MetadataInfo | None, entry: EpisodeMetadataInfo
+    ) -> EpisodeMetadataInfo | None:
+        """Find the matching backup episode by season and episode number."""
+        if backup_metadata is None or not backup_metadata.episode_entries:
+            return None
+
+        for backup_entry in backup_metadata.episode_entries:
+            if (
+                backup_entry.season == entry.season
+                and backup_entry.episode == entry.episode
+            ):
+                return backup_entry
+
+        return None
+
     def _write_translated_metadata_with_tree(
         self,
         xml_tree: ET.ElementTree | None,
@@ -471,6 +635,48 @@ class MetadataProcessor:
 
         except Exception:
             # Clean up temporary file if something went wrong
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
+
+    def _write_translated_episode_entries(
+        self,
+        episode_entries: list[EpisodeMetadataInfo],
+        nfo_path: Path,
+        updated_translations: dict[int, TranslatedContent],
+    ) -> None:
+        """Write translated content for one or more episode XML documents."""
+        temp_path = nfo_path.with_suffix(".nfo.tmp")
+        try:
+            serialized_documents: list[str] = []
+            for index, entry in enumerate(episode_entries):
+                xml_tree = entry.xml_tree
+                if xml_tree is None:
+                    raise ValueError("Episode XML tree cannot be None")
+                root = xml_tree.getroot()
+                if root is None:
+                    raise ValueError("Episode XML root cannot be None")
+
+                translation = updated_translations.get(index)
+                if translation:
+                    title_element = root.find("title")
+                    if title_element is not None:
+                        title_element.text = translation.title.content
+                    plot_element = root.find("plot")
+                    if plot_element is not None:
+                        plot_element.text = translation.description.content
+
+                ET.indent(xml_tree, space="  ", level=0)
+                serialized_documents.append(ET.tostring(root, encoding="unicode"))
+
+            content = (
+                '<?xml version="1.0" encoding="utf-8"?>\n'
+                + "\n".join(serialized_documents)
+                + "\n"
+            )
+            temp_path.write_text(content, encoding="utf-8")
+            temp_path.replace(nfo_path)
+        except Exception:
             if temp_path.exists():
                 temp_path.unlink()
             raise
@@ -535,6 +741,28 @@ class MetadataProcessor:
             if translation.description.content:
                 parts.append(f"description: {translation.description.language}")
             return f"Successfully translated ({', '.join(parts)})"
+
+    def _build_multi_episode_message(
+        self,
+        updated_count: int,
+        translated_count: int,
+        unchanged_count: int,
+        unavailable_count: int,
+        episode_count: int,
+    ) -> str:
+        """Build a status message for multi-episode files."""
+        if episode_count == 1:
+            if updated_count == 1:
+                return "Successfully translated 1 episode"
+            return "Content already matches preferred translation"
+
+        parts = [f"{updated_count} of {episode_count} episodes updated"]
+        if unchanged_count:
+            parts.append(f"{unchanged_count} already matched")
+        skipped_count = episode_count - translated_count
+        if unavailable_count or skipped_count:
+            parts.append(f"{max(unavailable_count, skipped_count)} left unchanged")
+        return "; ".join(parts)
 
     def _get_backup_metadata_info(self, nfo_path: Path) -> MetadataInfo | None:
         """Get original metadata from backup NFO file if available.

@@ -499,3 +499,66 @@ def test_execute_rollback_with_no_backup_files(test_data_dir: Path) -> None:
 
     # Should not raise
     service.execute_rollback()
+
+
+def test_execute_rollback_restores_multi_episode_nfo(test_data_dir: Path) -> None:
+    """Test rollback restores Sonarr-style multi-episode NFO content."""
+    backup_dir = test_data_dir / "backups"
+    original_dir = test_data_dir / "media"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    original_dir.mkdir(parents=True, exist_ok=True)
+
+    backup_file = backup_dir / "Breaking Bad" / "Season 01" / "episodes.nfo"
+    backup_file.parent.mkdir(parents=True, exist_ok=True)
+    backup_file.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Walter White begins a new life in crime.</plot>
+  <season>1</season>
+  <episode>1</episode>
+</episodedetails>
+<episodedetails>
+  <title>Cat's in the Bag...</title>
+  <plot>Walt and Jesse deal with the aftermath.</plot>
+  <season>1</season>
+  <episode>2</episode>
+</episodedetails>
+""",
+        encoding="utf-8",
+    )
+
+    original_file = original_dir / "Breaking Bad" / "Season 01" / "episodes.nfo"
+    original_file.parent.mkdir(parents=True, exist_ok=True)
+    original_file.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>试播集</title>
+  <plot>沃尔特开始了犯罪生涯。</plot>
+  <season>1</season>
+  <episode>1</episode>
+</episodedetails>
+<episodedetails>
+  <title>猫在袋中</title>
+  <plot>沃尔特和杰西处理后果。</plot>
+  <season>1</season>
+  <episode>2</episode>
+</episodedetails>
+""",
+        encoding="utf-8",
+    )
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        rewrite_root_dir=original_dir,
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    service.execute_rollback()
+
+    restored_content = original_file.read_text(encoding="utf-8")
+    assert "Pilot" in restored_content
+    assert "Cat's in the Bag..." in restored_content
+    assert "试播集" not in restored_content

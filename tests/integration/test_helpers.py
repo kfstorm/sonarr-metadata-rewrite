@@ -1,7 +1,6 @@
 """Helper functions for integration tests."""
 
 import shutil
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +9,11 @@ from fast_langdetect import (  # type: ignore[import-untyped]
     detect_multilingual,
 )
 
-from sonarr_metadata_rewrite.file_utils import find_target_files, is_nfo_file
+from sonarr_metadata_rewrite.file_utils import (
+    extract_metadata_info,
+    find_target_files,
+    is_nfo_file,
+)
 from sonarr_metadata_rewrite.image_utils import read_embedded_marker
 from sonarr_metadata_rewrite.models import ImageCandidate
 from sonarr_metadata_rewrite.retry_utils import retry
@@ -69,6 +72,31 @@ def create_fake_episode_file(
     return episode_file
 
 
+def create_fake_multi_episode_file(
+    media_root: Path,
+    series_slug: str,
+    season: int,
+    first_episode: int,
+    last_episode: int,
+    title: str = "Episode",
+) -> Path:
+    """Create a fake multi-episode video file to trigger Sonarr processing."""
+    series_dir = media_root / series_slug
+    season_dir = series_dir / f"Season {season:02d}"
+    season_dir.mkdir(parents=True, exist_ok=True)
+
+    series_title = series_slug.replace("-", " ").title()
+    filename = (
+        f"{series_title} - S{season:02d}E{first_episode:02d}-E{last_episode:02d}"
+        f" - {title}.mkv"
+    )
+    episode_file = season_dir / filename
+
+    sample_file = Path(__file__).parent / "fixtures" / "sample_episode.mkv"
+    shutil.copy2(sample_file, episode_file)
+    return episode_file
+
+
 def wait_for_nfo_files(
     series_path: Path, expected_count: int, timeout: float = 5.0
 ) -> list[Path]:
@@ -114,42 +142,26 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
     Returns:
         Dictionary with parsed metadata
     """
-    tree = ET.parse(nfo_path)
-    root = tree.getroot()
+    extracted = extract_metadata_info(nfo_path)
 
     metadata: dict[str, Any] = {
-        "root_tag": root.tag,
-        "title": "",
-        "plot": "",
-        "tmdb_id": None,
-        "tvdb_id": None,
+        "root_tag": extracted.file_type,
+        "title": extracted.title,
+        "plot": extracted.description,
+        "tmdb_id": extracted.tmdb_id,
+        "tvdb_id": extracted.tvdb_id,
+        "entries": [],
     }
 
-    # Extract title
-    title_elem = root.find("title")
-    if title_elem is not None and title_elem.text:
-        metadata["title"] = title_elem.text.strip()
-
-    # Extract plot/overview
-    plot_elem = root.find("plot")
-    if plot_elem is not None and plot_elem.text:
-        metadata["plot"] = plot_elem.text.strip()
-
-    # Extract IDs
-    for uniqueid in root.findall(".//uniqueid"):
-        id_type = uniqueid.get("type")
-        id_value = uniqueid.text
-
-        if id_type == "tmdb" and id_value:
-            try:
-                metadata["tmdb_id"] = int(id_value.strip())
-            except ValueError:
-                pass
-        elif id_type == "tvdb" and id_value:
-            try:
-                metadata["tvdb_id"] = int(id_value.strip())
-            except ValueError:
-                pass
+    if extracted.episode_entries:
+        metadata["entries"] = [
+            {"title": entry.title, "plot": entry.description}
+            for entry in extracted.episode_entries
+        ]
+    else:
+        metadata["entries"] = [
+            {"title": extracted.title, "plot": extracted.description}
+        ]
 
     return metadata
 
@@ -298,12 +310,6 @@ def verify_translations(
     def check_translation_state() -> None:
         for nfo_file in nfo_files:
             metadata = parse_nfo_content(nfo_file)
-            title = metadata.get("title", "").strip()
-            plot = metadata.get("plot", "").strip()
-
-            # Ensure we have content to detect
-            assert title, f"NFO file {nfo_file} has no title"
-            assert plot, f"NFO file {nfo_file} has no plot"
 
             # Helper function to check if content has exceptions
             def has_exception(content: str) -> bool:
@@ -345,33 +351,41 @@ def verify_translations(
 
                 return threshold_match, detected_langs
 
-            # Detect language in title and plot
-            try:
-                title_matches, title_langs = check_language(title)
-                plot_matches, plot_langs = check_language(plot)
+            for entry in metadata.get("entries", []):
+                title = entry.get("title", "").strip()
+                plot = entry.get("plot", "").strip()
 
-                # Both title and plot must match
-                if not (title_matches and plot_matches):
-                    # Show detection results (only for fields that were detected)
-                    error_parts = [
-                        f"Language mismatch in {nfo_file.name}. "
-                        f"Expected {expected_language}"
-                    ]
+                # Ensure we have content to detect
+                assert title, f"NFO file {nfo_file} has no title"
+                assert plot, f"NFO file {nfo_file} has no plot"
 
-                    if not title_matches and title_langs is not None:
-                        error_parts.append(f"title_langs={title_langs}")
-                    if not plot_matches and plot_langs is not None:
-                        error_parts.append(f"plot_langs={plot_langs}")
+                # Detect language in title and plot
+                try:
+                    title_matches, title_langs = check_language(title)
+                    plot_matches, plot_langs = check_language(plot)
 
-                    error_parts.extend([f"Title: '{title}'", f"Plot: '{plot}'"])
+                    # Both title and plot must match
+                    if not (title_matches and plot_matches):
+                        error_parts = [
+                            f"Language mismatch in {nfo_file.name}. "
+                            f"Expected {expected_language}"
+                        ]
 
-                    raise AssertionError(". ".join(error_parts))
+                        # Show detection results (only for fields that were detected)
+                        if not title_matches and title_langs is not None:
+                            error_parts.append(f"title_langs={title_langs}")
+                        if not plot_matches and plot_langs is not None:
+                            error_parts.append(f"plot_langs={plot_langs}")
 
-            except DetectError as e:
-                raise AssertionError(
-                    f"Language detection failed for {nfo_file}: {e}. "
-                    f"Title: '{title}', Plot: '{plot}'"
-                ) from e
+                        error_parts.extend([f"Title: '{title}'", f"Plot: '{plot}'"])
+
+                        raise AssertionError(". ".join(error_parts))
+
+                except DetectError as e:
+                    raise AssertionError(
+                        f"Language detection failed for {nfo_file}: {e}. "
+                        f"Title: '{title}', Plot: '{plot}'"
+                    ) from e
 
     check_translation_state()
     print(

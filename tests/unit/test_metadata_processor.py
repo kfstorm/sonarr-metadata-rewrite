@@ -10,7 +10,9 @@ import pytest
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 from sonarr_metadata_rewrite.models import (
+    EpisodeMetadataInfo,
     MetadataInfo,
+    TmdbIds,
     TranslatedContent,
     TranslatedString,
 )
@@ -1371,3 +1373,298 @@ def test_content_matches_after_fallback_skips_processing(
     assert result.translated_content.title.language == "original"  # Fallback language
     assert result.translated_content.description.content == "这是一个示例描述"
     assert result.translated_content.description.language == "zh-CN"  # From translation
+
+
+def test_process_file_multi_episode_partial_update(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test partial translation updates for multi-episode NFO files."""
+    settings = create_test_settings(test_data_dir)
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    series_dir = test_data_dir / "Breaking Bad"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    nfo_path = create_test_files("multi_episode.nfo", series_dir / "episodes.nfo")
+
+    def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
+        if tmdb_ids.episode == 1:
+            return {
+                "zh-CN": TranslatedContent(
+                    title=TranslatedString(content="试播集", language="zh-CN"),
+                    description=TranslatedString(
+                        content="沃尔特开始了犯罪生涯。", language="zh-CN"
+                    ),
+                )
+            }
+        return {}
+
+    mock_translator.get_translations.side_effect = get_translations
+    mock_translator.find_tmdb_id_by_external_id.return_value = None
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+        expected_message_contains="1 of 2 episodes updated",
+    )
+
+    content = nfo_path.read_text(encoding="utf-8")
+    assert "试播集" in content
+    assert "沃尔特开始了犯罪生涯。" in content
+    assert "Cat's in the Bag..." in content
+    assert "Walt and Jesse deal with the aftermath." in content
+
+
+def test_process_file_multi_episode_restore_from_backup_when_translation_missing(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test multi-episode file restores individual episodes from backup."""
+    settings = create_test_settings(test_data_dir)
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    series_dir = test_data_dir / "Breaking Bad"
+    backup_dir = test_data_dir / "backups" / "Breaking Bad"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    create_test_files("multi_episode.nfo", backup_dir / "episodes.nfo")
+
+    translated_multi_episode = """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>试播集</title>
+  <plot>沃尔特开始了犯罪生涯。</plot>
+  <season>1</season>
+  <episode>1</episode>
+  <uniqueid type="tvdb" default="true">349232</uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>猫在袋中</title>
+  <plot>沃尔特和杰西处理后果。</plot>
+  <season>1</season>
+  <episode>2</episode>
+  <uniqueid type="tvdb" default="true">349233</uniqueid>
+</episodedetails>
+"""
+    nfo_path = series_dir / "episodes.nfo"
+    nfo_path.write_text(translated_multi_episode, encoding="utf-8")
+
+    mock_translator.get_translations.return_value = {}
+    mock_translator.find_tmdb_id_by_external_id.return_value = None
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_message_contains="2 of 2 episodes updated",
+    )
+
+    restored_content = nfo_path.read_text(encoding="utf-8")
+    assert "Pilot" in restored_content
+    assert "Cat's in the Bag..." in restored_content
+    assert "试播集" not in restored_content
+
+
+def test_process_file_multi_episode_no_translation_available(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test multi-episode file returns unchanged when no entries are translatable."""
+    settings = create_test_settings(test_data_dir)
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    series_dir = test_data_dir / "Breaking Bad"
+    backup_dir = test_data_dir / "backups" / "Breaking Bad"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    create_test_files("multi_episode.nfo", backup_dir / "episodes.nfo")
+    nfo_path = create_test_files("multi_episode.nfo", series_dir / "episodes.nfo")
+
+    mock_translator.get_translations.return_value = {}
+    mock_translator.find_tmdb_id_by_external_id.return_value = None
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=False,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=False,
+        expected_message_contains="no episode translation available",
+    )
+
+
+def test_process_file_multi_episode_skips_entry_without_episode_numbers(
+    test_data_dir: Path,
+) -> None:
+    """Test multi-episode processing skips entries missing season or episode."""
+    settings = create_test_settings(test_data_dir)
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    series_dir = test_data_dir / "Breaking Bad"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    (series_dir / "tvshow.nfo").write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Breaking Bad</title>
+  <plot>A chemistry teacher turns to crime.</plot>
+  <uniqueid type="tmdb">1396</uniqueid>
+</tvshow>
+""",
+        encoding="utf-8",
+    )
+    nfo_path = series_dir / "episodes.nfo"
+    nfo_path.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Walter White begins a new life in crime.</plot>
+  <season>1</season>
+  <episode>1</episode>
+</episodedetails>
+<episodedetails>
+  <title>Broken Entry</title>
+  <plot>Missing episode number.</plot>
+</episodedetails>
+""",
+        encoding="utf-8",
+    )
+
+    mock_translator.get_translations.return_value = {
+        "zh-CN": TranslatedContent(
+            title=TranslatedString(content="试播集", language="zh-CN"),
+            description=TranslatedString(
+                content="沃尔特开始了犯罪生涯。", language="zh-CN"
+            ),
+        )
+    }
+    mock_translator.find_tmdb_id_by_external_id.return_value = None
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_message_contains="1 left unchanged",
+    )
+
+
+def test_process_file_multi_episode_reports_already_matched_entries(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test multi-episode message includes already matched entries."""
+    settings = create_test_settings(test_data_dir)
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    series_dir = test_data_dir / "Breaking Bad"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    nfo_path = series_dir / "episodes.nfo"
+    nfo_path.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>试播集</title>
+  <plot>沃尔特开始了犯罪生涯。</plot>
+  <season>1</season>
+  <episode>1</episode>
+</episodedetails>
+<episodedetails>
+  <title>Cat's in the Bag...</title>
+  <plot>Walt and Jesse deal with the aftermath.</plot>
+  <season>1</season>
+  <episode>2</episode>
+</episodedetails>
+""",
+        encoding="utf-8",
+    )
+
+    def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
+        if tmdb_ids.episode == 1:
+            return {
+                "zh-CN": TranslatedContent(
+                    title=TranslatedString(content="试播集", language="zh-CN"),
+                    description=TranslatedString(
+                        content="沃尔特开始了犯罪生涯。", language="zh-CN"
+                    ),
+                )
+            }
+        return {
+            "zh-CN": TranslatedContent(
+                title=TranslatedString(content="袋中猫", language="zh-CN"),
+                description=TranslatedString(
+                    content="两人处理善后。", language="zh-CN"
+                ),
+            )
+        }
+
+    mock_translator.get_translations.side_effect = get_translations
+    mock_translator.find_tmdb_id_by_external_id.return_value = None
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_series_id=1396,
+        expected_season=1,
+        expected_episode=1,
+        expected_file_modified=True,
+        expected_message_contains="1 already matched",
+    )
+
+
+def test_write_translated_metadata_with_tree_requires_xml_tree(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+) -> None:
+    """Test single-document writer rejects missing XML trees."""
+    with pytest.raises(ValueError, match="XML tree cannot be None"):
+        processor._write_translated_metadata_with_tree(
+            None,
+            test_data_dir / "out.nfo",
+            TranslatedContent(
+                title=TranslatedString(content="Title", language="en"),
+                description=TranslatedString(content="Plot", language="en"),
+            ),
+        )
+
+
+def test_write_translated_episode_entries_requires_xml_tree(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+) -> None:
+    """Test multi-document writer rejects missing XML trees."""
+    with pytest.raises(ValueError, match="Episode XML tree cannot be None"):
+        processor._write_translated_episode_entries(
+            [EpisodeMetadataInfo()],
+            test_data_dir / "out.nfo",
+            {},
+        )

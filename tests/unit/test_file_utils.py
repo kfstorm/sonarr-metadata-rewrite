@@ -1,9 +1,13 @@
 """Tests for NFO utility functions."""
 
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import pytest
+
 from sonarr_metadata_rewrite.file_utils import (
+    extract_metadata_info,
     find_target_files,
     is_nfo_file,
     is_rewritable_image,
@@ -278,3 +282,113 @@ class TestFindRewritableImages:
                 p for p in find_target_files(temp_path) if is_rewritable_image(p)
             ]
             assert found_files == []
+
+
+class TestExtractMetadataInfo:
+    """Test metadata extraction for single and multi-episode NFO files."""
+
+    def test_extract_single_episode_metadata(self, test_data_dir: Path) -> None:
+        nfo_path = test_data_dir / "episode.nfo"
+        nfo_path.write_text(
+            """<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Episode description.</plot>
+  <season>1</season>
+  <episode>1</episode>
+  <uniqueid type=\"tmdb\">1396</uniqueid>
+</episodedetails>
+""",
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.file_type == "episodedetails"
+        assert metadata.season == 1
+        assert metadata.episode == 1
+        assert metadata.title == "Pilot"
+        assert metadata.episode_entries is not None
+        assert len(metadata.episode_entries) == 1
+
+    def test_extract_multi_episode_metadata(self, test_data_dir: Path) -> None:
+        nfo_path = test_data_dir / "multi_episode.nfo"
+        nfo_path.write_text(
+            """<?xml version=\"1.0\" encoding=\"utf-8\"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Walter White begins a new life in crime.</plot>
+  <season>1</season>
+  <episode>1</episode>
+  <uniqueid type=\"tvdb\">349232</uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>Cat's in the Bag...</title>
+  <plot>Walt and Jesse deal with the aftermath.</plot>
+  <season>1</season>
+  <episode>2</episode>
+  <uniqueid type=\"tvdb\">349233</uniqueid>
+</episodedetails>
+""",
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.file_type == "episodedetails"
+        assert metadata.episode_entries is not None
+        assert len(metadata.episode_entries) == 2
+        assert metadata.episode_entries[0].episode == 1
+        assert metadata.episode_entries[0].title == "Pilot"
+        assert metadata.episode_entries[1].episode == 2
+        assert metadata.episode_entries[1].title == "Cat's in the Bag..."
+
+    def test_extract_multi_episode_metadata_uses_later_ids_when_first_missing(
+        self, test_data_dir: Path
+    ) -> None:
+        nfo_path = test_data_dir / "multi_episode_missing_ids.nfo"
+        nfo_path.write_text(
+            """<?xml version="1.0" encoding="utf-8"?>
+<episodedetails>
+  <title>Pilot</title>
+  <plot>Episode one.</plot>
+  <season>1</season>
+  <episode>1</episode>
+  <uniqueid type="tmdb">   </uniqueid>
+</episodedetails>
+<episodedetails>
+  <title>Cat's in the Bag...</title>
+  <plot>Episode two.</plot>
+  <season>1</season>
+  <episode>2</episode>
+  <uniqueid type="tvdb">349233</uniqueid>
+  <uniqueid type="imdb">tt0959621</uniqueid>
+</episodedetails>
+""",
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.tvdb_id == 349233
+        assert metadata.imdb_id == "tt0959621"
+        assert metadata.tmdb_id is None
+
+    def test_extract_metadata_info_rejects_unsupported_multi_root_content(
+        self, test_data_dir: Path
+    ) -> None:
+        nfo_path = test_data_dir / "invalid_multi_root.nfo"
+        nfo_path.write_text(
+            """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Breaking Bad</title>
+</tvshow>
+<episodedetails>
+  <title>Pilot</title>
+</episodedetails>
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ET.ParseError, match="Unsupported NFO root structure"):
+            extract_metadata_info(nfo_path)
