@@ -166,9 +166,6 @@ def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
     if all(child.tag == "episodedetails" for child in wrapped_root):
         return _extract_episode_metadata(wrapped_root)
 
-    if len(wrapped_root) == 1 and wrapped_root[0].tag == "episodedetails":
-        return _extract_episode_metadata(wrapped_root)
-
     raise ET.ParseError("Unsupported NFO root structure")
 
 
