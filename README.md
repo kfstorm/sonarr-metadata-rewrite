@@ -131,6 +131,9 @@ ORIGINAL_FILES_BACKUP_DIR=./backups   # Backup original files (default: ./backup
                                       # path (e.g. /app/backups/tv/Show/tvshow.nfo)
                                       # so backups from different root dirs never
                                       # collide.
+                                      # Backups created by older single-root-dir
+                                      # versions are still found and restored
+                                      # automatically (backward compatible).
 
 # Service Mode
 SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'

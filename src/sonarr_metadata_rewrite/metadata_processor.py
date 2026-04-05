@@ -153,6 +153,7 @@ class MetadataProcessor:
         backup_created = create_backup(
             nfo_path,
             self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dirs,
         )
 
         self._write_translated_metadata_with_tree(
@@ -282,6 +283,7 @@ class MetadataProcessor:
         backup_created = create_backup(
             nfo_path,
             self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dirs,
         )
         self._write_translated_episode_entries(
             episode_entries, nfo_path, updated_translations
@@ -774,6 +776,7 @@ class MetadataProcessor:
         backup_path = get_backup_path(
             nfo_path,
             self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dirs,
         )
         if not backup_path:
             return None

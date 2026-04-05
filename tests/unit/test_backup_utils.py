@@ -274,3 +274,127 @@ def test_restore_creates_target_in_backup_extension() -> None:
         assert result is True
         assert file_path_jpg.exists()
         assert file_path_jpg.read_bytes() == b"PNG backup"
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility (legacy format) tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_backup_path_finds_legacy_format() -> None:
+    """get_backup_path falls back to legacy path when root_dirs supplied."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir = temp_path / "tv"
+        backup_dir = temp_path / "backup"
+
+        # Original file
+        show_dir = root_dir / "Show A"
+        show_dir.mkdir(parents=True)
+        file_path = show_dir / "tvshow.nfo"
+        file_path.write_text("original")
+
+        # Legacy backup: relative to root_dir
+        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
+        legacy_backup.parent.mkdir(parents=True)
+        legacy_backup.write_text("original")
+
+        # New-format path does NOT exist, but legacy does
+        new_backup = backup_dir / file_path.relative_to("/")
+        assert not new_backup.exists()
+
+        result = get_backup_path(file_path, backup_dir, [root_dir])
+        assert result == legacy_backup
+
+
+def test_create_backup_skips_when_legacy_backup_exists() -> None:
+    """create_backup does not overwrite a legacy-format backup."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir = temp_path / "tv"
+        backup_dir = temp_path / "backup"
+
+        show_dir = root_dir / "Show A"
+        show_dir.mkdir(parents=True)
+        file_path = show_dir / "tvshow.nfo"
+        file_path.write_text("translated content")
+
+        # Create legacy backup
+        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
+        legacy_backup.parent.mkdir(parents=True)
+        legacy_backup.write_text("original content")
+
+        result = create_backup(file_path, backup_dir, [root_dir])
+        assert result is True
+
+        # Legacy backup untouched
+        assert legacy_backup.read_text() == "original content"
+        # New-format backup NOT created (legacy already covers it)
+        new_backup = backup_dir / file_path.relative_to("/")
+        assert not new_backup.exists()
+
+
+def test_restore_from_backup_uses_legacy_format() -> None:
+    """restore_from_backup restores content from a legacy-format backup."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir = temp_path / "tv"
+        backup_dir = temp_path / "backup"
+
+        show_dir = root_dir / "Show A"
+        show_dir.mkdir(parents=True)
+        file_path = show_dir / "tvshow.nfo"
+        file_path.write_text("translated content")
+
+        # Legacy backup only
+        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
+        legacy_backup.parent.mkdir(parents=True)
+        legacy_backup.write_text("original content")
+
+        result = restore_from_backup(file_path, backup_dir, [root_dir])
+        assert result is True
+        assert file_path.read_text() == "original content"
+
+
+def test_legacy_fallback_stem_matching() -> None:
+    """Legacy fallback also applies stem-matching for image extension changes."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir = temp_path / "tv"
+        backup_dir = temp_path / "backup"
+
+        show_dir = root_dir / "Show A"
+        show_dir.mkdir(parents=True)
+        # Current file is .jpg
+        file_path_jpg = show_dir / "poster.jpg"
+        file_path_jpg.write_bytes(b"JPEG translated")
+
+        # Legacy backup is .png (stem matches)
+        legacy_backup_png = backup_dir / "Show A" / "poster.png"
+        legacy_backup_png.parent.mkdir(parents=True)
+        legacy_backup_png.write_bytes(b"PNG original")
+
+        result = get_backup_path(file_path_jpg, backup_dir, [root_dir])
+        assert result == legacy_backup_png
+
+
+def test_legacy_fallback_not_used_without_root_dirs() -> None:
+    """Legacy format is NOT consulted when root_dirs is not provided."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir = temp_path / "tv"
+        backup_dir = temp_path / "backup"
+
+        show_dir = root_dir / "Show A"
+        show_dir.mkdir(parents=True)
+        file_path = show_dir / "tvshow.nfo"
+        file_path.write_text("content")
+
+        # Only a legacy backup exists
+        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
+        legacy_backup.parent.mkdir(parents=True)
+        legacy_backup.write_text("legacy backup")
+
+        # No root_dirs → only new-format path is checked → not found
+        assert get_backup_path(file_path, backup_dir) is None
+        assert get_backup_path(file_path, backup_dir, []) is None

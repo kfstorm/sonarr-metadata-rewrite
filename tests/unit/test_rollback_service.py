@@ -12,7 +12,7 @@ from tests.conftest import create_test_settings
 
 
 def _make_backup(original_file: Path, backup_dir: Path) -> None:
-    """Helper: create a backup of an existing file at the correct absolute-path structure.
+    """Helper: create a backup using the correct absolute-path structure.
 
     Assumes original_file exists. Creates necessary backup directory structure
     automatically.
@@ -568,3 +568,43 @@ def test_execute_rollback_restores_multi_episode_nfo(test_data_dir: Path) -> Non
     assert "Pilot" in restored_content
     assert "Cat's in the Bag..." in restored_content
     assert "试播集" not in restored_content
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility (legacy backup format) rollback tests
+# ---------------------------------------------------------------------------
+
+
+def test_rollback_restores_legacy_format_backup(test_data_dir: Path) -> None:
+    """Rollback correctly restores a file whose backup is in the legacy format.
+
+    The legacy format stores the backup relative to the root dir, e.g.:
+        <BACKUP_DIR>/Show A/tvshow.nfo   (root: <MEDIA>/tv)
+    rather than the new absolute-path format:
+        <BACKUP_DIR>/tv/Show A/tvshow.nfo
+    """
+    backup_dir = test_data_dir / "backups"
+    backup_dir.mkdir(exist_ok=True)
+
+    original_dir = test_data_dir / "media" / "tv"
+    show_dir = original_dir / "Show A"
+    show_dir.mkdir(parents=True, exist_ok=True)
+    original_file = show_dir / "tvshow.nfo"
+    original_file.write_text("Translated content")
+
+    # Place backup in the OLD (legacy) format: relative to root_dir
+    legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
+    legacy_backup.parent.mkdir(parents=True, exist_ok=True)
+    legacy_backup.write_text("Original content")
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        rewrite_root_dirs=[original_dir],
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    service.execute_rollback()
+
+    assert original_file.read_text() == "Original content"
