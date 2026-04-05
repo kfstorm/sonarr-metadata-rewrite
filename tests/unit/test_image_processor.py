@@ -244,12 +244,11 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create backup dir using same structure as settings
+        # Create backup dir using correct absolute-path structure
         backup_root = image_processor.settings.original_files_backup_dir
         assert backup_root is not None
-        backup_dir = backup_root / "Series"
-        backup_dir.mkdir(parents=True)
-        backup_path = backup_dir / "poster.jpg"
+        backup_path = backup_root / poster_path.relative_to("/")
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create original backup (no marker)
         original_img = Image.new("RGB", (100, 100), color="white")
@@ -288,12 +287,11 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create backup dir using same structure as settings
+        # Create backup dir using correct absolute-path structure
         backup_root = image_processor.settings.original_files_backup_dir
         assert backup_root is not None
-        backup_dir = backup_root / "Series"
-        backup_dir.mkdir(parents=True)
-        backup_path = backup_dir / "poster.jpg"
+        backup_path = backup_root / poster_path.relative_to("/")
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create current file without marker (original)
         create_test_image(poster_path)
@@ -352,13 +350,14 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create backup dir using same structure as settings
+        # Create backup dir using correct absolute-path structure
+        # Backup is poster.png (different extension than current poster.jpg)
         backup_root = image_processor.settings.original_files_backup_dir
         assert backup_root is not None
-        backup_dir = backup_root / "Series"
-        backup_dir.mkdir(parents=True)
+        backup_parent = (backup_root / poster_path.relative_to("/")).parent
+        backup_parent.mkdir(parents=True, exist_ok=True)
         # Backup is poster.png (different extension)
-        backup_path = backup_dir / "poster.png"
+        backup_path = backup_parent / "poster.png"
 
         # Create original backup as PNG (no marker)
         original_img = Image.new("RGB", (100, 100), color="white")

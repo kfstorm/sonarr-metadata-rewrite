@@ -6,8 +6,14 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from sonarr_metadata_rewrite.backup_utils import create_backup
 from sonarr_metadata_rewrite.rollback_service import RollbackService
 from tests.conftest import create_test_settings
+
+
+def _make_backup(original_file: Path, backup_dir: Path) -> None:
+    """Helper: create a backup of an existing file at the correct path."""
+    create_backup(original_file, backup_dir)
 
 
 def test_rollback_service_init(test_data_dir: Path) -> None:
@@ -77,23 +83,19 @@ def test_execute_rollback_successful(
     test_data_dir: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test successful rollback of backup files."""
-    # Setup directory structure
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
-
-    # Create backup file
-    backup_show_dir = backup_dir / "Show1"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "tvshow.nfo"
-    backup_file.write_text("Original content")
-
-    # Create corresponding original directory
     original_show_dir = original_dir / "Show1"
-    original_show_dir.mkdir(exist_ok=True)
+    original_show_dir.mkdir(parents=True, exist_ok=True)
     original_file = original_show_dir / "tvshow.nfo"
+    original_file.write_text("Original content")
+
+    # Create backup at the correct absolute-path structure
+    _make_backup(original_file, backup_dir)
+
+    # Simulate translation (overwrite original)
     original_file.write_text("Translated content")
 
     settings = create_test_settings(
@@ -111,27 +113,29 @@ def test_execute_rollback_successful(
     assert original_file.read_text() == "Original content"
     assert "Found 1 backup files to restore" in caplog.text
     assert "Rollback completed: 1 files restored, 0 failed" in caplog.text
-    assert "✅ Restored: Show1/tvshow.nfo" in caplog.text
+    assert "✅ Restored:" in caplog.text
+    assert "tvshow.nfo" in caplog.text
 
 
 def test_execute_rollback_missing_original_directory(
     test_data_dir: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test rollback handles missing original directories gracefully."""
-    # Setup backup directory
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
+    deleted_show_dir = original_dir / "DeletedShow"
+    deleted_show_dir.mkdir(parents=True, exist_ok=True)
+    original_file = deleted_show_dir / "tvshow.nfo"
+    original_file.write_text("Original content")
 
-    # Create backup file for show that no longer exists
-    backup_show_dir = backup_dir / "DeletedShow"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "tvshow.nfo"
-    backup_file.write_text("Original content")
+    # Create backup before the directory is deleted
+    _make_backup(original_file, backup_dir)
 
-    # Note: We don't create the original show directory to simulate deleted show
+    # Simulate the show being deleted
+    original_file.unlink()
+    deleted_show_dir.rmdir()
 
     settings = create_test_settings(
         test_data_dir,
@@ -150,24 +154,22 @@ def test_execute_rollback_missing_original_directory(
 
 def test_restore_single_file_success(test_data_dir: Path) -> None:
     """Test successful restoration of a single file."""
-    # Setup directory structure
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
-
-    # Create backup file
-    backup_show_dir = backup_dir / "Show1"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "tvshow.nfo"
-    backup_file.write_text("Original content")
-
-    # Create corresponding original directory
     original_show_dir = original_dir / "Show1"
-    original_show_dir.mkdir(exist_ok=True)
+    original_show_dir.mkdir(parents=True, exist_ok=True)
     original_file = original_show_dir / "tvshow.nfo"
+    original_file.write_text("Original content")
+
+    _make_backup(original_file, backup_dir)
+
+    # Simulate translation
     original_file.write_text("Translated content")
+
+    # Derive the backup file path the same way create_backup would
+    backup_file = backup_dir / original_file.relative_to("/")
 
     settings = create_test_settings(
         test_data_dir,
@@ -185,18 +187,21 @@ def test_restore_single_file_success(test_data_dir: Path) -> None:
 
 def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
     """Test restoration fails gracefully when original directory is missing."""
-    # Setup backup directory
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
+    deleted_show_dir = original_dir / "DeletedShow"
+    deleted_show_dir.mkdir(parents=True, exist_ok=True)
+    original_file = deleted_show_dir / "tvshow.nfo"
+    original_file.write_text("Original content")
 
-    # Create backup file for show that no longer exists
-    backup_show_dir = backup_dir / "DeletedShow"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "tvshow.nfo"
-    backup_file.write_text("Original content")
+    _make_backup(original_file, backup_dir)
+    backup_file = backup_dir / original_file.relative_to("/")
+
+    # Delete the show directory (simulate deletion)
+    original_file.unlink()
+    deleted_show_dir.rmdir()
 
     settings = create_test_settings(
         test_data_dir,
@@ -257,17 +262,16 @@ def test_restore_image_with_extension_change(test_data_dir: Path) -> None:
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
-
-    # Create backup with .png extension
-    backup_show_dir = backup_dir / "Show1"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "poster.png"
-    backup_file.write_bytes(b"PNG image data")
-
-    # Create current directory with .jpg version
     original_show_dir = original_dir / "Show1"
-    original_show_dir.mkdir(exist_ok=True)
+    original_show_dir.mkdir(parents=True, exist_ok=True)
+
+    # Original poster was .png; create and back it up
+    original_poster = original_show_dir / "poster.png"
+    original_poster.write_bytes(b"PNG image data")
+    _make_backup(original_poster, backup_dir)
+
+    # Simulate rewrite: original is replaced with .jpg variant
+    original_poster.unlink()
     current_file = original_show_dir / "poster.jpg"
     current_file.write_bytes(b"JPEG image data")
 
@@ -281,7 +285,7 @@ def test_restore_image_with_extension_change(test_data_dir: Path) -> None:
 
     service.execute_rollback()
 
-    # poster.jpg should be removed, poster.png should be restored
+    # .jpg should be removed, .png should be restored
     assert not current_file.exists()
     restored_file = original_show_dir / "poster.png"
     assert restored_file.exists()
@@ -294,21 +298,18 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
-
-    # Create backup with .png extension
-    backup_show_dir = backup_dir / "Show1"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "clearlogo.png"
-    backup_file.write_bytes(b"Original PNG logo")
-
-    # Create current directory with multiple extension variants
     original_show_dir = original_dir / "Show1"
-    original_show_dir.mkdir(exist_ok=True)
-    jpg_file = original_show_dir / "clearlogo.jpg"
-    jpeg_file = original_show_dir / "clearlogo.jpeg"
-    jpg_file.write_bytes(b"JPEG logo 1")
-    jpeg_file.write_bytes(b"JPEG logo 2")
+    original_show_dir.mkdir(parents=True, exist_ok=True)
+
+    # Original clearlogo was .png; create and back it up
+    original_logo = original_show_dir / "clearlogo.png"
+    original_logo.write_bytes(b"Original PNG logo")
+    _make_backup(original_logo, backup_dir)
+    original_logo.unlink()
+
+    # Current directory contains multiple extension variants
+    (original_show_dir / "clearlogo.jpg").write_bytes(b"JPEG logo 1")
+    (original_show_dir / "clearlogo.jpeg").write_bytes(b"JPEG logo 2")
 
     settings = create_test_settings(
         test_data_dir,
@@ -320,10 +321,8 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
 
     service.execute_rollback()
 
-    # Both .jpg and .jpeg should be removed
-    assert not jpg_file.exists()
-    assert not jpeg_file.exists()
-    # Original .png should be restored
+    assert not (original_show_dir / "clearlogo.jpg").exists()
+    assert not (original_show_dir / "clearlogo.jpeg").exists()
     restored_file = original_show_dir / "clearlogo.png"
     assert restored_file.exists()
     assert restored_file.read_bytes() == b"Original PNG logo"
@@ -335,23 +334,22 @@ def test_restore_both_nfo_and_images(test_data_dir: Path) -> None:
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
-
-    # Create backups for NFO and images
-    backup_show_dir = backup_dir / "Show1"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_nfo = backup_show_dir / "tvshow.nfo"
-    backup_nfo.write_text("Original NFO")
-    backup_poster = backup_show_dir / "poster.jpg"
-    backup_poster.write_bytes(b"Original poster")
-
-    # Create current directory with modified files
     original_show_dir = original_dir / "Show1"
-    original_show_dir.mkdir(exist_ok=True)
-    current_nfo = original_show_dir / "tvshow.nfo"
-    current_nfo.write_text("Translated NFO")
-    current_poster = original_show_dir / "poster.png"  # Extension changed
-    current_poster.write_bytes(b"Translated poster")
+    original_show_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create originals and back them up
+    original_nfo = original_show_dir / "tvshow.nfo"
+    original_nfo.write_text("Original NFO")
+    _make_backup(original_nfo, backup_dir)
+
+    original_poster = original_show_dir / "poster.jpg"
+    original_poster.write_bytes(b"Original poster")
+    _make_backup(original_poster, backup_dir)
+
+    # Simulate translation (overwrite with translated versions and extension change)
+    original_nfo.write_text("Translated NFO")
+    original_poster.unlink()
+    (original_show_dir / "poster.png").write_bytes(b"Translated poster")
 
     settings = create_test_settings(
         test_data_dir,
@@ -363,12 +361,8 @@ def test_restore_both_nfo_and_images(test_data_dir: Path) -> None:
 
     service.execute_rollback()
 
-    # NFO should be restored
-    assert current_nfo.exists()
-    assert current_nfo.read_text() == "Original NFO"
-
-    # Image with wrong extension should be removed, correct one restored
-    assert not current_poster.exists()
+    assert original_nfo.read_text() == "Original NFO"
+    assert not (original_show_dir / "poster.png").exists()
     restored_poster = original_show_dir / "poster.jpg"
     assert restored_poster.exists()
     assert restored_poster.read_bytes() == b"Original poster"
@@ -382,24 +376,30 @@ def test_restore_mixed_backup_directory(
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
 
-    # Create diverse backup structure
-    show1_backup = backup_dir / "Show1"
-    show1_backup.mkdir(exist_ok=True)
-    (show1_backup / "tvshow.nfo").write_text("NFO 1")
-    (show1_backup / "poster.jpg").write_bytes(b"Poster 1")
-    (show1_backup / "clearlogo.png").write_bytes(b"Logo 1")
-
-    show2_backup = backup_dir / "Show2"
-    show2_backup.mkdir(exist_ok=True)
-    (show2_backup / "tvshow.nfo").write_text("NFO 2")
-
-    # Create corresponding original directories
     show1_orig = original_dir / "Show1"
-    show1_orig.mkdir(exist_ok=True)
+    show1_orig.mkdir(parents=True, exist_ok=True)
     show2_orig = original_dir / "Show2"
-    show2_orig.mkdir(exist_ok=True)
+    show2_orig.mkdir(parents=True, exist_ok=True)
+
+    # Create originals and back them up
+    files_to_backup = [
+        (show1_orig / "tvshow.nfo", "NFO 1"),
+        (show2_orig / "tvshow.nfo", "NFO 2"),
+    ]
+    binary_files = [
+        (show1_orig / "poster.jpg", b"Poster 1"),
+        (show1_orig / "clearlogo.png", b"Logo 1"),
+    ]
+    for file_path, content in files_to_backup:
+        file_path.write_text(content)
+        _make_backup(file_path, backup_dir)
+        file_path.write_text("translated")
+
+    for file_path, content in binary_files:
+        file_path.write_bytes(content)
+        _make_backup(file_path, backup_dir)
+        file_path.write_bytes(b"translated")
 
     settings = create_test_settings(
         test_data_dir,
@@ -412,13 +412,11 @@ def test_restore_mixed_backup_directory(
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
 
-    # All files should be restored
-    assert (show1_orig / "tvshow.nfo").exists()
-    assert (show1_orig / "poster.jpg").exists()
-    assert (show1_orig / "clearlogo.png").exists()
-    assert (show2_orig / "tvshow.nfo").exists()
+    assert (show1_orig / "tvshow.nfo").read_text() == "NFO 1"
+    assert (show1_orig / "poster.jpg").read_bytes() == b"Poster 1"
+    assert (show1_orig / "clearlogo.png").read_bytes() == b"Logo 1"
+    assert (show2_orig / "tvshow.nfo").read_text() == "NFO 2"
 
-    # Check log contains count
     assert "4 files restored" in caplog.text
 
 
@@ -428,18 +426,17 @@ def test_restore_case_insensitive_extensions(test_data_dir: Path) -> None:
     backup_dir.mkdir(exist_ok=True)
 
     original_dir = test_data_dir / "media"
-    original_dir.mkdir(exist_ok=True)
-
-    # Create backup with lowercase extension
-    backup_show_dir = backup_dir / "Show1"
-    backup_show_dir.mkdir(exist_ok=True)
-    backup_file = backup_show_dir / "poster.png"
-    backup_file.write_bytes(b"Original PNG")
-
-    # Create current file with uppercase extension
     original_show_dir = original_dir / "Show1"
-    original_show_dir.mkdir(exist_ok=True)
-    current_file = original_show_dir / "poster.JPG"  # Uppercase
+    original_show_dir.mkdir(parents=True, exist_ok=True)
+
+    # Original was .png; back it up
+    original_poster = original_show_dir / "poster.png"
+    original_poster.write_bytes(b"Original PNG")
+    _make_backup(original_poster, backup_dir)
+    original_poster.unlink()
+
+    # Simulate extension change to uppercase .JPG
+    current_file = original_show_dir / "poster.JPG"
     current_file.write_bytes(b"Modified JPEG")
 
     settings = create_test_settings(
@@ -452,9 +449,7 @@ def test_restore_case_insensitive_extensions(test_data_dir: Path) -> None:
 
     service.execute_rollback()
 
-    # Uppercase variant should be removed
     assert not current_file.exists()
-    # Original should be restored
     restored_file = original_show_dir / "poster.png"
     assert restored_file.exists()
     assert restored_file.read_bytes() == b"Original PNG"
@@ -467,10 +462,18 @@ def test_restore_single_file_when_backup_parent_not_exists(
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir()
 
-    # Create backup file
-    backup_file = backup_dir / "show" / "poster.jpg"
-    backup_file.parent.mkdir(parents=True)
-    backup_file.write_bytes(b"Original")
+    original_dir = test_data_dir / "media"
+    deleted_show_dir = original_dir / "show"
+    deleted_show_dir.mkdir(parents=True, exist_ok=True)
+    original_file = deleted_show_dir / "poster.jpg"
+    original_file.write_bytes(b"Original")
+    _make_backup(original_file, backup_dir)
+
+    backup_file = backup_dir / original_file.relative_to("/")
+
+    # Remove the original directory
+    original_file.unlink()
+    deleted_show_dir.rmdir()
 
     settings = create_test_settings(
         test_data_dir,
@@ -508,10 +511,10 @@ def test_execute_rollback_restores_multi_episode_nfo(test_data_dir: Path) -> Non
     backup_dir.mkdir(parents=True, exist_ok=True)
     original_dir.mkdir(parents=True, exist_ok=True)
 
-    backup_file = backup_dir / "Breaking Bad" / "Season 01" / "episodes.nfo"
-    backup_file.parent.mkdir(parents=True, exist_ok=True)
-    backup_file.write_text(
-        """<?xml version="1.0" encoding="utf-8"?>
+    episode_dir = original_dir / "Breaking Bad" / "Season 01"
+    episode_dir.mkdir(parents=True, exist_ok=True)
+    original_file = episode_dir / "episodes.nfo"
+    original_content = """<?xml version="1.0" encoding="utf-8"?>
 <episodedetails>
   <title>Pilot</title>
   <plot>Walter White begins a new life in crime.</plot>
@@ -524,12 +527,11 @@ def test_execute_rollback_restores_multi_episode_nfo(test_data_dir: Path) -> Non
   <season>1</season>
   <episode>2</episode>
 </episodedetails>
-""",
-        encoding="utf-8",
-    )
+"""
+    original_file.write_text(original_content, encoding="utf-8")
+    _make_backup(original_file, backup_dir)
 
-    original_file = original_dir / "Breaking Bad" / "Season 01" / "episodes.nfo"
-    original_file.parent.mkdir(parents=True, exist_ok=True)
+    # Simulate translation
     original_file.write_text(
         """<?xml version="1.0" encoding="utf-8"?>
 <episodedetails>

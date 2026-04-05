@@ -2,21 +2,27 @@
 
 Provides functions to create backups, retrieve backup paths, and restore files
 from backups, with support for stem-matching across different file extensions.
+
+Backup storage structure
+------------------------
+Each file is stored under the backup directory using its full absolute path
+(with the leading ``/`` stripped).  For example, the file
+``/media/sonarr/Show A/tvshow.nfo`` is backed up as
+``<BACKUP_DIR>/media/sonarr/Show A/tvshow.nfo``.  Using the full absolute path
+as the key guarantees that files from different root directories never collide,
+even when those directories contain identically-named entries.
 """
 
 import shutil
 from pathlib import Path
 
 
-def get_backup_path(
-    file_path: Path, backup_dir: Path | None, root_dir: Path
-) -> Path | None:
+def get_backup_path(file_path: Path, backup_dir: Path | None) -> Path | None:
     """Get backup file path for a given file.
 
     Args:
-        file_path: Path to the file to get backup path for
+        file_path: Absolute path to the file to get backup path for
         backup_dir: Backup directory root (None to skip)
-        root_dir: Root directory for calculating relative path
 
     Returns:
         Path to backup file if backup directory is configured and backup exists,
@@ -26,9 +32,8 @@ def get_backup_path(
     if backup_dir is None:
         return None
 
-    # Calculate backup path using same logic as create_backup()
-    relative_path = file_path.relative_to(root_dir)
-    backup_path = backup_dir / relative_path
+    # Mirror the full absolute path under backup_dir (strip leading /)
+    backup_path = backup_dir / file_path.relative_to("/")
 
     # Check for exact path match first
     if backup_path.exists():
@@ -46,13 +51,12 @@ def get_backup_path(
     return None
 
 
-def create_backup(file_path: Path, backup_dir: Path | None, root_dir: Path) -> bool:
-    """Create backup of a file maintaining directory structure.
+def create_backup(file_path: Path, backup_dir: Path | None) -> bool:
+    """Create backup of a file maintaining its full absolute path structure.
 
     Args:
-        file_path: Path to file to backup
+        file_path: Absolute path to file to backup
         backup_dir: Backup directory root (None to skip backup)
-        root_dir: Root directory for calculating relative path
 
     Returns:
         True if backup was created or already exists, False if backup disabled
@@ -63,9 +67,8 @@ def create_backup(file_path: Path, backup_dir: Path | None, root_dir: Path) -> b
     if not file_path.exists():
         return False
 
-    # Calculate backup path maintaining directory structure
-    relative_path = file_path.relative_to(root_dir)
-    backup_path = backup_dir / relative_path
+    # Mirror the full absolute path under backup_dir (strip leading /)
+    backup_path = backup_dir / file_path.relative_to("/")
 
     # Don't overwrite existing backup with exact same path
     if backup_path.exists():
@@ -88,9 +91,7 @@ def create_backup(file_path: Path, backup_dir: Path | None, root_dir: Path) -> b
     return True
 
 
-def restore_from_backup(
-    file_path: Path, backup_dir: Path | None, root_dir: Path
-) -> bool:
+def restore_from_backup(file_path: Path, backup_dir: Path | None) -> bool:
     """Restore file from backup, handling stem-matching and extension changes.
 
     This function handles the case where a backup might have a different extension
@@ -101,15 +102,14 @@ def restore_from_backup(
     3. Copy the backup to the original location
 
     Args:
-        file_path: Path to file to restore
+        file_path: Absolute path to file to restore
         backup_dir: Backup directory root (None to skip)
-        root_dir: Root directory for calculating relative path
 
     Returns:
         True if file was restored from backup, False otherwise
     """
     # Find backup path
-    backup_path = get_backup_path(file_path, backup_dir, root_dir)
+    backup_path = get_backup_path(file_path, backup_dir)
     if not backup_path:
         return False
 

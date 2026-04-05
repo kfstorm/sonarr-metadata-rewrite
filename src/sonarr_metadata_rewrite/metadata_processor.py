@@ -7,10 +7,7 @@ from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.file_utils import (
-    extract_metadata_info,
-    find_root_dir_for_file,
-)
+from sonarr_metadata_rewrite.file_utils import extract_metadata_info
 from sonarr_metadata_rewrite.models import (
     EpisodeMetadataInfo,
     MetadataInfo,
@@ -156,8 +153,6 @@ class MetadataProcessor:
         backup_created = create_backup(
             nfo_path,
             self.settings.original_files_backup_dir,
-            find_root_dir_for_file(nfo_path, self.settings.rewrite_root_dirs)
-            or self.settings.rewrite_root_dirs[0],
         )
 
         self._write_translated_metadata_with_tree(
@@ -287,8 +282,6 @@ class MetadataProcessor:
         backup_created = create_backup(
             nfo_path,
             self.settings.original_files_backup_dir,
-            find_root_dir_for_file(nfo_path, self.settings.rewrite_root_dirs)
-            or self.settings.rewrite_root_dirs[0],
         )
         self._write_translated_episode_entries(
             episode_entries, nfo_path, updated_translations
@@ -781,8 +774,6 @@ class MetadataProcessor:
         backup_path = get_backup_path(
             nfo_path,
             self.settings.original_files_backup_dir,
-            find_root_dir_for_file(nfo_path, self.settings.rewrite_root_dirs)
-            or self.settings.rewrite_root_dirs[0],
         )
         if not backup_path:
             return None

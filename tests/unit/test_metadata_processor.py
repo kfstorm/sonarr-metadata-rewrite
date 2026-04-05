@@ -823,8 +823,10 @@ def test_preference_change_no_translation_reverts_to_original_with_backup(
     nfo_path = test_data_dir / "tvshow.nfo"
     create_custom_nfo(nfo_path, "日本語タイトル", "日本語の説明")
 
-    # Create backup with original English content
-    backup_path = test_data_dir / "backups" / "tvshow.nfo"
+    # Create backup with original English content at the correct absolute-path structure
+    backup_root = test_data_dir / "backups"
+    backup_path = backup_root / nfo_path.relative_to("/")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
     create_custom_nfo(backup_path, "Original Title", "Original plot")
 
     # Mock translator: No preferred languages available
@@ -932,7 +934,9 @@ def test_backup_not_overwritten_on_subsequent_processing(
     )
 
     # Verify backup was created with original content
-    backup_path = test_data_dir / "backups" / "tvshow.nfo"
+    nfo_path_for_backup = test_data_dir / "tvshow.nfo"
+    backup_root = test_data_dir / "backups"
+    backup_path = backup_root / nfo_path_for_backup.relative_to("/")
     assert backup_path.exists(), "Backup file should exist"
 
     title, plot = parse_nfo_content(backup_path)
@@ -1434,12 +1438,17 @@ def test_process_file_multi_episode_restore_from_backup_when_translation_missing
     processor = MetadataProcessor(settings, mock_translator)
 
     series_dir = test_data_dir / "Breaking Bad"
-    backup_dir = test_data_dir / "backups" / "Breaking Bad"
     series_dir.mkdir(parents=True, exist_ok=True)
-    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    nfo_path = series_dir / "episodes.nfo"
+
+    # Create backup at the correct absolute-path structure
+    backup_root = test_data_dir / "backups"
+    backup_path = backup_root / nfo_path.relative_to("/")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    create_test_files("multi_episode.nfo", backup_path)
 
     create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
-    create_test_files("multi_episode.nfo", backup_dir / "episodes.nfo")
 
     translated_multi_episode = """<?xml version="1.0" encoding="utf-8"?>
 <episodedetails>
