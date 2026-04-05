@@ -12,7 +12,11 @@ from tests.conftest import create_test_settings
 
 
 def _make_backup(original_file: Path, backup_dir: Path) -> None:
-    """Helper: create a backup of an existing file at the correct path."""
+    """Helper: create a backup of an existing file at the correct absolute-path structure.
+
+    Assumes original_file exists. Creates necessary backup directory structure
+    automatically.
+    """
     create_backup(original_file, backup_dir)
 
 

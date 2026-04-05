@@ -55,8 +55,8 @@ def test_backup_and_retrieval_workflow() -> None:
 def test_backup_uses_full_absolute_path_structure() -> None:
     """Test backup mirrors the full absolute file path under backup_dir.
 
-    e.g. /tmp/abc/shows/series1/tvshow.nfo is backed up as:
-         <backup_dir>/tmp/abc/shows/series1/tvshow.nfo
+    e.g. /media/sonarr/Show/tvshow.nfo is backed up as:
+         <backup_dir>/media/sonarr/Show/tvshow.nfo
     This prevents collisions when files from different root dirs share the
     same relative path.
     """
