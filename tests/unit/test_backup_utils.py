@@ -3,6 +3,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from sonarr_metadata_rewrite.backup_utils import (
     create_backup,
     get_backup_path,
@@ -398,3 +400,114 @@ def test_legacy_fallback_not_used_without_root_dirs() -> None:
         # No root_dirs → only new-format path is checked → not found
         assert get_backup_path(file_path, backup_dir) is None
         assert get_backup_path(file_path, backup_dir, []) is None
+
+
+def test_get_backup_path_legacy_ignores_root_not_containing_file() -> None:
+    """Legacy fallback skips root dirs that don't contain the file (lines 50-51, 96)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir_a = temp_path / "tv"
+        root_dir_b = temp_path / "anime"
+        backup_dir = temp_path / "backup"
+
+        # File lives under root_dir_b, NOT root_dir_a
+        show_dir = root_dir_b / "Show B"
+        show_dir.mkdir(parents=True)
+        file_path = show_dir / "tvshow.nfo"
+        file_path.write_text("original")
+
+        # Legacy backup only under root_dir_b
+        legacy_backup = backup_dir / "Show B" / "tvshow.nfo"
+        legacy_backup.parent.mkdir(parents=True)
+        legacy_backup.write_text("original")
+
+        # root_dir_a does not contain the file → _legacy_backup_path returns None
+        # and the loop continues to root_dir_b which does match
+        result = get_backup_path(file_path, backup_dir, [root_dir_a, root_dir_b])
+        assert result == legacy_backup
+
+
+def test_create_backup_legacy_skips_root_not_containing_file() -> None:
+    """create_backup legacy loop skips root dirs that don't contain the file.
+
+    Exercises the `continue` at line 152 when _legacy_backup_path returns None.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir_a = temp_path / "tv"
+        root_dir_b = temp_path / "anime"
+        backup_dir = temp_path / "backup"
+
+        # File lives under root_dir_b, NOT root_dir_a
+        show_dir = root_dir_b / "Show B"
+        show_dir.mkdir(parents=True)
+        file_path = show_dir / "tvshow.nfo"
+        file_path.write_text("content")
+
+        # Legacy backup exists under root_dir_b
+        legacy_backup = backup_dir / "Show B" / "tvshow.nfo"
+        legacy_backup.parent.mkdir(parents=True)
+        legacy_backup.write_text("original")
+
+        # root_dir_a is passed first (no match) then root_dir_b (legacy found)
+        result = create_backup(file_path, backup_dir, [root_dir_a, root_dir_b])
+        assert result is True
+        # Legacy backup preserved; no new-format backup written
+        new_backup = backup_dir / file_path.relative_to("/")
+        assert not new_backup.exists()
+        assert legacy_backup.read_text() == "original"
+
+
+def test_create_backup_legacy_stem_match_skips_creation() -> None:
+    """create_backup detects a legacy stem-matched backup and skips creating a new one.
+
+    Exercises the stem-matching loop in the legacy fallback (lines 156-159).
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        root_dir = temp_path / "tv"
+        backup_dir = temp_path / "backup"
+
+        show_dir = root_dir / "Show A"
+        show_dir.mkdir(parents=True)
+        # Current file is .jpg
+        file_path_jpg = show_dir / "poster.jpg"
+        file_path_jpg.write_bytes(b"JPEG translated")
+
+        # Legacy backup exists as .png (same stem, different extension)
+        legacy_dir = backup_dir / "Show A"
+        legacy_dir.mkdir(parents=True)
+        legacy_png = legacy_dir / "poster.png"
+        legacy_png.write_bytes(b"PNG original")
+
+        result = create_backup(file_path_jpg, backup_dir, [root_dir])
+        assert result is True
+        # Legacy .png backup preserved
+        assert legacy_png.read_bytes() == b"PNG original"
+        # No new-format backup created
+        new_backup = backup_dir / file_path_jpg.relative_to("/")
+        assert not new_backup.exists()
+
+
+def test_restore_from_backup_file_parent_does_not_exist() -> None:
+    """restore_from_backup skips stem-cleanup when parent dir is absent (line 196->203).
+
+    When the original parent directory no longer exists, the stem-cleanup loop
+    is skipped entirely and shutil.copy2 propagates a FileNotFoundError.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        backup_dir = temp_path / "backup"
+
+        # Backup exists at the new-format path
+        file_path = temp_path / "show" / "tvshow.nfo"
+        backup_path = backup_dir / file_path.relative_to("/")
+        backup_path.parent.mkdir(parents=True)
+        backup_path.write_text("original content")
+
+        # Parent of file_path does NOT exist (show dir was never created)
+        assert not file_path.parent.exists()
+
+        # shutil.copy2 will raise because the destination parent is missing
+        with pytest.raises(FileNotFoundError):
+            restore_from_backup(file_path, backup_dir)

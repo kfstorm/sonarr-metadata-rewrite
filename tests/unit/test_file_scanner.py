@@ -395,3 +395,55 @@ def test_scanner_callback_exception_for_images(
         if test_dir.exists():
             shutil.rmtree(test_dir)
         file_scanner.settings.rewrite_root_dirs = [original_root]
+
+
+def test_scanner_restart_when_already_running(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """Calling start() when already running stops the old thread and restarts."""
+    first_callback = Mock()
+    second_callback = Mock()
+
+    # Start with first callback
+    file_scanner.start(first_callback)
+    assert file_scanner.is_running()
+    old_thread = file_scanner.scan_thread
+
+    # Start again — should stop old thread and start a new one
+    file_scanner.start(second_callback)
+    assert file_scanner.is_running()
+    assert file_scanner.scan_thread is not old_thread
+    assert file_scanner.callback == second_callback
+
+    file_scanner.stop()
+
+
+def test_scanner_stop_event_fires_before_root_dir_scan(
+    file_scanner: FileScanner, callback_tracker: Mock
+) -> None:
+    """_perform_scan returns early when stop_event is already set (line 71)."""
+    import threading
+
+    root1 = file_scanner.settings.rewrite_root_dirs[0] / "dir1_stop"
+    root1.mkdir(parents=True, exist_ok=True)
+    (root1 / "tvshow.nfo").touch()
+
+    original_roots = file_scanner.settings.rewrite_root_dirs
+    file_scanner.settings.rewrite_root_dirs = [root1]
+    file_scanner.callback = callback_tracker
+
+    try:
+        # Install a stop_event that is already set, so _perform_scan exits immediately
+        file_scanner.stop_event = threading.Event()
+        file_scanner.stop_event.set()
+
+        file_scanner._perform_scan()
+
+        # Callback must not have been called because we returned before processing
+        callback_tracker.assert_not_called()
+    finally:
+        file_scanner.stop_event = None
+        file_scanner.callback = None
+        if root1.exists():
+            shutil.rmtree(root1)
+        file_scanner.settings.rewrite_root_dirs = original_roots

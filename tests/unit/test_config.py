@@ -256,3 +256,29 @@ def test_rewrite_root_dirs_direct_construction(tmp_path: Path) -> None:
         preferred_languages=["zh-CN"],
     )
     assert settings.rewrite_root_dirs == [dir1, dir2]
+
+
+def test_rewrite_root_dirs_empty_string_fails(tmp_path: Path) -> None:
+    """Test REWRITE_ROOT_DIRS with empty string raises validation error (line 123)."""
+    env_vars = {
+        "TMDB_API_KEY": "test_key",
+        "REWRITE_ROOT_DIRS": "",
+        "PREFERRED_LANGUAGES": "zh-CN",
+    }
+    with patch.dict(os.environ, env_vars):
+        with pytest.raises(ValueError):
+            get_settings()
+
+
+def test_rewrite_root_dirs_comma_separated_with_spaces(tmp_path: Path) -> None:
+    """Test REWRITE_ROOT_DIRS trims whitespace around paths."""
+    dir1 = tmp_path / "tv"
+    dir2 = tmp_path / "anime"
+    env_vars = {
+        "TMDB_API_KEY": "test_key",
+        "REWRITE_ROOT_DIRS": f" {dir1} , {dir2} ",
+        "PREFERRED_LANGUAGES": "zh-CN",
+    }
+    with patch.dict(os.environ, env_vars):
+        settings = get_settings()
+        assert settings.rewrite_root_dirs == [dir1, dir2]

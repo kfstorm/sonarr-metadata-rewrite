@@ -8,6 +8,7 @@ import pytest
 
 from sonarr_metadata_rewrite.file_utils import (
     extract_metadata_info,
+    find_root_dir_for_file,
     find_target_files,
     is_nfo_file,
     is_rewritable_image,
@@ -392,3 +393,42 @@ class TestExtractMetadataInfo:
 
         with pytest.raises(ET.ParseError, match="Unsupported NFO root structure"):
             extract_metadata_info(nfo_path)
+
+
+class TestFindRootDirForFile:
+    """Tests for find_root_dir_for_file."""
+
+    def test_returns_first_matching_root(self, tmp_path: Path) -> None:
+        """Returns the first root dir that contains the file."""
+        root1 = tmp_path / "tv"
+        root2 = tmp_path / "anime"
+        file_path = root1 / "Show A" / "tvshow.nfo"
+
+        result = find_root_dir_for_file(file_path, [root1, root2])
+        assert result == root1
+
+    def test_returns_second_root_when_first_does_not_match(
+        self, tmp_path: Path
+    ) -> None:
+        """Returns second root dir when file is not under the first."""
+        root1 = tmp_path / "tv"
+        root2 = tmp_path / "anime"
+        file_path = root2 / "Show B" / "tvshow.nfo"
+
+        result = find_root_dir_for_file(file_path, [root1, root2])
+        assert result == root2
+
+    def test_returns_none_when_no_root_matches(self, tmp_path: Path) -> None:
+        """Returns None when the file is not under any root dir."""
+        root1 = tmp_path / "tv"
+        root2 = tmp_path / "anime"
+        file_path = tmp_path / "other" / "tvshow.nfo"
+
+        result = find_root_dir_for_file(file_path, [root1, root2])
+        assert result is None
+
+    def test_returns_none_for_empty_root_dirs(self, tmp_path: Path) -> None:
+        """Returns None when root_dirs list is empty."""
+        file_path = tmp_path / "show" / "tvshow.nfo"
+        result = find_root_dir_for_file(file_path, [])
+        assert result is None

@@ -608,3 +608,106 @@ def test_rollback_restores_legacy_format_backup(test_data_dir: Path) -> None:
     service.execute_rollback()
 
     assert original_file.read_text() == "Original content"
+
+
+def test_restore_single_file_no_backup_found(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """_restore_single_file returns False and logs a warning when no backup exists.
+
+    Exercises the warning at line 132.
+    """
+    backup_dir = test_data_dir / "backups"
+    backup_dir.mkdir(exist_ok=True)
+
+    original_dir = test_data_dir / "media" / "show"
+    original_dir.mkdir(parents=True, exist_ok=True)
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    # Create a fake backup file path (exists in backup dir) but restore returns
+    # False to exercise the warning path.
+    fake_backup = backup_dir / original_dir.relative_to("/") / "tvshow.nfo"
+    fake_backup.parent.mkdir(parents=True, exist_ok=True)
+    fake_backup.write_text("backup content")
+
+    # The original file's parent directory does exist so new-format path is tried;
+    # restore_from_backup will find the backup and succeed.  To reach the "no backup"
+    # warning we need restore_from_backup to return False, which we can do by
+    # patching it.
+    with patch(
+        "sonarr_metadata_rewrite.rollback_service.restore_from_backup",
+        return_value=False,
+    ):
+        with caplog.at_level(logging.WARNING):
+            result = service._restore_single_file(fake_backup)
+
+    assert result is False
+    assert "No backup found" in caplog.text
+
+
+def test_restore_single_file_exception_is_caught(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """_restore_single_file catches unexpected exceptions and returns False.
+
+    Exercises the outer exception handler at lines 136-138.
+    """
+    backup_dir = test_data_dir / "backups"
+    backup_dir.mkdir(exist_ok=True)
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    # A backup file that is NOT under backup_dir causes ValueError in relative_to(),
+    # which is caught by the outer exception handler in _restore_single_file.
+    backup_file_outside = test_data_dir / "other" / "tvshow.nfo"
+    backup_file_outside.parent.mkdir(parents=True, exist_ok=True)
+    backup_file_outside.write_text("content")
+
+    with caplog.at_level(logging.ERROR):
+        result = service._restore_single_file(backup_file_outside)
+
+    assert result is False
+    assert "Failed to restore" in caplog.text
+
+
+def test_execute_rollback_counts_exception_as_failure(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """execute_rollback counts files that raise exceptions as failures (lines 65-67)."""
+    backup_dir = test_data_dir / "backups"
+    backup_dir.mkdir(exist_ok=True)
+
+    original_dir = test_data_dir / "media" / "show"
+    original_dir.mkdir(parents=True, exist_ok=True)
+
+    original_file = original_dir / "tvshow.nfo"
+    original_file.write_text("Translated content")
+    _make_backup(original_file, backup_dir)
+
+    settings = create_test_settings(
+        test_data_dir,
+        service_mode="rollback",
+        original_files_backup_dir=backup_dir,
+    )
+    service = RollbackService(settings)
+
+    with patch.object(
+        service,
+        "_restore_single_file",
+        side_effect=RuntimeError("boom"),
+    ):
+        with caplog.at_level(logging.INFO):
+            service.execute_rollback()
+
+    assert "1 failed" in caplog.text
