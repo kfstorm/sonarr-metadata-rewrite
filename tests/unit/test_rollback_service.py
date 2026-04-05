@@ -99,7 +99,7 @@ def test_execute_rollback_successful(
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -136,7 +136,7 @@ def test_execute_rollback_missing_original_directory(
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -172,7 +172,7 @@ def test_restore_single_file_success(test_data_dir: Path) -> None:
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -201,7 +201,7 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -274,7 +274,7 @@ def test_restore_image_with_extension_change(test_data_dir: Path) -> None:
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -313,7 +313,7 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -356,7 +356,7 @@ def test_restore_both_nfo_and_images(test_data_dir: Path) -> None:
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -404,7 +404,7 @@ def test_restore_mixed_backup_directory(
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -445,7 +445,7 @@ def test_restore_case_insensitive_extensions(test_data_dir: Path) -> None:
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)
@@ -551,7 +551,7 @@ def test_execute_rollback_restores_multi_episode_nfo(test_data_dir: Path) -> Non
     settings = create_test_settings(
         test_data_dir,
         service_mode="rollback",
-        rewrite_root_dir=original_dir,
+        rewrite_root_dirs=[original_dir],
         original_files_backup_dir=backup_dir,
     )
     service = RollbackService(settings)

@@ -50,9 +50,9 @@ def test_scanner_finds_nfo_files_through_start(
 ) -> None:
     """Test that scanner finds .nfo files recursively through public interface."""
     # Use a dedicated test subdirectory
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_scan"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_scan"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         test_files = [
@@ -84,7 +84,7 @@ def test_scanner_finds_nfo_files_through_start(
         # Clean up test files and restore original root
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_case_insensitive_detection(
@@ -92,9 +92,9 @@ def test_scanner_case_insensitive_detection(
 ) -> None:
     """Test that scanner detects both .nfo and .NFO files through public interface."""
     # Use a dedicated test subdirectory
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_case_scan"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_case_scan"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         test_files = [
@@ -130,18 +130,18 @@ def test_scanner_case_insensitive_detection(
         # Clean up test files and restore original root
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_missing_directory_handling(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanning when root directory doesn't exist through public interface."""
-    original_root = file_scanner.settings.rewrite_root_dir
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
 
     try:
         # Set non-existent directory
-        file_scanner.settings.rewrite_root_dir = Path("/nonexistent/directory")
+        file_scanner.settings.rewrite_root_dirs = [Path("/nonexistent/directory")]
 
         # Start scanner - should not raise exception
         file_scanner.start(callback_tracker)
@@ -155,7 +155,7 @@ def test_scanner_missing_directory_handling(
         # Should not have called callback for non-existent directory
         callback_tracker.assert_not_called()
     finally:
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 # Image-specific scanner tests
@@ -165,9 +165,9 @@ def test_scanner_finds_both_nfo_and_images(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner finds both NFO and image files, ignoring non-supported images."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_mixed_scan"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_mixed_scan"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         test_files = [
@@ -195,16 +195,16 @@ def test_scanner_finds_both_nfo_and_images(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_processes_nfo_and_images(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner processes NFO and image files (order not enforced)."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_order_scan"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_order_scan"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         test_files = [
@@ -229,16 +229,16 @@ def test_scanner_processes_nfo_and_images(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_image_only_directory(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner processes image-only directories successfully."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_images_only"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_images_only"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         test_files = [
@@ -262,7 +262,7 @@ def test_scanner_image_only_directory(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_handles_scan_loop_exception(
@@ -283,11 +283,11 @@ def test_scanner_handles_permission_error(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner handles PermissionError."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_permission"
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_permission"
     test_dir.mkdir()
 
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         with patch(
@@ -300,16 +300,16 @@ def test_scanner_handles_permission_error(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_stop_event_during_nfo_processing(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test stop event during NFO processing."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_stop_nfo"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_stop_nfo"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         for i in range(100):
@@ -331,16 +331,16 @@ def test_scanner_stop_event_during_nfo_processing(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_stop_event_during_image_processing(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test stop event during image processing."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_stop_images"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_stop_images"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         for i in range(100):
@@ -360,16 +360,16 @@ def test_scanner_stop_event_during_image_processing(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_callback_exception_for_images(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test callback exception handling for images."""
-    test_dir = file_scanner.settings.rewrite_root_dir / "test_callback_error"
-    original_root = file_scanner.settings.rewrite_root_dir
-    file_scanner.settings.rewrite_root_dir = test_dir
+    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_callback_error"
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
 
     try:
         test_files = [
@@ -394,4 +394,4 @@ def test_scanner_callback_exception_for_images(
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dir = original_root
+        file_scanner.settings.rewrite_root_dirs = [original_root]

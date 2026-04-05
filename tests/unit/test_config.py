@@ -14,11 +14,11 @@ def test_settings_with_required_fields(test_data_dir: Path) -> None:
     """Test Settings with required fields."""
     settings = Settings(
         tmdb_api_key="test_api_key_1234567890abcdef",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
     )
     assert settings.tmdb_api_key == "test_api_key_1234567890abcdef"
-    assert settings.rewrite_root_dir == test_data_dir
+    assert settings.rewrite_root_dirs == [test_data_dir]
     assert settings.preferred_languages == ["zh-CN"]
     assert settings.periodic_scan_interval_seconds == 86400  # default
     assert settings.service_mode == "rewrite"  # default
@@ -28,7 +28,7 @@ def test_settings_with_all_fields(test_data_dir: Path) -> None:
     """Test Settings with all fields specified."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["ja-JP", "ko-KR"],
         periodic_scan_interval_seconds=1800,
         cache_duration_hours=168,
@@ -52,7 +52,7 @@ def test_get_settings_from_env(test_data_dir: Path) -> None:
     with patch.dict(os.environ, env_vars):
         settings = get_settings()
         assert settings.tmdb_api_key == "env_test_key"
-        assert settings.rewrite_root_dir == test_data_dir
+        assert settings.rewrite_root_dirs == [test_data_dir]
         assert settings.preferred_languages == ["en", "fr"]
 
 
@@ -60,7 +60,7 @@ def test_settings_backup_disabled(test_data_dir: Path) -> None:
     """Test Settings with backup disabled."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
         original_files_backup_dir=None,
     )
@@ -119,7 +119,7 @@ def test_service_mode_default(test_data_dir: Path) -> None:
     """Test service_mode defaults to 'rewrite'."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
     )
     assert settings.service_mode == "rewrite"
@@ -129,7 +129,7 @@ def test_service_mode_rewrite(test_data_dir: Path) -> None:
     """Test service_mode can be set to 'rewrite'."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
         service_mode="rewrite",
     )
@@ -140,7 +140,7 @@ def test_service_mode_rollback(test_data_dir: Path) -> None:
     """Test service_mode can be set to 'rollback'."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
         service_mode="rollback",
     )
@@ -153,7 +153,7 @@ def test_service_mode_invalid_value_fails() -> None:
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
-            rewrite_root_dir=Path("/tmp"),
+            rewrite_root_dirs=[Path("/tmp")],
             preferred_languages=["zh-CN"],
             service_mode="invalid",
         )
@@ -163,7 +163,7 @@ def test_enable_image_rewrite_defaults_true(test_data_dir: Path) -> None:
     """Image rewrite should be enabled by default."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
     )
     assert settings.enable_image_rewrite is True
@@ -186,7 +186,7 @@ def test_enable_nfo_rewrite_defaults_true(test_data_dir: Path) -> None:
     """NFO rewrite should be enabled by default."""
     settings = Settings(
         tmdb_api_key="test_key",
-        rewrite_root_dir=test_data_dir,
+        rewrite_root_dirs=[test_data_dir],
         preferred_languages=["zh-CN"],
     )
     assert settings.enable_nfo_rewrite is True
@@ -203,3 +203,56 @@ def test_enable_nfo_rewrite_can_be_disabled_via_env(tmp_path: Path) -> None:
     with patch.dict(os.environ, env_vars):
         settings = get_settings()
         assert settings.enable_nfo_rewrite is False
+
+
+def test_rewrite_root_dirs_multiple_via_env(tmp_path: Path) -> None:
+    """Test REWRITE_ROOT_DIRS supports multiple comma-separated paths."""
+    dir1 = tmp_path / "sonarr"
+    dir2 = tmp_path / "anime"
+    env_vars = {
+        "TMDB_API_KEY": "test_key",
+        "REWRITE_ROOT_DIRS": f"{dir1},{dir2}",
+        "PREFERRED_LANGUAGES": "zh-CN",
+    }
+    with patch.dict(os.environ, env_vars):
+        settings = get_settings()
+        assert settings.rewrite_root_dirs == [dir1, dir2]
+
+
+def test_rewrite_root_dir_backward_compat_via_env(tmp_path: Path) -> None:
+    """Test REWRITE_ROOT_DIR (singular) is still supported for backward compat."""
+    env_vars = {
+        "TMDB_API_KEY": "test_key",
+        "REWRITE_ROOT_DIR": str(tmp_path),
+        "PREFERRED_LANGUAGES": "zh-CN",
+    }
+    with patch.dict(os.environ, env_vars):
+        settings = get_settings()
+        assert settings.rewrite_root_dirs == [tmp_path]
+
+
+def test_rewrite_root_dirs_takes_priority_over_singular(tmp_path: Path) -> None:
+    """Test REWRITE_ROOT_DIRS takes priority over REWRITE_ROOT_DIR."""
+    dir1 = tmp_path / "sonarr"
+    dir2 = tmp_path / "anime"
+    env_vars = {
+        "TMDB_API_KEY": "test_key",
+        "REWRITE_ROOT_DIRS": f"{dir1},{dir2}",
+        "REWRITE_ROOT_DIR": str(tmp_path),
+        "PREFERRED_LANGUAGES": "zh-CN",
+    }
+    with patch.dict(os.environ, env_vars):
+        settings = get_settings()
+        assert settings.rewrite_root_dirs == [dir1, dir2]
+
+
+def test_rewrite_root_dirs_direct_construction(tmp_path: Path) -> None:
+    """Test Settings accepts rewrite_root_dirs as a list directly."""
+    dir1 = tmp_path / "sonarr"
+    dir2 = tmp_path / "anime"
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dirs=[dir1, dir2],
+        preferred_languages=["zh-CN"],
+    )
+    assert settings.rewrite_root_dirs == [dir1, dir2]

@@ -102,7 +102,7 @@ def test_monitor_start_stop(file_monitor: FileMonitor) -> None:
     callback = Mock()
 
     # Create the directory first since watchdog needs it to exist
-    file_monitor.settings.rewrite_root_dir.mkdir(parents=True, exist_ok=True)
+    file_monitor.settings.rewrite_root_dirs[0].mkdir(parents=True, exist_ok=True)
 
     # Start monitoring
     file_monitor.start(callback)

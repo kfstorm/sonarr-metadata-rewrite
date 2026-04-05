@@ -14,6 +14,7 @@ from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_utils import (
     IMAGE_EXTENSIONS,
     extract_metadata_info,
+    find_root_dir_for_file,
     parse_image_info,
 )
 from sonarr_metadata_rewrite.image_utils import (
@@ -77,10 +78,14 @@ class ImageProcessor:
 
             if not candidate:
                 # No preferred language available - try to revert to original backup
+                _root_dir = (
+                    find_root_dir_for_file(image_path, self.settings.rewrite_root_dirs)
+                    or self.settings.rewrite_root_dirs[0]
+                )
                 backup_path = get_backup_path(
                     image_path,
                     self.settings.original_files_backup_dir,
-                    self.settings.rewrite_root_dir,
+                    _root_dir,
                 )
                 if backup_path and image_path.exists():
                     # Check if current image is different from backup
@@ -94,7 +99,7 @@ class ImageProcessor:
                         restore_from_backup(
                             image_path,
                             self.settings.original_files_backup_dir,
-                            self.settings.rewrite_root_dir,
+                            _root_dir,
                         )
                         preferred_langs = ", ".join(self.settings.preferred_languages)
                         return ImageProcessResult(
@@ -153,7 +158,8 @@ class ImageProcessor:
             backup_created = create_backup(
                 image_path,
                 self.settings.original_files_backup_dir,
-                self.settings.rewrite_root_dir,
+                find_root_dir_for_file(image_path, self.settings.rewrite_root_dirs)
+                or self.settings.rewrite_root_dirs[0],
             )
 
             # Download and write image

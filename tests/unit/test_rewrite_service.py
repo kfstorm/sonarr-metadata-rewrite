@@ -194,7 +194,7 @@ def test_cache_initialization_error(test_data_dir: Path) -> None:
         # Create settings pointing to the read-only cache
         settings = Settings(
             tmdb_api_key="test_key",
-            rewrite_root_dir=test_data_dir,
+            rewrite_root_dirs=[test_data_dir],
             preferred_languages=["en-US"],
             cache_dir=cache_dir,
         )
@@ -230,7 +230,7 @@ def test_cache_initialization_permission_error(test_data_dir: Path) -> None:
         # Create settings pointing to a cache dir in read-only parent
         settings = Settings(
             tmdb_api_key="test_key",
-            rewrite_root_dir=test_data_dir,
+            rewrite_root_dirs=[test_data_dir],
             preferred_languages=["en-US"],
             cache_dir=cache_dir,
         )

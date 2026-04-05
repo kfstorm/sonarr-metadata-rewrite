@@ -50,8 +50,8 @@ def image_processor(
     test_settings: Settings, translator: Translator, tmp_path: Path
 ) -> ImageProcessor:
     """Create ImageProcessor instance."""
-    # Set rewrite_root_dir to tmp_path so backup paths work correctly
-    test_settings.rewrite_root_dir = tmp_path
+    # Set rewrite_root_dirs to [tmp_path] so backup paths work correctly
+    test_settings.rewrite_root_dirs = [tmp_path]
     return ImageProcessor(test_settings, translator)
 
 

@@ -41,7 +41,8 @@ def cli() -> None:
 
     click.echo("🚀 Starting Sonarr Metadata Rewrite...")
     click.echo(f"✅ TMDB API key loaded (ending in ...{settings.tmdb_api_key[-4:]})")
-    click.echo(f"📁 Monitoring directory: {settings.rewrite_root_dir}")
+    for root_dir in settings.rewrite_root_dirs:
+        click.echo(f"📁 Monitoring directory: {root_dir}")
     click.echo(f"🌍 Preferred languages: {settings.preferred_languages}")
     click.echo(f"🔧 Service mode: {settings.service_mode}")
 

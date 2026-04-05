@@ -89,13 +89,20 @@ class RollbackService:
             backup_dir = self.settings.original_files_backup_dir
             assert backup_dir is not None
             relative_path = backup_file.relative_to(backup_dir)
-            original_file = self.settings.rewrite_root_dir / relative_path
 
-            # Check if original location still exists (parent directory)
-            if not original_file.parent.exists():
+            # Find the root dir whose subdirectory exists for this relative path
+            original_file = None
+            root_dir_for_file = None
+            for root_dir in self.settings.rewrite_root_dirs:
+                candidate = root_dir / relative_path
+                if candidate.parent.exists():
+                    original_file = candidate
+                    root_dir_for_file = root_dir
+                    break
+
+            if original_file is None or root_dir_for_file is None:
                 logger.warning(
-                    f"Original directory no longer exists, skipping: "
-                    f"{original_file.parent}"
+                    f"Original directory no longer exists, skipping: {relative_path}"
                 )
                 return False
 
@@ -106,7 +113,7 @@ class RollbackService:
             success = restore_from_backup(
                 original_file,
                 self.settings.original_files_backup_dir,
-                self.settings.rewrite_root_dir,
+                root_dir_for_file,
             )
 
             if success:
