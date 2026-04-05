@@ -65,31 +65,36 @@ class FileScanner:
                 )
 
     def _perform_scan(self) -> None:
-        """Perform one complete scan of the directory tree."""
-        root_dir = self.settings.rewrite_root_dir
-        if not root_dir.exists():
-            logger.warning(f"Root directory does not exist: {root_dir}")
-            return
+        """Perform one complete scan of all root directories."""
+        for root_dir in self.settings.rewrite_root_dirs:
+            if self.stop_event is not None and self.stop_event.is_set():
+                return
 
-        logger.info(f"Starting scan of directory: {root_dir}")
+            if not root_dir.exists():
+                logger.warning(f"Root directory does not exist: {root_dir}")
+                continue
 
-        try:
-            # Scan for target files (.nfo and rewritable images) in one pass
-            target_files = find_target_files(root_dir)
+            logger.info(f"Starting scan of directory: {root_dir}")
 
-            for file_path in target_files:
-                if self.stop_event is not None and self.stop_event.is_set():
-                    break
+            try:
+                # Scan for target files (.nfo and rewritable images) in one pass
+                target_files = find_target_files(root_dir)
 
-                try:
-                    if self.callback:
-                        logger.debug(f"Processing file: {file_path}")
-                        self.callback(file_path)
-                except Exception:
-                    logger.exception(f"Unexpected error processing file {file_path}")
-                    continue
+                for file_path in target_files:
+                    if self.stop_event is not None and self.stop_event.is_set():
+                        break
 
-            logger.info(f"Completed scan of directory: {root_dir}")
+                    try:
+                        if self.callback:
+                            logger.debug(f"Processing file: {file_path}")
+                            self.callback(file_path)
+                    except Exception:
+                        logger.exception(
+                            f"Unexpected error processing file {file_path}"
+                        )
+                        continue
 
-        except (OSError, PermissionError):
-            logger.exception(f"File system error during scan of {root_dir}")
+                logger.info(f"Completed scan of directory: {root_dir}")
+
+            except (OSError, PermissionError):
+                logger.exception(f"File system error during scan of {root_dir}")

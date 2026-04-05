@@ -40,7 +40,8 @@ class RewriteService:
     def start(self) -> None:
         """Start file monitoring and scanning services."""
         logger.info("Starting Sonarr Metadata Rewrite Service")
-        logger.info(f"Monitoring directory: {self.settings.rewrite_root_dir}")
+        for root_dir in self.settings.rewrite_root_dirs:
+            logger.info(f"Monitoring directory: {root_dir}")
         logger.info(f"Preferred languages: {self.settings.preferred_languages}")
 
         # Start real-time file monitoring if enabled

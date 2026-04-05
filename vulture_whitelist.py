@@ -6,8 +6,12 @@ _.model_config
 
 # Pydantic validators are used by the framework
 _.parse_preferred_languages
+_.parse_rewrite_root_dirs
 _.validate_service_mode
 _.cls
+
+# Utility function used via public API
+_.find_root_dir_for_file
 
 # Pydantic settings customization is used by the framework
 _.settings_customise_sources

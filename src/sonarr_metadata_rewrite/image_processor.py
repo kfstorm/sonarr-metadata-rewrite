@@ -80,7 +80,7 @@ class ImageProcessor:
                 backup_path = get_backup_path(
                     image_path,
                     self.settings.original_files_backup_dir,
-                    self.settings.rewrite_root_dir,
+                    self.settings.rewrite_root_dirs,
                 )
                 if backup_path and image_path.exists():
                     # Check if current image is different from backup
@@ -94,7 +94,7 @@ class ImageProcessor:
                         restore_from_backup(
                             image_path,
                             self.settings.original_files_backup_dir,
-                            self.settings.rewrite_root_dir,
+                            self.settings.rewrite_root_dirs,
                         )
                         preferred_langs = ", ".join(self.settings.preferred_languages)
                         return ImageProcessResult(
@@ -153,7 +153,7 @@ class ImageProcessor:
             backup_created = create_backup(
                 image_path,
                 self.settings.original_files_backup_dir,
-                self.settings.rewrite_root_dir,
+                self.settings.rewrite_root_dirs,
             )
 
             # Download and write image

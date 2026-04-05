@@ -66,12 +66,13 @@ class FileMonitor:
         self.handler = MediaFileHandler(callback)
         self.observer = Observer()
 
-        # Watch the root directory recursively
-        self.observer.schedule(
-            self.handler,
-            str(self.settings.rewrite_root_dir),
-            recursive=True,
-        )
+        # Watch each root directory recursively
+        for root_dir in self.settings.rewrite_root_dirs:
+            self.observer.schedule(
+                self.handler,
+                str(root_dir),
+                recursive=True,
+            )
 
         self.observer.start()
 

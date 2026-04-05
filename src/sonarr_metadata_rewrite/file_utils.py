@@ -78,6 +78,25 @@ def is_rewritable_image(file_path: Path) -> bool:
     return bool(kind)
 
 
+def find_root_dir_for_file(file_path: Path, root_dirs: list[Path]) -> Path | None:
+    """Find which root directory a file belongs to.
+
+    Args:
+        file_path: Path to the file
+        root_dirs: List of candidate root directories
+
+    Returns:
+        The first root directory that contains the file, or None if none match
+    """
+    for root_dir in root_dirs:
+        try:
+            file_path.relative_to(root_dir)
+            return root_dir
+        except ValueError:
+            continue
+    return None
+
+
 def find_target_files(directory: Path, recursive: bool = True) -> list[Path]:
     """Find all target files (.nfo and rewritable images) in one pass.
 

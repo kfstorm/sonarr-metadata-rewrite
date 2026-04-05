@@ -16,9 +16,17 @@ class CustomEnvSettings(PydanticBaseSettingsSource):
     """Custom environment settings source that handles comma-separated lists."""
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
-        """Get field value from environment, handling preferred_languages specially."""
+        """Get field value from environment, handling special fields."""
         env_name = field_name.upper()
         env_val = os.getenv(env_name)
+
+        if field_name == "rewrite_root_dirs":
+            # Support REWRITE_ROOT_DIRS (comma-separated, new) and
+            # REWRITE_ROOT_DIR (single path, backward compatible)
+            env_val = os.getenv("REWRITE_ROOT_DIRS") or os.getenv("REWRITE_ROOT_DIR")
+            if env_val is None:
+                return None, "REWRITE_ROOT_DIRS", False
+            return env_val, "REWRITE_ROOT_DIRS", False
 
         if env_val is None:
             return None, env_name, False
@@ -33,8 +41,8 @@ class CustomEnvSettings(PydanticBaseSettingsSource):
     def prepare_field_value(
         self, field_name: str, field: Any, value: Any, value_is_complex: bool
     ) -> Any:
-        """Prepare field value, skipping JSON parsing for preferred_languages."""
-        if field_name == "preferred_languages":
+        """Prepare field value, skipping JSON parsing for list fields."""
+        if field_name in {"preferred_languages", "rewrite_root_dirs"}:
             return value
         return super().prepare_field_value(field_name, field, value, value_is_complex)
 
@@ -88,8 +96,11 @@ class Settings(BaseSettings):
     tmdb_api_key: str = Field(description="TMDB API key for translation requests")
 
     # Directory monitoring
-    rewrite_root_dir: Path = Field(
-        description="Root directory to monitor and rewrite .nfo files"
+    rewrite_root_dirs: list[Path] = Field(
+        description=(
+            "Root directories to monitor and rewrite .nfo files "
+            "(comma-separated list)"
+        )
     )
     periodic_scan_interval_seconds: int = Field(
         default=86400, description="How often to scan the directory (seconds)"
@@ -99,6 +110,19 @@ class Settings(BaseSettings):
     preferred_languages: list[str] = Field(
         description="Preferred languages in priority order (comma-separated)"
     )
+
+    @field_validator("rewrite_root_dirs", mode="before")
+    @classmethod
+    def parse_rewrite_root_dirs(cls, v: str | list[Any]) -> list[Path]:
+        """Parse root dirs from comma-separated string or list."""
+        if isinstance(v, list):
+            return [Path(p) for p in v]
+        if isinstance(v, str):
+            paths = [Path(p.strip()) for p in v.split(",") if p.strip()]
+            if not paths:
+                raise ValueError("rewrite_root_dirs cannot be empty")
+            return paths
+        raise ValueError("rewrite_root_dirs must be a comma-separated string or list")
 
     @field_validator("preferred_languages", mode="before")
     @classmethod

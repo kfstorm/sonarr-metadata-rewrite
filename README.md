@@ -50,9 +50,10 @@ docker run -d \
   --name sonarr-metadata-rewrite \
   --user $(id -u):$(id -g) \
   -e TMDB_API_KEY=your_api_key_here \
-  -e REWRITE_ROOT_DIR=/media \
+  -e REWRITE_ROOT_DIRS=/tv,/anime \
   -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
-  -v /path/to/your/tv/shows:/media \
+  -v /path/to/tv/shows:/tv \
+  -v /path/to/anime:/anime \
   -v sonarr-metadata-cache:/app/cache \
   -v sonarr-metadata-backups:/app/backups \
   --restart unless-stopped \
@@ -70,12 +71,13 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - TMDB_API_KEY=your_api_key_here
-      - REWRITE_ROOT_DIR=/media
+      - REWRITE_ROOT_DIRS=/tv,/anime
       - PREFERRED_LANGUAGES=zh-CN,ja-JP
       # Optional: customize cache duration (default: 30 days)
       # - CACHE_DURATION_HOURS=168
     volumes:
-      - /path/to/your/tv/shows:/media
+      - /path/to/tv/shows:/tv
+      - /path/to/anime:/anime
       - sonarr-metadata-cache:/app/cache
       - sonarr-metadata-backups:/app/backups
     restart: unless-stopped
@@ -91,10 +93,14 @@ volumes:
 
 ```bash
 TMDB_API_KEY=your_api_read_access_token_here  # Your TMDB API Read Access Token
-REWRITE_ROOT_DIR=/media              # Path to your TV shows (inside container)
+# One or more media directories (comma-separated) to watch for Sonarr .nfo files
+REWRITE_ROOT_DIRS=/tv,/anime
 # Comma-separated language codes in priority order
 PREFERRED_LANGUAGES=zh-CN,ja-JP
 ```
+
+`REWRITE_ROOT_DIR` (singular, one path) is also accepted for backward
+compatibility. `REWRITE_ROOT_DIRS` takes priority when both are set.
 
 ### Optional Settings (with defaults)
 
@@ -121,6 +127,13 @@ TMDB_MAX_RETRY_DELAY=60.0             # Max retry delay (default: 60.0)
 ORIGINAL_FILES_BACKUP_DIR=./backups   # Backup original files (default: ./backups)
                                       # Applies to both .nfo and images. Set to
                                       # empty string to disable backups.
+                                      # Files are stored under their full absolute
+                                      # path (e.g. /app/backups/tv/Show/tvshow.nfo)
+                                      # so backups from different root dirs never
+                                      # collide.
+                                      # Backups created by older single-root-dir
+                                      # versions are still found and restored
+                                      # automatically (backward compatible).
 
 # Service Mode
 SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'
@@ -198,12 +211,13 @@ id -g  # Shows your group ID (GID)
 
 ### Highly Recommended Volume Mappings
 
-While only the media directory is strictly required, these volumes will
+While only the media directories are strictly required, these volumes will
 improve your experience:
 
 ```bash
-# Media directory (required)
--v /path/to/your/tv/shows:/media
+# Media directories (required - mount each root dir separately)
+-v /path/to/your/tv/shows:/tv
+-v /path/to/your/anime:/anime
 
 # Cache directory (highly recommended - persists translation cache across
 # container restarts)
@@ -229,7 +243,8 @@ You'll see something like:
 ```text
 🚀 Starting Sonarr Metadata Rewrite...
 ✅ TMDB API key loaded (ending in ...xyz)
-📁 Monitoring directory: /media
+📁 Monitoring directory: /tv
+📁 Monitoring directory: /anime
 🌍 Preferred languages: ['zh-CN', 'ja-JP']
 ✅ Service started successfully
 ```
@@ -282,9 +297,10 @@ docker run --rm \
   --user $(id -u):$(id -g) \
   -e SERVICE_MODE=rollback \
   -e TMDB_API_KEY=your_api_key_here \
-  -e REWRITE_ROOT_DIR=/media \
+  -e REWRITE_ROOT_DIRS=/tv,/anime \
   -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
-  -v /path/to/your/tv/shows:/media \
+  -v /path/to/tv/shows:/tv \
+  -v /path/to/anime:/anime \
   -v sonarr-metadata-backups:/app/backups \
   kfstorm/sonarr-metadata-rewrite:latest
 ```

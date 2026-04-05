@@ -74,6 +74,11 @@ class RollbackService:
     def _restore_single_file(self, backup_file: Path) -> bool:
         """Restore a single file from backup to its original location.
 
+        Backup files are stored mirroring their full absolute path under the
+        backup directory (e.g. ``<BACKUP_DIR>/media/sonarr/Show/tvshow.nfo``).
+        The original absolute path is reconstructed by prepending ``/`` to the
+        path component relative to the backup directory.
+
         For image files, this handles cases where the extension may have changed
         (e.g., backup is poster.png but current file is poster.jpg).
 
@@ -84,20 +89,32 @@ class RollbackService:
             True if file was restored successfully, False otherwise
         """
         try:
-            # Calculate original file path
-            # At this point, backup_dir is guaranteed to be not None due to check above
+            # Reconstruct original absolute path from the backup path structure.
+            # Backups are stored as <BACKUP_DIR>/<absolute-path-without-leading-slash>
+            # so reversing that gives us Path("/") / relative_to_backup_dir.
             backup_dir = self.settings.original_files_backup_dir
             assert backup_dir is not None
             relative_path = backup_file.relative_to(backup_dir)
-            original_file = self.settings.rewrite_root_dir / relative_path
 
-            # Check if original location still exists (parent directory)
+            # Try new format first: backup mirrors the full absolute path.
+            original_file = Path("/") / relative_path
+
+            # Fall back to legacy format: path is relative to a root dir.
+            # This handles backups created by older versions of this tool.
             if not original_file.parent.exists():
-                logger.warning(
-                    f"Original directory no longer exists, skipping: "
-                    f"{original_file.parent}"
-                )
-                return False
+                found_legacy = False
+                for root_dir in self.settings.rewrite_root_dirs:
+                    candidate = root_dir / relative_path
+                    if candidate.parent.exists():
+                        original_file = candidate
+                        found_legacy = True
+                        break
+                if not found_legacy:
+                    logger.warning(
+                        f"Original directory no longer exists, skipping: "
+                        f"{original_file}"
+                    )
+                    return False
 
             # Use shared restore function which handles:
             # - Stem-matching for different extensions
@@ -106,13 +123,13 @@ class RollbackService:
             success = restore_from_backup(
                 original_file,
                 self.settings.original_files_backup_dir,
-                self.settings.rewrite_root_dir,
+                self.settings.rewrite_root_dirs,
             )
 
             if success:
-                logger.info(f"✅ Restored: {relative_path}")
+                logger.info(f"✅ Restored: {original_file}")
             else:
-                logger.warning(f"⚠️ No backup found for: {relative_path}")
+                logger.warning(f"⚠️ No backup found for: {original_file}")
 
             return success
 
