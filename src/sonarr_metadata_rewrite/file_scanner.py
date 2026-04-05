@@ -67,6 +67,9 @@ class FileScanner:
     def _perform_scan(self) -> None:
         """Perform one complete scan of all root directories."""
         for root_dir in self.settings.rewrite_root_dirs:
+            if self.stop_event is not None and self.stop_event.is_set():
+                return
+
             if not root_dir.exists():
                 logger.warning(f"Root directory does not exist: {root_dir}")
                 continue
@@ -79,7 +82,7 @@ class FileScanner:
 
                 for file_path in target_files:
                     if self.stop_event is not None and self.stop_event.is_set():
-                        return
+                        break
 
                     try:
                         if self.callback:
