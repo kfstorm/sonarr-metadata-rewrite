@@ -400,8 +400,8 @@ def test_restore_mixed_backup_directory(
         _make_backup(file_path, backup_dir)
         file_path.write_text("translated")
 
-    for file_path, content in binary_files:
-        file_path.write_bytes(content)
+    for file_path, bin_content in binary_files:
+        file_path.write_bytes(bin_content)
         _make_backup(file_path, backup_dir)
         file_path.write_bytes(b"translated")
 
