@@ -126,7 +126,7 @@ version-file = "src/sonarr_metadata_rewrite/_version.py"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.1",
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.1.0",
     "httpx>=0.28.1",
     "responses>=0.25.7",
