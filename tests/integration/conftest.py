@@ -30,8 +30,7 @@ def temp_config_dir() -> Generator[Path, None, None]:
 
         # Create config.xml inside the directory
         config_file = temp_path / "config.xml"
-        config_file.write_text(
-            f"""<?xml version="1.0" encoding="utf-8"?>
+        config_file.write_text(f"""<?xml version="1.0" encoding="utf-8"?>
 <Config>
   <Port>8989</Port>
   <SslPort>9898</SslPort>
@@ -46,8 +45,7 @@ def temp_config_dir() -> Generator[Path, None, None]:
   <UrlBase></UrlBase>
   <UpdateMechanism>Docker</UpdateMechanism>
   <InstanceName>Sonarr (Test)</InstanceName>
-</Config>"""
-        )
+</Config>""")
         yield temp_path
 
 
