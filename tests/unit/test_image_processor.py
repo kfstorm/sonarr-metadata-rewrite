@@ -668,7 +668,7 @@ class TestDownloadAndWriteImage:
         mock_response.content = real_image_bytes
         image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
-        with patch("os.replace") as mock_replace:
+        with patch.object(Path, "replace", autospec=True) as mock_replace:
             image_processor._download_and_write_image(poster_path, candidate)
             # Verify atomic operation was used
             assert mock_replace.called

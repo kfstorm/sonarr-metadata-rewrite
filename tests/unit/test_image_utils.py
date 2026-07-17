@@ -197,7 +197,7 @@ class TestEmbedMarkerAndAtomicWrite:
         assert result == marker_data
 
     def test_atomic_write_uses_temp_file(self, tmp_path: Path) -> None:
-        """Test that atomic write uses temporary file and os.replace()."""
+        """Test that atomic write uses a temporary file and Path.replace()."""
         marker_data = ImageCandidate(
             file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
         )
@@ -205,15 +205,15 @@ class TestEmbedMarkerAndAtomicWrite:
 
         raw_bytes = _create_image_bytes((30, 30), "white", "PNG")
 
-        with patch("os.replace") as mock_replace:
+        with patch.object(Path, "replace", autospec=True) as mock_replace:
             embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
 
-            # Verify os.replace was called (atomic operation)
+            # Verify Path.replace was called (atomic operation)
             assert mock_replace.called
             args = mock_replace.call_args[0]
             # First arg should be temp file, second should be destination
-            assert str(args[1]) == str(dst)
-            assert args[0] != str(dst)  # Temp file is different
+            assert args[1] == dst
+            assert args[0] != dst  # Temp file is different
 
     def test_invalid_image_data_raises_error(self, tmp_path: Path) -> None:
         """Test that invalid image data raises appropriate exception."""
