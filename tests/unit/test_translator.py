@@ -1,6 +1,7 @@
 """Unit tests for translator."""
 
 import json
+from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
@@ -27,13 +28,15 @@ def configure_image_response(mock_get: Mock, response: dict[str, Any]) -> None:
 
 
 @pytest.fixture
-def translator(test_settings: Settings) -> Translator:
+def translator(test_settings: Settings) -> Generator[Translator, None, None]:
     """Create translator instance."""
     cache = Cache(str(test_settings.cache_dir))
     translator = Translator(test_settings, cache)
     # Clear the cache to ensure clean tests
     translator.cache.clear()
-    return translator
+    yield translator
+    translator.close()
+    cache.close()
 
 
 @pytest.fixture
@@ -385,6 +388,7 @@ def test_close_method(test_settings: Settings) -> None:
     assert translator.client is not None
     assert isinstance(translator.cache, Cache)
     translator.close()
+    cache.close()
     # Client should be closed after calling close()
 
 

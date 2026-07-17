@@ -120,7 +120,10 @@ def patch_fetch_with_retry() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def translator(test_settings: Settings, tmp_path: Path) -> Translator:
+def translator(
+    test_settings: Settings, tmp_path: Path
+) -> Generator[Translator, None, None]:
     """Create a Translator instance with a temporary cache for testing."""
     cache = Cache(tmp_path / "cache")
-    return Translator(test_settings, cache)
+    yield Translator(test_settings, cache)
+    cache.close()
