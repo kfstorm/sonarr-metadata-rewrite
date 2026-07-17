@@ -8,7 +8,6 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import cast
-from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.models import EpisodeMetadataInfo, MetadataInfo
 from sonarr_metadata_rewrite.retry_utils import retry
