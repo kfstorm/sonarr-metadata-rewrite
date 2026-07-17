@@ -78,3 +78,77 @@ def test_radarr_movie_metadata_and_images(
         ) as (nfo_file, image_files):
             with ServiceRunner(temp_radarr_media_root, service_config):
                 verify_movie_output(nfo_file, image_files)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "use_movie_nfo",
+    [True, False],
+    ids=["movie-nfo", "video-named-nfo"],
+)
+def test_radarr_movie_rollback_service_mode(
+    temp_radarr_media_root: Path,
+    radarr_container: RadarrClient,
+    tmp_path: Path,
+    use_movie_nfo: bool,
+) -> None:
+    """Restore original Radarr movie NFO and poster from backup."""
+    assert radarr_container.configure_metadata_settings(
+        use_movie_nfo
+    ), "Failed to configure Radarr Kodi/Emby metadata provider"
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    with MovieWithNfos(
+        radarr_container,
+        temp_radarr_media_root,
+        FIGHT_CLUB_TMDB_ID,
+        use_movie_nfo,
+    ) as (nfo_file, image_files):
+        with ServiceRunner(
+            temp_radarr_media_root,
+            {"ORIGINAL_FILES_BACKUP_DIR": str(backup_dir)},
+        ):
+            verify_movie_output(nfo_file, image_files)
+
+        with ServiceRunner(
+            temp_radarr_media_root,
+            {
+                "SERVICE_MODE": "rollback",
+                "ORIGINAL_FILES_BACKUP_DIR": str(backup_dir),
+            },
+        ):
+            verify_translations([nfo_file], "en", ["zh", "en"])
+            verify_images(image_files, expected_language=None)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "use_movie_nfo",
+    [True, False],
+    ids=["movie-nfo", "video-named-nfo"],
+)
+def test_radarr_nfo_rewrite_disabled(
+    temp_radarr_media_root: Path,
+    radarr_container: RadarrClient,
+    use_movie_nfo: bool,
+) -> None:
+    """Keep Radarr movie NFO English while rewriting localized poster."""
+    assert radarr_container.configure_metadata_settings(
+        use_movie_nfo
+    ), "Failed to configure Radarr Kodi/Emby metadata provider"
+
+    with MovieWithNfos(
+        radarr_container,
+        temp_radarr_media_root,
+        FIGHT_CLUB_TMDB_ID,
+        use_movie_nfo,
+    ) as (nfo_file, image_files):
+        with ServiceRunner(
+            temp_radarr_media_root,
+            {"ENABLE_NFO_REWRITE": "false"},
+        ):
+            verify_images(image_files, expected_language="zh-CN")
+            verify_translations([nfo_file], "en", ["zh", "en"])
