@@ -48,6 +48,9 @@ echo "TMDB_API_KEY=your_api_key_here" > .env
 
 # Combine coverage from unit and integration tests
 ./scripts/combine-coverage.sh
+
+# Run duplication scan
+npx jscpd
 ```
 
 ### Development Usage
@@ -193,6 +196,7 @@ development fallback.
 - **Integration Testing**: Docker/Podman-based Sonarr and Radarr integration
   tests
 - **Dead Code**: Vulture with whitelist support
+- **Duplication**: jscpd for copy-paste detection
 - **Automation**: pre-commit hooks for all quality checks
 
 ### File Structure

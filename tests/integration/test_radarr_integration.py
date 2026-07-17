@@ -46,7 +46,7 @@ def verify_movie_output(nfo_file: Path, image_files: list[Path]) -> None:
     ],
 )
 def test_radarr_movie_metadata_and_images(
-    temp_media_root: Path,
+    temp_radarr_media_root: Path,
     radarr_container: RadarrClient,
     use_movie_nfo: bool,
     service_config: dict[str, str],
@@ -58,13 +58,13 @@ def test_radarr_movie_metadata_and_images(
 
     if service_config.get("ENABLE_FILE_SCANNER") == "false":
         with ServiceRunner(
-            temp_media_root,
+            temp_radarr_media_root,
             service_config,
             startup_pattern="File monitor started",
         ):
             with MovieWithNfos(
                 radarr_container,
-                temp_media_root,
+                temp_radarr_media_root,
                 FIGHT_CLUB_TMDB_ID,
                 use_movie_nfo,
             ) as (nfo_file, image_files):
@@ -72,9 +72,9 @@ def test_radarr_movie_metadata_and_images(
     else:
         with MovieWithNfos(
             radarr_container,
-            temp_media_root,
+            temp_radarr_media_root,
             FIGHT_CLUB_TMDB_ID,
             use_movie_nfo,
         ) as (nfo_file, image_files):
-            with ServiceRunner(temp_media_root, service_config):
+            with ServiceRunner(temp_radarr_media_root, service_config):
                 verify_movie_output(nfo_file, image_files)

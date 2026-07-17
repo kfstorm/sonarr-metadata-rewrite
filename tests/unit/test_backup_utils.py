@@ -12,6 +12,22 @@ from sonarr_metadata_rewrite.backup_utils import (
 )
 
 
+def create_legacy_backup(backup_dir: Path, filename: str, content: str) -> Path:
+    """Create a legacy-format backup for a file below root_dir."""
+    backup_path = backup_dir / filename
+    backup_path.parent.mkdir(parents=True)
+    backup_path.write_text(content)
+    return backup_path
+
+
+def create_root_file(root_dir: Path, filename: str, content: str) -> Path:
+    """Create a file below a media root."""
+    file_path = root_dir / filename
+    file_path.parent.mkdir(parents=True)
+    file_path.write_text(content)
+    return file_path
+
+
 def test_backup_with_none_backup_dir() -> None:
     """Test backup functions with None backup_dir."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -291,15 +307,12 @@ def test_get_backup_path_finds_legacy_format() -> None:
         backup_dir = temp_path / "backup"
 
         # Original file
-        show_dir = root_dir / "Show A"
-        show_dir.mkdir(parents=True)
-        file_path = show_dir / "tvshow.nfo"
-        file_path.write_text("original")
+        file_path = create_root_file(root_dir, "Show A/tvshow.nfo", "original")
 
         # Legacy backup: relative to root_dir
-        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
-        legacy_backup.parent.mkdir(parents=True)
-        legacy_backup.write_text("original")
+        legacy_backup = create_legacy_backup(
+            backup_dir, "Show A/tvshow.nfo", "original"
+        )
 
         # New-format path does NOT exist, but legacy does
         new_backup = backup_dir / file_path.relative_to("/")
@@ -316,15 +329,14 @@ def test_create_backup_skips_when_legacy_backup_exists() -> None:
         root_dir = temp_path / "tv"
         backup_dir = temp_path / "backup"
 
-        show_dir = root_dir / "Show A"
-        show_dir.mkdir(parents=True)
-        file_path = show_dir / "tvshow.nfo"
-        file_path.write_text("translated content")
+        file_path = create_root_file(
+            root_dir, "Show A/tvshow.nfo", "translated content"
+        )
 
         # Create legacy backup
-        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
-        legacy_backup.parent.mkdir(parents=True)
-        legacy_backup.write_text("original content")
+        legacy_backup = create_legacy_backup(
+            backup_dir, "Show A/tvshow.nfo", "original content"
+        )
 
         result = create_backup(file_path, backup_dir, [root_dir])
         assert result is True
@@ -343,15 +355,12 @@ def test_restore_from_backup_uses_legacy_format() -> None:
         root_dir = temp_path / "tv"
         backup_dir = temp_path / "backup"
 
-        show_dir = root_dir / "Show A"
-        show_dir.mkdir(parents=True)
-        file_path = show_dir / "tvshow.nfo"
-        file_path.write_text("translated content")
+        file_path = create_root_file(
+            root_dir, "Show A/tvshow.nfo", "translated content"
+        )
 
         # Legacy backup only
-        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
-        legacy_backup.parent.mkdir(parents=True)
-        legacy_backup.write_text("original content")
+        create_legacy_backup(backup_dir, "Show A/tvshow.nfo", "original content")
 
         result = restore_from_backup(file_path, backup_dir, [root_dir])
         assert result is True
@@ -365,11 +374,9 @@ def test_legacy_fallback_stem_matching() -> None:
         root_dir = temp_path / "tv"
         backup_dir = temp_path / "backup"
 
-        show_dir = root_dir / "Show A"
-        show_dir.mkdir(parents=True)
-        # Current file is .jpg
-        file_path_jpg = show_dir / "poster.jpg"
-        file_path_jpg.write_bytes(b"JPEG translated")
+        file_path_jpg = create_root_file(
+            root_dir, "Show A/poster.jpg", "JPEG translated"
+        )
 
         # Legacy backup is .png (stem matches)
         legacy_backup_png = backup_dir / "Show A" / "poster.png"
@@ -387,15 +394,10 @@ def test_legacy_fallback_not_used_without_root_dirs() -> None:
         root_dir = temp_path / "tv"
         backup_dir = temp_path / "backup"
 
-        show_dir = root_dir / "Show A"
-        show_dir.mkdir(parents=True)
-        file_path = show_dir / "tvshow.nfo"
-        file_path.write_text("content")
+        file_path = create_root_file(root_dir, "Show A/tvshow.nfo", "content")
 
         # Only a legacy backup exists
-        legacy_backup = backup_dir / "Show A" / "tvshow.nfo"
-        legacy_backup.parent.mkdir(parents=True)
-        legacy_backup.write_text("legacy backup")
+        create_legacy_backup(backup_dir, "Show A/tvshow.nfo", "legacy backup")
 
         # No root_dirs → only new-format path is checked → not found
         assert get_backup_path(file_path, backup_dir) is None
@@ -411,15 +413,12 @@ def test_get_backup_path_legacy_ignores_root_not_containing_file() -> None:
         backup_dir = temp_path / "backup"
 
         # File lives under root_dir_b, NOT root_dir_a
-        show_dir = root_dir_b / "Show B"
-        show_dir.mkdir(parents=True)
-        file_path = show_dir / "tvshow.nfo"
-        file_path.write_text("original")
+        file_path = create_root_file(root_dir_b, "Show B/tvshow.nfo", "original")
 
         # Legacy backup only under root_dir_b
-        legacy_backup = backup_dir / "Show B" / "tvshow.nfo"
-        legacy_backup.parent.mkdir(parents=True)
-        legacy_backup.write_text("original")
+        legacy_backup = create_legacy_backup(
+            backup_dir, "Show B/tvshow.nfo", "original"
+        )
 
         # root_dir_a does not contain the file → _legacy_backup_path returns None
         # and the loop continues to root_dir_b which does match
@@ -439,15 +438,12 @@ def test_create_backup_legacy_skips_root_not_containing_file() -> None:
         backup_dir = temp_path / "backup"
 
         # File lives under root_dir_b, NOT root_dir_a
-        show_dir = root_dir_b / "Show B"
-        show_dir.mkdir(parents=True)
-        file_path = show_dir / "tvshow.nfo"
-        file_path.write_text("content")
+        file_path = create_root_file(root_dir_b, "Show B/tvshow.nfo", "content")
 
         # Legacy backup exists under root_dir_b
-        legacy_backup = backup_dir / "Show B" / "tvshow.nfo"
-        legacy_backup.parent.mkdir(parents=True)
-        legacy_backup.write_text("original")
+        legacy_backup = create_legacy_backup(
+            backup_dir, "Show B/tvshow.nfo", "original"
+        )
 
         # root_dir_a is passed first (no match) then root_dir_b (legacy found)
         result = create_backup(file_path, backup_dir, [root_dir_a, root_dir_b])
@@ -475,10 +471,9 @@ def test_create_backup_legacy_stem_match_skips_creation() -> None:
         file_path_jpg.write_bytes(b"JPEG translated")
 
         # Legacy backup exists as .png (same stem, different extension)
-        legacy_dir = backup_dir / "Show A"
-        legacy_dir.mkdir(parents=True)
-        legacy_png = legacy_dir / "poster.png"
-        legacy_png.write_bytes(b"PNG original")
+        legacy_png = create_legacy_backup(
+            backup_dir, "Show A/poster.png", "PNG original"
+        )
 
         result = create_backup(file_path_jpg, backup_dir, [root_dir])
         assert result is True

@@ -1,0 +1,7 @@
+{
+  "ignore": [".agents/**"],
+  "minLines": 5,
+  "threshold": 0,
+  "reporters": ["ai"],
+  "noTips": true
+}

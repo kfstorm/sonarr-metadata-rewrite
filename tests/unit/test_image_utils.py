@@ -24,13 +24,24 @@ def _create_image_bytes(size: tuple[int, int], color: str, fmt: str) -> bytes:
     return output.getvalue()
 
 
+def _write_jpeg_marker(
+    path: Path, marker_data: dict[str, str | None], prefix: bytes = b""
+) -> None:
+    """Write a JPEG with marker JSON in EXIF UserComment."""
+    user_comment = prefix + json.dumps(marker_data).encode("utf-8")
+    exif_dict = {"Exif": {piexif.ExifIFD.UserComment: user_comment}}
+    Image.new("RGB", (100, 100), color="blue").save(
+        path, "JPEG", exif=piexif.dump(exif_dict)
+    )
+
+
 class TestReadEmbeddedMarker:
     """Tests for read_embedded_marker() function."""
 
     def test_read_png_with_text_chunk(self, tmp_path: Path) -> None:
         """Test reading marker from PNG with tEXt chunk."""
         # Create PNG with tEXt chunk containing JSON marker
-        marker_data = {
+        marker_data: dict[str, str | None] = {
             "file_path": "/test/path.png",
             "iso_639_1": "en",
             "iso_3166_1": "US",
@@ -51,7 +62,7 @@ class TestReadEmbeddedMarker:
 
     def test_read_jpeg_with_exif(self, tmp_path: Path) -> None:
         """Test reading marker from JPEG with EXIF UserComment."""
-        marker_data = {
+        marker_data: dict[str, str | None] = {
             "file_path": "/test/path.jpg",
             "iso_639_1": "ja",
             "iso_3166_1": "JP",
@@ -59,13 +70,7 @@ class TestReadEmbeddedMarker:
         jpeg_path = tmp_path / "test.jpg"
 
         # Create JPEG with EXIF UserComment
-        img = Image.new("RGB", (100, 100), color="blue")
-
-        user_comment = json.dumps(marker_data).encode("utf-8")
-        exif_dict = {"Exif": {piexif.ExifIFD.UserComment: user_comment}}
-        exif_bytes = piexif.dump(exif_dict)
-
-        img.save(jpeg_path, "JPEG", exif=exif_bytes)
+        _write_jpeg_marker(jpeg_path, marker_data)
 
         # Read marker
         result = read_embedded_marker(jpeg_path)
@@ -122,15 +127,7 @@ class TestReadEmbeddedMarker:
         }
         jpeg_path = tmp_path / "unicode.jpg"
 
-        img = Image.new("RGB", (100, 100), color="blue")
-
-        # Create UserComment with UNICODE\x00 prefix
-        marker_json = json.dumps(marker_data)
-        user_comment = b"UNICODE\x00" + marker_json.encode("utf-8")
-        exif_dict = {"Exif": {piexif.ExifIFD.UserComment: user_comment}}
-        exif_bytes = piexif.dump(exif_dict)
-
-        img.save(jpeg_path, "JPEG", exif=exif_bytes)
+        _write_jpeg_marker(jpeg_path, marker_data, b"UNICODE\x00")
 
         result = read_embedded_marker(jpeg_path)
         assert result == ImageCandidate(
@@ -146,15 +143,7 @@ class TestReadEmbeddedMarker:
         }
         jpeg_path = tmp_path / "ascii.jpg"
 
-        img = Image.new("RGB", (100, 100), color="green")
-
-        # Create UserComment with ASCII\x00\x00\x00 prefix
-        marker_json = json.dumps(marker_data)
-        user_comment = b"ASCII\x00\x00\x00" + marker_json.encode("utf-8")
-        exif_dict = {"Exif": {piexif.ExifIFD.UserComment: user_comment}}
-        exif_bytes = piexif.dump(exif_dict)
-
-        img.save(jpeg_path, "JPEG", exif=exif_bytes)
+        _write_jpeg_marker(jpeg_path, marker_data, b"ASCII\x00\x00\x00")
 
         result = read_embedded_marker(jpeg_path)
         assert result == ImageCandidate(

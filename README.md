@@ -54,13 +54,19 @@ the [TMDB Authentication Guide](https://developer.themoviedb.org/docs/authentica
 
 **Docker (recommended):**
 
+Create a configuration file:
+
+```dotenv
+TMDB_API_KEY=your_api_read_access_token_here
+REWRITE_ROOT_DIRS=/tv,/anime
+PREFERRED_LANGUAGES=zh-CN,ja-JP
+```
+
 ```bash
 docker run -d \
   --name sonarr-metadata-rewrite \
   --user $(id -u):$(id -g) \
-  -e TMDB_API_KEY=your_api_key_here \
-  -e REWRITE_ROOT_DIRS=/tv,/anime \
-  -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
+  --env-file /path/to/sonarr-metadata-rewrite.env \
   -v /path/to/tv/shows:/tv \
   -v /path/to/anime:/anime \
   -v sonarr-metadata-cache:/app/cache \
@@ -78,12 +84,8 @@ services:
     image: kfstorm/sonarr-metadata-rewrite:latest
     container_name: sonarr-metadata-rewrite
     user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - TMDB_API_KEY=your_api_key_here
-      - REWRITE_ROOT_DIRS=/tv,/anime
-      - PREFERRED_LANGUAGES=zh-CN,ja-JP
-      # Optional: customize cache duration (default: 30 days)
-      # - CACHE_DURATION_HOURS=168
+    env_file:
+      - /path/to/sonarr-metadata-rewrite.env
     volumes:
       - /path/to/tv/shows:/tv
       - /path/to/anime:/anime
@@ -307,13 +309,13 @@ Set the service to rollback mode, which will restore all original files from bac
 
 **Docker:**
 
+Use same configuration file as your running rewrite service:
+
 ```bash
 docker run --rm \
   --user $(id -u):$(id -g) \
   -e SERVICE_MODE=rollback \
-  -e TMDB_API_KEY=your_api_key_here \
-  -e REWRITE_ROOT_DIRS=/tv,/anime \
-  -e PREFERRED_LANGUAGES=zh-CN,ja-JP \
+  --env-file /path/to/sonarr-metadata-rewrite.env \
   -v /path/to/tv/shows:/tv \
   -v /path/to/anime:/anime \
   -v sonarr-metadata-backups:/app/backups \
@@ -352,7 +354,11 @@ Want to hack on this? Cool!
 git clone https://github.com/kfstorm/sonarr-metadata-rewrite.git
 cd sonarr-metadata-rewrite
 ./scripts/setup-dev.sh
-echo "TMDB_API_KEY=your_key" > .env
+cat > .env <<'EOF'
+TMDB_API_KEY=your_api_read_access_token_here
+REWRITE_ROOT_DIRS=/path/to/tv/shows,/path/to/anime
+PREFERRED_LANGUAGES=zh-CN,ja-JP
+EOF
 ```
 
 **Run tests:**

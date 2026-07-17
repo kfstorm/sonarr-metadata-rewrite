@@ -1,38 +1,15 @@
 """Radarr API client for integration testing."""
 
-import time
 from pathlib import Path
 from typing import Any
 
-import httpx
-
-from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.arr_client import ArrClient
 
 
 class RadarrClient(ArrClient):
     """Small Radarr API client used by integration tests."""
 
-    def wait_for_ready(self, max_attempts: int = 30, delay: float = 1.0) -> bool:
-        """Wait for Radarr API readiness."""
-        timeout_sec = max_attempts * delay
-
-        @retry(
-            timeout=timeout_sec,
-            interval=delay,
-            log_interval=5.0,
-            exceptions=(httpx.RequestError, httpx.HTTPStatusError),
-        )
-        def check_status() -> bool:
-            response = self._make_request("GET", "/api/v3/system/status", timeout=5.0)
-            response.raise_for_status()
-            return True
-
-        try:
-            return check_status()
-        except Exception as exc:
-            print(f"Radarr failed to become ready: {exc}")
-            return False
+    service_name = "Radarr"
 
     def add_movie(
         self,
@@ -135,7 +112,6 @@ class RadarrClient(ArrClient):
     def remove_movie(
         self,
         movie_id: int,
-        media_root: Path,
         movie_directory: Path,
         timeout: float = 30.0,
     ) -> bool:
@@ -146,16 +122,4 @@ class RadarrClient(ArrClient):
         if not response.is_success:
             return False
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            if not movie_directory.exists():
-                return True
-            time.sleep(1)
-
-        if movie_directory.exists():
-            remaining_files = list(movie_directory.rglob("*"))
-            raise RuntimeError(
-                f"Movie directory {movie_directory} still exists after {timeout}s. "
-                f"Remaining files: {remaining_files}"
-            )
-        return True
+        return self._wait_for_directory_removal(movie_directory, "Movie", timeout)

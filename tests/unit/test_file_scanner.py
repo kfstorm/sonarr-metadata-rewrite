@@ -2,6 +2,8 @@
 
 import shutil
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -15,6 +17,27 @@ from sonarr_metadata_rewrite.file_scanner import FileScanner
 def file_scanner(test_settings: Settings) -> FileScanner:
     """Create file scanner instance."""
     return FileScanner(test_settings)
+
+
+@contextmanager
+def scanner_root(file_scanner: FileScanner, name: str) -> Iterator[Path]:
+    """Use an isolated scanner root and clean it after a test."""
+    original_root = file_scanner.settings.rewrite_root_dirs[0]
+    test_dir = original_root / name
+    file_scanner.settings.rewrite_root_dirs = [test_dir]
+    try:
+        yield test_dir
+    finally:
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        file_scanner.settings.rewrite_root_dirs = [original_root]
+
+
+def create_scan_files(test_files: list[Path]) -> None:
+    """Create scanner input files and parent directories."""
+    for test_file in test_files:
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.touch()
 
 
 def test_file_scanner_initialization(file_scanner: FileScanner) -> None:
@@ -50,11 +73,7 @@ def test_scanner_finds_nfo_files_through_start(
 ) -> None:
     """Test that scanner finds .nfo files recursively through public interface."""
     # Use a dedicated test subdirectory
-    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_scan"
-    original_root = file_scanner.settings.rewrite_root_dirs[0]
-    file_scanner.settings.rewrite_root_dirs = [test_dir]
-
-    try:
+    with scanner_root(file_scanner, "test_scan") as test_dir:
         test_files = [
             test_dir / "tvshow.nfo",
             test_dir / "subdir" / "episode.nfo",
@@ -62,9 +81,7 @@ def test_scanner_finds_nfo_files_through_start(
         ]
 
         # Create directories and files
-        for test_file in test_files:
-            test_file.parent.mkdir(parents=True, exist_ok=True)
-            test_file.touch()
+        create_scan_files(test_files)
 
         # Start scanner with callback
         file_scanner.start(callback_tracker)
@@ -80,11 +97,6 @@ def test_scanner_finds_nfo_files_through_start(
         called_paths = {call[0][0] for call in callback_tracker.call_args_list}
         assert test_dir / "tvshow.nfo" in called_paths
         assert test_dir / "subdir" / "episode.nfo" in called_paths
-    finally:
-        # Clean up test files and restore original root
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_case_insensitive_detection(
@@ -92,11 +104,7 @@ def test_scanner_case_insensitive_detection(
 ) -> None:
     """Test that scanner detects both .nfo and .NFO files through public interface."""
     # Use a dedicated test subdirectory
-    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_case_scan"
-    original_root = file_scanner.settings.rewrite_root_dirs[0]
-    file_scanner.settings.rewrite_root_dirs = [test_dir]
-
-    try:
+    with scanner_root(file_scanner, "test_case_scan") as test_dir:
         test_files = [
             test_dir / "tvshow.nfo",  # lowercase
             test_dir / "series.NFO",  # uppercase
@@ -106,9 +114,7 @@ def test_scanner_case_insensitive_detection(
         ]
 
         # Create directories and files
-        for test_file in test_files:
-            test_file.parent.mkdir(parents=True, exist_ok=True)
-            test_file.touch()
+        create_scan_files(test_files)
 
         # Start scanner with callback
         file_scanner.start(callback_tracker)
@@ -126,11 +132,6 @@ def test_scanner_case_insensitive_detection(
         assert test_dir / "series.NFO" in called_paths
         assert test_dir / "subdir" / "episode.nfo" in called_paths
         assert test_dir / "subdir" / "special.NFO" in called_paths
-    finally:
-        # Clean up test files and restore original root
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_missing_directory_handling(
@@ -165,11 +166,7 @@ def test_scanner_finds_both_nfo_and_images(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner finds both NFO and image files, ignoring non-supported images."""
-    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_mixed_scan"
-    original_root = file_scanner.settings.rewrite_root_dirs[0]
-    file_scanner.settings.rewrite_root_dirs = [test_dir]
-
-    try:
+    with scanner_root(file_scanner, "test_mixed_scan") as test_dir:
         test_files = [
             test_dir / "tvshow.nfo",
             test_dir / "poster.jpg",
@@ -177,9 +174,7 @@ def test_scanner_finds_both_nfo_and_images(
             test_dir / "banner.jpg",  # Should be ignored
         ]
 
-        for test_file in test_files:
-            test_file.parent.mkdir(parents=True, exist_ok=True)
-            test_file.touch()
+        create_scan_files(test_files)
 
         file_scanner.start(callback_tracker)
         time.sleep(0.1)
@@ -192,30 +187,20 @@ def test_scanner_finds_both_nfo_and_images(
         assert test_dir / "poster.jpg" in called_paths
         assert test_dir / "clearlogo.png" in called_paths
         assert test_dir / "banner.jpg" not in called_paths
-    finally:
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_processes_nfo_and_images(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner processes NFO and image files (order not enforced)."""
-    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_order_scan"
-    original_root = file_scanner.settings.rewrite_root_dirs[0]
-    file_scanner.settings.rewrite_root_dirs = [test_dir]
-
-    try:
+    with scanner_root(file_scanner, "test_order_scan") as test_dir:
         test_files = [
             test_dir / "poster.jpg",
             test_dir / "tvshow.nfo",
             test_dir / "clearlogo.png",
         ]
 
-        for test_file in test_files:
-            test_file.parent.mkdir(parents=True, exist_ok=True)
-            test_file.touch()
+        create_scan_files(test_files)
 
         file_scanner.start(callback_tracker)
         time.sleep(0.1)
@@ -226,29 +211,19 @@ def test_scanner_processes_nfo_and_images(
         assert test_dir / "tvshow.nfo" in called_paths
         assert test_dir / "poster.jpg" in called_paths
         assert test_dir / "clearlogo.png" in called_paths
-    finally:
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_image_only_directory(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """Test scanner processes image-only directories successfully."""
-    test_dir = file_scanner.settings.rewrite_root_dirs[0] / "test_images_only"
-    original_root = file_scanner.settings.rewrite_root_dirs[0]
-    file_scanner.settings.rewrite_root_dirs = [test_dir]
-
-    try:
+    with scanner_root(file_scanner, "test_images_only") as test_dir:
         test_files = [
             test_dir / "poster.jpg",
             test_dir / "clearlogo.png",
         ]
 
-        for test_file in test_files:
-            test_file.parent.mkdir(parents=True, exist_ok=True)
-            test_file.touch()
+        create_scan_files(test_files)
 
         file_scanner.start(callback_tracker)
         time.sleep(0.1)
@@ -259,10 +234,6 @@ def test_scanner_image_only_directory(
         called_paths = {call[0][0] for call in callback_tracker.call_args_list}
         assert test_dir / "poster.jpg" in called_paths
         assert test_dir / "clearlogo.png" in called_paths
-    finally:
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-        file_scanner.settings.rewrite_root_dirs = [original_root]
 
 
 def test_scanner_handles_scan_loop_exception(

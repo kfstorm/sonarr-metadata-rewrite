@@ -4,6 +4,7 @@ import os
 import socket
 import tempfile
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -36,25 +37,82 @@ def _write_arr_config(config_dir: Path, port: int, instance_name: str) -> None:
 </Config>""")
 
 
+@contextmanager
+def _temporary_arr_config(
+    prefix: str, port: int, instance_name: str
+) -> Generator[Path, None, None]:
+    """Create temporary Arr config with common LinuxServer settings."""
+    with tempfile.TemporaryDirectory(prefix=prefix) as temp_dir:
+        config_dir = Path(temp_dir)
+        _write_arr_config(config_dir, port, instance_name)
+        yield config_dir
+
+
+def _find_free_port() -> int:
+    """Reserve an available local TCP port number."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as socket_handle:
+        socket_handle.bind(("", 0))
+        return socket_handle.getsockname()[1]
+
+
+def _arr_environment() -> dict[str, str]:
+    """Return LinuxServer container user and timezone settings."""
+    return {
+        "TZ": "UTC",
+        "PUID": str(os.getuid()),
+        "PGID": str(os.getgid()),
+    }
+
+
+def _arr_extra_args(container_manager: ContainerManager) -> list[str]:
+    """Return container runtime-specific arguments for Arr images."""
+    return ["--userns=keep-id"] if container_manager.runtime == "podman" else []
+
+
+def _start_arr_container(
+    container_manager: ContainerManager,
+    image: str,
+    name_prefix: str,
+    container_port: int,
+    media_root: Path,
+    media_path: str,
+    config_dir: Path,
+) -> int:
+    """Start an Arr container and return its mapped local port."""
+    free_port = _find_free_port()
+    container_manager.run_container(
+        image=image,
+        name=f"{name_prefix}-{free_port}",
+        ports={container_port: free_port},
+        volumes={
+            str(media_root): media_path,
+            str(config_dir): "/config",
+        },
+        environment=_arr_environment(),
+        extra_args=_arr_extra_args(container_manager),
+    )
+    return free_port
+
+
 @pytest.fixture(scope="session")
-def temp_media_root() -> Generator[Path, None, None]:
-    """Create session-wide temporary media directory for Sonarr container and tests."""
+def temp_sonarr_media_root() -> Generator[Path, None, None]:
+    """Create session-wide temporary media directory for Sonarr tests."""
     with tempfile.TemporaryDirectory(prefix="sonarr_media_") as temp_dir:
         yield Path(temp_dir)
 
 
 @pytest.fixture(scope="session")
-def temp_config_dir() -> Generator[Path, None, None]:
-    """Create temporary config directory for Sonarr container."""
-    with tempfile.TemporaryDirectory(prefix="sonarr_config_") as temp_dir:
-        temp_path = Path(temp_dir)
+def temp_radarr_media_root() -> Generator[Path, None, None]:
+    """Create session-wide temporary media directory for Radarr tests."""
+    with tempfile.TemporaryDirectory(prefix="radarr_media_") as temp_dir:
+        yield Path(temp_dir)
 
-        _write_arr_config(
-            temp_path,
-            port=8989,
-            instance_name="Sonarr (Test)",
-        )
-        yield temp_path
+
+@pytest.fixture(scope="session")
+def temp_sonarr_config_dir() -> Generator[Path, None, None]:
+    """Create temporary config directory for Sonarr container."""
+    with _temporary_arr_config("sonarr_config_", 8989, "Sonarr (Test)") as config_dir:
+        yield config_dir
 
 
 @pytest.fixture(scope="session")
@@ -67,41 +125,18 @@ def container_manager() -> Generator[ContainerManager, None, None]:
 @pytest.fixture(scope="session")
 def sonarr_container(
     container_manager: ContainerManager,
-    temp_media_root: Path,
-    temp_config_dir: Path,
+    temp_sonarr_media_root: Path,
+    temp_sonarr_config_dir: Path,
 ) -> Generator[SonarrClient, None, None]:
     """Start Sonarr container and return configured client."""
-    # Find a free port
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        free_port = s.getsockname()[1]
-
-    # Always set PUID/PGID for LinuxServer images
-
-    env = {
-        "TZ": "UTC",
-        "PUID": str(os.getuid()),
-        "PGID": str(os.getgid()),
-    }
-
-    # Set container runtime-specific arguments
-    extra_args = []
-    if container_manager.runtime == "podman":
-        # Use keep-id to maintain consistent UID mapping with PUID/PGID
-        extra_args.append("--userns=keep-id")
-
-    # Start Sonarr container (runs in foreground with output streaming)
-    container_name = f"sonarr-test-{free_port}"
-    container_manager.run_container(
+    free_port = _start_arr_container(
+        container_manager,
         image="docker.io/linuxserver/sonarr:latest",
-        name=container_name,
-        ports={8989: free_port},
-        volumes={
-            str(temp_media_root): "/tv",
-            str(temp_config_dir): "/config",
-        },
-        environment=env,
-        extra_args=extra_args,
+        name_prefix="sonarr-test",
+        container_port=8989,
+        media_root=temp_sonarr_media_root,
+        media_path="/tv",
+        config_dir=temp_sonarr_config_dir,
     )
 
     # Create and configure client with the API key from our config
@@ -136,38 +171,25 @@ def configured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
 @pytest.fixture(scope="session")
 def temp_radarr_config_dir() -> Generator[Path, None, None]:
     """Create temporary config directory for Radarr container."""
-    with tempfile.TemporaryDirectory(prefix="radarr_config_") as temp_dir:
-        temp_path = Path(temp_dir)
-        _write_arr_config(temp_path, port=7878, instance_name="Radarr (Test)")
-        yield temp_path
+    with _temporary_arr_config("radarr_config_", 7878, "Radarr (Test)") as config_dir:
+        yield config_dir
 
 
 @pytest.fixture(scope="session")
 def radarr_container(
-    temp_media_root: Path,
+    temp_radarr_media_root: Path,
     temp_radarr_config_dir: Path,
 ) -> Generator[RadarrClient, None, None]:
     """Start Radarr container and return configured client."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("", 0))
-        free_port = sock.getsockname()[1]
-
     with ContainerManager() as manager:
-        extra_args = ["--userns=keep-id"] if manager.runtime == "podman" else []
-        manager.run_container(
+        free_port = _start_arr_container(
+            manager,
             image="docker.io/linuxserver/radarr:latest",
-            name=f"radarr-test-{free_port}",
-            ports={7878: free_port},
-            volumes={
-                str(temp_media_root): "/movies",
-                str(temp_radarr_config_dir): "/config",
-            },
-            environment={
-                "TZ": "UTC",
-                "PUID": str(os.getuid()),
-                "PGID": str(os.getgid()),
-            },
-            extra_args=extra_args,
+            name_prefix="radarr-test",
+            container_port=7878,
+            media_root=temp_radarr_media_root,
+            media_path="/movies",
+            config_dir=temp_radarr_config_dir,
         )
         client = RadarrClient(f"http://localhost:{free_port}", api_key=TEST_API_KEY)
         if not client.wait_for_ready(max_attempts=30, delay=1.0):

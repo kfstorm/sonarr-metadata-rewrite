@@ -58,7 +58,7 @@ GEN_V_IMAGES = ["poster.jpg", "clearlogo.png"] + season_poster_image_filenames(
 @pytest.mark.integration
 @pytest.mark.slow
 def test_file_monitor_workflow(
-    temp_media_root: Path,
+    temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,
 ) -> None:
     """Test file monitor-only workflow with real-time NFO and image processing.
@@ -67,14 +67,14 @@ def test_file_monitor_workflow(
     NFO files and images in real-time when they are created by Sonarr.
     """
     with ServiceRunner(
-        temp_media_root,
+        temp_sonarr_media_root,
         {"ENABLE_FILE_SCANNER": "false"},
         startup_pattern="File monitor started",
     ):
         # Service startup waits for "File monitor started" log, so no sleep needed
         with SeriesWithNfos(
             configured_sonarr_container,
-            temp_media_root,
+            temp_sonarr_media_root,
             BREAKING_BAD_TVDB_ID,
             BREAKING_BAD_IMAGES,
         ) as (nfo_files, image_files):
@@ -87,7 +87,7 @@ def test_file_monitor_workflow(
 @pytest.mark.integration
 @pytest.mark.slow
 def test_file_scanner_workflow(
-    temp_media_root: Path,
+    temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,
 ) -> None:
     """Test file scanner-only workflow with periodic directory scanning.
@@ -97,11 +97,11 @@ def test_file_scanner_workflow(
     """
     with SeriesWithNfos(
         configured_sonarr_container,
-        temp_media_root,
+        temp_sonarr_media_root,
         BREAKING_BAD_TVDB_ID,
         BREAKING_BAD_IMAGES,
     ) as (nfo_files, image_files):
-        with ServiceRunner(temp_media_root, {"ENABLE_FILE_MONITOR": "false"}):
+        with ServiceRunner(temp_sonarr_media_root, {"ENABLE_FILE_MONITOR": "false"}):
             verify_translations(
                 nfo_files, expected_language="zh", possible_languages=["zh", "en"]
             )
@@ -111,7 +111,7 @@ def test_file_scanner_workflow(
 @pytest.mark.integration
 @pytest.mark.slow
 def test_rollback_service_mode(
-    temp_media_root: Path,
+    temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,
     tmp_path: Path,
 ) -> None:
@@ -126,13 +126,13 @@ def test_rollback_service_mode(
 
     with SeriesWithNfos(
         configured_sonarr_container,
-        temp_media_root,
+        temp_sonarr_media_root,
         BREAKING_BAD_TVDB_ID,
         BREAKING_BAD_IMAGES,
     ) as (nfo_files, image_files):
         # First, translate files to Chinese using rewrite mode with backups enabled
         with ServiceRunner(
-            temp_media_root,
+            temp_sonarr_media_root,
             {
                 "ORIGINAL_FILES_BACKUP_DIR": str(backup_dir),
             },
@@ -144,7 +144,7 @@ def test_rollback_service_mode(
 
         # Then, rollback using rollback service mode
         with ServiceRunner(
-            temp_media_root,
+            temp_sonarr_media_root,
             {"SERVICE_MODE": "rollback", "ORIGINAL_FILES_BACKUP_DIR": str(backup_dir)},
         ):
             verify_translations(
@@ -157,7 +157,7 @@ def test_rollback_service_mode(
 @pytest.mark.integration
 @pytest.mark.slow
 def test_nfo_rewrite_disabled(
-    temp_media_root: Path,
+    temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,
 ) -> None:
     """Test that NFO rewrite can be disabled independently of image rewriting.
@@ -168,12 +168,12 @@ def test_nfo_rewrite_disabled(
     """
     with SeriesWithNfos(
         configured_sonarr_container,
-        temp_media_root,
+        temp_sonarr_media_root,
         BREAKING_BAD_TVDB_ID,
         BREAKING_BAD_IMAGES,
     ) as (nfo_files, image_files):
         with ServiceRunner(
-            temp_media_root,
+            temp_sonarr_media_root,
             {"ENABLE_NFO_REWRITE": "false"},
         ):
             # Images should still be rewritten with zh-CN markers
@@ -216,7 +216,7 @@ def test_nfo_rewrite_disabled(
     ids=["translation-fallback", "external-id-lookup", "smart-fallback-merging"],
 )
 def test_advanced_translation_scenarios(
-    temp_media_root: Path,
+    temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,
     tvdb_id: int,
     images: list[str],
@@ -237,12 +237,12 @@ def test_advanced_translation_scenarios(
         possible_languages.add("zh")
 
     with SeriesWithNfos(
-        configured_sonarr_container, temp_media_root, tvdb_id, images
+        configured_sonarr_container, temp_sonarr_media_root, tvdb_id, images
     ) as (
         nfo_files,
         _,
     ):
-        with ServiceRunner(temp_media_root, service_config):
+        with ServiceRunner(temp_sonarr_media_root, service_config):
             verify_translations(
                 nfo_files,
                 expected_language,
@@ -253,7 +253,7 @@ def test_advanced_translation_scenarios(
 @pytest.mark.integration
 @pytest.mark.slow
 def test_multi_episode_nfo_rewrite_and_rollback(
-    temp_media_root: Path,
+    temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,
     tmp_path: Path,
 ) -> None:
@@ -265,10 +265,10 @@ def test_multi_episode_nfo_rewrite_and_rollback(
         configured_sonarr_container,
         BREAKING_BAD_TVDB_ID,
         "/tv",
-        temp_media_root,
+        temp_sonarr_media_root,
     ) as series:
         create_fake_multi_episode_file(
-            temp_media_root,
+            temp_sonarr_media_root,
             series.slug,
             season=1,
             first_episode=1,
@@ -279,7 +279,7 @@ def test_multi_episode_nfo_rewrite_and_rollback(
         scan_success = configured_sonarr_container.trigger_disk_scan(series.id)
         assert scan_success, "Failed to trigger disk scan"
 
-        series_path = temp_media_root / series.slug
+        series_path = temp_sonarr_media_root / series.slug
         nfo_files = wait_for_nfo_files(series_path, expected_count=2, timeout=30.0)
         multi_episode_nfos = [
             nfo_file for nfo_file in nfo_files if "E01-E02" in nfo_file.name
@@ -294,7 +294,7 @@ def test_multi_episode_nfo_rewrite_and_rollback(
         assert "</episodedetails>\n<episodedetails>" in original_content
 
         with ServiceRunner(
-            temp_media_root,
+            temp_sonarr_media_root,
             {
                 "ENABLE_FILE_MONITOR": "false",
                 "ORIGINAL_FILES_BACKUP_DIR": str(backup_dir),
@@ -310,7 +310,7 @@ def test_multi_episode_nfo_rewrite_and_rollback(
             assert "</episodedetails>\n<episodedetails>" in rewritten_content
 
         with ServiceRunner(
-            temp_media_root,
+            temp_sonarr_media_root,
             {
                 "SERVICE_MODE": "rollback",
                 "ENABLE_FILE_MONITOR": "false",

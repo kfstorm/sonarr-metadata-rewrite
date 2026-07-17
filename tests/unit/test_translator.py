@@ -14,6 +14,18 @@ from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent, Translate
 from sonarr_metadata_rewrite.translator import Translator
 
 
+def mock_not_found_error() -> httpx.HTTPStatusError:
+    """Create a TMDB 404 error response."""
+    response = Mock(status_code=404)
+    return httpx.HTTPStatusError("Not Found", request=Mock(), response=response)
+
+
+def configure_image_response(mock_get: Mock, response: dict[str, Any]) -> None:
+    """Configure a successful image API response."""
+    mock_get.return_value.json.return_value = response
+    mock_get.return_value.raise_for_status = Mock()
+
+
 @pytest.fixture
 def translator(test_settings: Settings) -> Translator:
     """Create translator instance."""
@@ -951,12 +963,7 @@ def test_get_translations_cache_backward_compatibility_integration(
 def test_get_with_cache_404_caching(mock_get: Mock, translator: Translator) -> None:
     """Test that _get_with_cache properly caches 404 responses."""
     # Mock 404 HTTP error
-    not_found_response = Mock()
-    not_found_response.status_code = 404
-    not_found_error = httpx.HTTPStatusError(
-        "Not Found", request=Mock(), response=not_found_response
-    )
-    mock_get.side_effect = not_found_error
+    mock_get.side_effect = mock_not_found_error()
 
     # Define a simple fetch function that calls _fetch_with_retry
     def fetch_func() -> dict[str, Any]:
@@ -987,12 +994,7 @@ def test_get_with_cache_404_caching(mock_get: Mock, translator: Translator) -> N
 def test_get_translations_404_cached(mock_get: Mock, translator: Translator) -> None:
     """Test that get_translations properly caches 404 responses as empty dict."""
     # Mock 404 HTTP error
-    not_found_response = Mock()
-    not_found_response.status_code = 404
-    not_found_error = httpx.HTTPStatusError(
-        "Not Found", request=Mock(), response=not_found_response
-    )
-    mock_get.side_effect = not_found_error
+    mock_get.side_effect = mock_not_found_error()
 
     tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv")  # Non-existent series
     cache_key = f"translations:{tmdb_ids}"
@@ -1152,8 +1154,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test selecting poster with exact language-country match."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
@@ -1171,8 +1172,7 @@ class TestSelectBestImage:
         mock_images_response_logos: dict[str, Any],
     ) -> None:
         """Test selecting clearlogo with exact language-country match."""
-        mock_get.return_value.json.return_value = mock_images_response_logos
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_logos)
 
         tmdb_ids = TmdbIds(tmdb_id=67890, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["ja-JP"], kind="clearlogo")
@@ -1190,8 +1190,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test movie artwork uses movie images endpoint."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         result = translator.select_best_image(
             TmdbIds(tmdb_id=550, media_type="movie"), ["en-US"], kind="poster"
@@ -1220,8 +1219,7 @@ class TestSelectBestImage:
             ],
             "logos": [],
         }
-        mock_get.return_value.json.return_value = season_response
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, season_response)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
@@ -1242,8 +1240,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test that first preferred language match is returned."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # Prefer en-US first, then ja-JP
@@ -1265,8 +1262,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test that no match returns None."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # Request fr-FR which doesn't exist in response
@@ -1299,8 +1295,7 @@ class TestSelectBestImage:
             ],
             "logos": [],
         }
-        mock_get.return_value.json.return_value = response_with_nulls
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, response_with_nulls)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
@@ -1317,8 +1312,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test that malformed language codes without hyphen are skipped."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # Malformed codes without hyphen should be skipped
@@ -1338,12 +1332,7 @@ class TestSelectBestImage:
         translator: Translator,
     ) -> None:
         """Test that 404 response returns None."""
-        not_found_response = Mock()
-        not_found_response.status_code = 404
-        not_found_error = httpx.HTTPStatusError(
-            "Not Found", request=Mock(), response=not_found_response
-        )
-        mock_get.side_effect = not_found_error
+        mock_get.side_effect = mock_not_found_error()
 
         tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
@@ -1358,8 +1347,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test that image selection results are cached."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
 
@@ -1381,8 +1369,7 @@ class TestSelectBestImage:
     ) -> None:
         """Test that empty posters/logos array returns None."""
         empty_response = {"id": 12345, "posters": [], "logos": []}
-        mock_get.return_value.json.return_value = empty_response
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, empty_response)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
@@ -1403,8 +1390,7 @@ class TestSelectBestImage:
                 {"file_path": "/path1.jpg", "iso_639_1": "en", "iso_3166_1": "GB"}
             ],
         }
-        mock_get.return_value.json.return_value = response_en_gb
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, response_en_gb)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-GB"], kind="poster")
@@ -1462,8 +1448,7 @@ class TestSelectBestImage:
         mock_images_response_posters: dict[str, Any],
     ) -> None:
         """Test that invalid kind returns None."""
-        mock_get.return_value.json.return_value = mock_images_response_posters
-        mock_get.return_value.raise_for_status = Mock()
+        configure_image_response(mock_get, mock_images_response_posters)
 
         tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # "banner" is not a valid kind

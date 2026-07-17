@@ -66,9 +66,9 @@ def patch_image_download_retry() -> Generator[None, None, None]:
     original_retry = sonarr_metadata_rewrite.image_processor.retry
 
     def fast_retry(
-        timeout: float = 15.0,
-        interval: float = 0.5,
-        log_interval: float = 2.0,
+        timeout: float = 0.2,
+        interval: float = 0.02,
+        log_interval: float = 0.1,
         exceptions: tuple[type[Exception], ...] = (Exception,),
     ) -> Callable[[Callable[[], Any]], Callable[[], Any]]:
         """Fast retry for tests with minimal timeout."""

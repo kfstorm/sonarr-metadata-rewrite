@@ -72,6 +72,22 @@ def create_test_image(path: Path) -> None:
     path.write_bytes(output.getvalue())
 
 
+def create_marked_jpeg(path: Path) -> None:
+    """Create a JPEG marked as a Japanese TMDB image."""
+    image = Image.new("RGB", (100, 100), color="red")
+    output = BytesIO()
+    image.save(output, format="JPEG")
+    marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
+    embed_marker_and_atomic_write(output.getvalue(), path, marker)
+
+
+def backup_path_for(image_processor: ImageProcessor, image_path: Path) -> Path:
+    """Return backup path for an image using absolute-path layout."""
+    backup_root = image_processor.settings.original_files_backup_dir
+    assert backup_root is not None
+    return backup_root / image_path.relative_to("/")
+
+
 class TestProcessSuccessScenarios:
     """Tests for successful image processing scenarios."""
 
@@ -274,23 +290,14 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create backup dir using correct absolute-path structure
-        backup_root = image_processor.settings.original_files_backup_dir
-        assert backup_root is not None
-        backup_path = backup_root / poster_path.relative_to("/")
+        backup_path = backup_path_for(image_processor, poster_path)
         backup_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create original backup (no marker)
         original_img = Image.new("RGB", (100, 100), color="white")
         original_img.save(backup_path, format="JPEG")
 
-        # Create current file with ja-JP marker
-        current_img = Image.new("RGB", (100, 100), color="red")
-        current_output = BytesIO()
-        current_img.save(current_output, format="JPEG")
-
-        marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
-        embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
+        create_marked_jpeg(poster_path)
 
         create_test_nfo(nfo_path, 12345)
 
@@ -317,10 +324,7 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create backup dir using correct absolute-path structure
-        backup_root = image_processor.settings.original_files_backup_dir
-        assert backup_root is not None
-        backup_path = backup_root / poster_path.relative_to("/")
+        backup_path = backup_path_for(image_processor, poster_path)
         backup_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create current file without marker (original)
@@ -350,13 +354,7 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create current file with marker but no backup
-        current_img = Image.new("RGB", (100, 100), color="red")
-        current_output = BytesIO()
-        current_img.save(current_output, format="JPEG")
-
-        marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
-        embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
+        create_marked_jpeg(poster_path)
 
         create_test_nfo(nfo_path, 12345)
 
@@ -380,11 +378,7 @@ class TestProcessSuccessScenarios:
         poster_path = series_dir / "poster.jpg"
         nfo_path = series_dir / "tvshow.nfo"
 
-        # Create backup dir using correct absolute-path structure
-        # Backup is poster.png (different extension than current poster.jpg)
-        backup_root = image_processor.settings.original_files_backup_dir
-        assert backup_root is not None
-        backup_parent = (backup_root / poster_path.relative_to("/")).parent
+        backup_parent = backup_path_for(image_processor, poster_path).parent
         backup_parent.mkdir(parents=True, exist_ok=True)
         # Backup is poster.png (different extension)
         backup_path = backup_parent / "poster.png"
@@ -393,13 +387,7 @@ class TestProcessSuccessScenarios:
         original_img = Image.new("RGB", (100, 100), color="white")
         original_img.save(backup_path, format="PNG")
 
-        # Create current JPEG with marker
-        current_img = Image.new("RGB", (100, 100), color="red")
-        current_output = BytesIO()
-        current_img.save(current_output, format="JPEG")
-
-        marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
-        embed_marker_and_atomic_write(current_output.getvalue(), poster_path, marker)
+        create_marked_jpeg(poster_path)
 
         create_test_nfo(nfo_path, 12345)
 

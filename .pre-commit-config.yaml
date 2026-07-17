@@ -21,6 +21,13 @@ repos:
         language: system
         pass_filenames: false
 
+      # Duplication check
+      - id: duplication
+        name: Duplication Check
+        entry: npx --yes jscpd
+        language: system
+        pass_filenames: false
+
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
