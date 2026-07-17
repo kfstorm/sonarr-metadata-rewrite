@@ -203,14 +203,10 @@ def test_cache_initialization_error(test_data_dir: Path) -> None:
 
 def test_cache_initialization_permission_error(test_data_dir: Path) -> None:
     """Test cache initialization with permission errors."""
-    import os
-
-    from sonarr_metadata_rewrite.config import Settings
-
     # Create a read-only parent directory to trigger PermissionError
     readonly_parent = test_data_dir / "readonly_parent"
     readonly_parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(readonly_parent, 0o444)
+    readonly_parent.chmod(0o444)
 
     try:
         cache_dir = readonly_parent / "cache"
@@ -226,7 +222,7 @@ def test_cache_initialization_permission_error(test_data_dir: Path) -> None:
         assert_cache_initialization_error(settings, cache_dir)
     finally:
         # Restore permissions for cleanup
-        os.chmod(readonly_parent, 0o755)
+        readonly_parent.chmod(0o755)
 
 
 # Image-specific RewriteService tests

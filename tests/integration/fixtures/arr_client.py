@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -15,6 +15,7 @@ class ArrClient:
     service_name: str
 
     def __init__(self, base_url: str, api_key: str | None = None):
+        """Initialize authenticated Arr API client."""
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.client = httpx.Client(timeout=30.0)
@@ -50,7 +51,7 @@ class ArrClient:
         try:
             result = check_status()
             print(f"{self.service_name} is ready")
-            return result
+            return cast(bool, result)
         except Exception as exc:
             print(f"{self.service_name} failed to become ready: {exc}")
             return False

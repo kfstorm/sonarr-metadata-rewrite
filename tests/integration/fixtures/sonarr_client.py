@@ -1,7 +1,7 @@
 """Sonarr API client for integration testing."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from tests.integration.fixtures.arr_client import ArrClient
 
@@ -59,7 +59,7 @@ class SonarrClient(ArrClient):
 
         response = self._make_request("POST", "/api/v3/series", json=add_data)
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def trigger_disk_scan(self, series_id: int) -> bool:
         """Trigger a disk scan for episode files.
@@ -91,7 +91,7 @@ class SonarrClient(ArrClient):
         response = self._make_request("GET", "/api/v3/episodefile", params=params)
         if response.is_success:
             episode_files = response.json()
-            return episode_files
+            return cast(list[dict[str, Any]], episode_files)
         else:
             print(f"Failed to get episode files: {response.status_code}")
             print(f"Response: {response.text}")

@@ -424,13 +424,15 @@ class TestProcessSuccessScenarios:
         )
 
         # Mock HTTP error
-        with mock_translator_select(image_processor, return_value=candidate):
-            with patch.object(
+        with (
+            mock_translator_select(image_processor, return_value=candidate),
+            patch.object(
                 image_processor.http_client,
                 "get",
                 side_effect=httpx.RequestError("Network error"),
-            ):
-                result = image_processor.process(poster_path)
+            ),
+        ):
+            result = image_processor.process(poster_path)
 
         assert result.success is False
         assert result.exception is not None
@@ -462,14 +464,14 @@ class TestProcessSuccessScenarios:
         mock_response.content = real_image_bytes
 
         # Mock backup failure
-        with mock_translator_select(image_processor, return_value=candidate):
-            with patch.object(
+        with (
+            mock_translator_select(image_processor, return_value=candidate),
+            patch.object(
                 image_processor.http_client, "get", return_value=mock_response
-            ):
-                with patch(
-                    "shutil.copy2", side_effect=PermissionError("No permission")
-                ):
-                    result = image_processor.process(poster_path)
+            ),
+            patch("shutil.copy2", side_effect=PermissionError("No permission")),
+        ):
+            result = image_processor.process(poster_path)
 
         # Backup failure causes overall failure in current implementation
         assert result.success is False
@@ -666,7 +668,7 @@ class TestDownloadAndWriteImage:
         mock_response.content = real_image_bytes
         image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
 
-        with patch("os.replace") as mock_replace:
+        with patch.object(Path, "replace", autospec=True) as mock_replace:
             image_processor._download_and_write_image(poster_path, candidate)
             # Verify atomic operation was used
             assert mock_replace.called
@@ -692,13 +694,15 @@ class TestErrorScenarios:
         )
 
         # Mock network error
-        with mock_translator_select(image_processor, return_value=candidate):
-            with patch.object(
+        with (
+            mock_translator_select(image_processor, return_value=candidate),
+            patch.object(
                 image_processor.http_client,
                 "get",
                 side_effect=httpx.NetworkError("Connection failed"),
-            ):
-                result = image_processor.process(poster_path)
+            ),
+        ):
+            result = image_processor.process(poster_path)
 
         assert result.success is False
         assert result.exception is not None
@@ -724,11 +728,13 @@ class TestErrorScenarios:
         # Mock corrupted response - invalid image data
         mock_response = Mock()
         mock_response.content = b"not a valid image"
-        with mock_translator_select(image_processor, return_value=candidate):
-            with patch.object(
+        with (
+            mock_translator_select(image_processor, return_value=candidate),
+            patch.object(
                 image_processor.http_client, "get", return_value=mock_response
-            ):
-                result = image_processor.process(poster_path)
+            ),
+        ):
+            result = image_processor.process(poster_path)
 
         assert result.success is False
         # Original file should still exist
@@ -761,12 +767,14 @@ class TestErrorScenarios:
         mock_response.content = real_image_bytes
         # http client mocked inside the context below
 
-        with mock_translator_select(image_processor, return_value=candidate):
-            with patch.object(
+        with (
+            mock_translator_select(image_processor, return_value=candidate),
+            patch.object(
                 image_processor.http_client, "get", return_value=mock_response
-            ):
-                with patch("shutil.copy2", side_effect=PermissionError("Denied")):
-                    result = image_processor.process(poster_path)
+            ),
+            patch("shutil.copy2", side_effect=PermissionError("Denied")),
+        ):
+            result = image_processor.process(poster_path)
 
         # Permission error on backup causes overall failure
         assert result.success is False
@@ -790,12 +798,14 @@ class TestErrorScenarios:
         mock_response = Mock()
         mock_response.content = b"image data"
 
-        with mock_translator_select(image_processor, return_value=candidate):
-            with patch.object(
+        with (
+            mock_translator_select(image_processor, return_value=candidate),
+            patch.object(
                 image_processor.http_client, "get", return_value=mock_response
-            ):
-                with patch("os.write", side_effect=OSError("Disk full")):
-                    result = image_processor.process(poster_path)
+            ),
+            patch("os.write", side_effect=OSError("Disk full")),
+        ):
+            result = image_processor.process(poster_path)
 
         assert result.success is False
         assert result.exception is not None
@@ -815,7 +825,6 @@ class TestErrorScenarios:
         # Delete NFO after initial check
         def side_effect_delete(*args: object, **kwargs: object) -> None:
             nfo_path.unlink()
-            return None
 
         with patch.object(
             image_processor.translator,

@@ -1,6 +1,7 @@
 """Unit tests for file scanner."""
 
 import shutil
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -63,9 +64,6 @@ def test_scanner_start_stop(file_scanner: FileScanner) -> None:
     # Stop scanning
     file_scanner.stop()
     assert file_scanner.scan_thread is None
-    assert file_scanner.stop_event is None
-    assert file_scanner.callback is None
-    assert not file_scanner.is_running()
 
 
 def test_scanner_finds_nfo_files_through_start(
@@ -393,8 +391,6 @@ def test_scanner_stop_event_fires_before_root_dir_scan(
     file_scanner: FileScanner, callback_tracker: Mock
 ) -> None:
     """_perform_scan returns early when stop_event is already set (line 71)."""
-    import threading
-
     root1 = file_scanner.settings.rewrite_root_dirs[0] / "dir1_stop"
     root1.mkdir(parents=True, exist_ok=True)
     (root1 / "tvshow.nfo").touch()

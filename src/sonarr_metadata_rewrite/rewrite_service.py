@@ -22,6 +22,7 @@ class RewriteService:
     """Main orchestrator coordinating all metadata rewriting components."""
 
     def __init__(self, settings: Settings):
+        """Initialize rewrite components and disk cache."""
         self.settings = settings
         try:
             self.cache = Cache(str(settings.cache_dir))

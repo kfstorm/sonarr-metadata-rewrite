@@ -98,8 +98,7 @@ class Settings(BaseSettings):
     # Directory monitoring
     rewrite_root_dirs: list[Path] = Field(
         description=(
-            "Root directories to monitor and rewrite .nfo files "
-            "(comma-separated list)"
+            "Root directories to monitor and rewrite .nfo files (comma-separated list)"
         )
     )
     periodic_scan_interval_seconds: int = Field(

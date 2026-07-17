@@ -3,6 +3,7 @@
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import cast
 
 import httpx
 
@@ -36,6 +37,7 @@ class ImageProcessor:
     """Processor for poster and clearlogo image files."""
 
     def __init__(self, settings: Settings, translator: Translator):
+        """Initialize image processor with settings and TMDB translator."""
         self.settings = settings
         self.translator = translator
         self.http_client = httpx.Client(timeout=30.0)
@@ -78,61 +80,7 @@ class ImageProcessor:
             )
 
             if not candidate:
-                # No preferred language available - try to revert to original backup
-                backup_path = get_backup_path(
-                    image_path,
-                    self.settings.original_files_backup_dir,
-                    self.settings.rewrite_root_dirs,
-                )
-                if backup_path and image_path.exists():
-                    # Check if current image is different from backup
-                    current_marker = read_embedded_marker(image_path)
-                    backup_marker = read_embedded_marker(backup_path)
-
-                    # If current has a marker but backup doesn't, or they differ
-                    # it means current is rewritten and should be reverted
-                    if current_marker and not backup_marker:
-                        # Revert to original backup
-                        restore_from_backup(
-                            image_path,
-                            self.settings.original_files_backup_dir,
-                            self.settings.rewrite_root_dirs,
-                        )
-                        preferred_langs = ", ".join(self.settings.preferred_languages)
-                        return ImageProcessResult(
-                            success=True,
-                            file_path=image_path,
-                            message=(
-                                f"Reverted {kind} to original - no image available "
-                                f"in preferred languages [{preferred_langs}]"
-                            ),
-                            kind=kind,
-                            file_modified=True,
-                        )
-                    elif not current_marker:
-                        # Already showing original
-                        preferred_langs = ", ".join(self.settings.preferred_languages)
-                        return ImageProcessResult(
-                            success=False,
-                            file_path=image_path,
-                            message=(
-                                f"File unchanged - already original and no {kind} "
-                                f"available in preferred languages [{preferred_langs}]"
-                            ),
-                            kind=kind,
-                        )
-
-                # No backup or can't revert
-                preferred_langs = ", ".join(self.settings.preferred_languages)
-                return ImageProcessResult(
-                    success=False,
-                    file_path=image_path,
-                    message=(
-                        f"No {kind} available in preferred languages "
-                        f"[{preferred_langs}]"
-                    ),
-                    kind=kind,
-                )
+                return self._handle_missing_candidate(image_path, kind)
 
             # Check if current file matches candidate
             if image_path.exists():
@@ -182,6 +130,54 @@ class ImageProcessor:
                 kind="",
             )
 
+    def _handle_missing_candidate(
+        self, image_path: Path, kind: str
+    ) -> ImageProcessResult:
+        """Restore original artwork or report why no candidate can be used."""
+        backup_path = get_backup_path(
+            image_path,
+            self.settings.original_files_backup_dir,
+            self.settings.rewrite_root_dirs,
+        )
+        preferred_langs = ", ".join(self.settings.preferred_languages)
+
+        if backup_path and image_path.exists():
+            current_marker = read_embedded_marker(image_path)
+            backup_marker = read_embedded_marker(backup_path)
+            if current_marker and not backup_marker:
+                restore_from_backup(
+                    image_path,
+                    self.settings.original_files_backup_dir,
+                    self.settings.rewrite_root_dirs,
+                )
+                return ImageProcessResult(
+                    success=True,
+                    file_path=image_path,
+                    message=(
+                        f"Reverted {kind} to original - no image available "
+                        f"in preferred languages [{preferred_langs}]"
+                    ),
+                    kind=kind,
+                    file_modified=True,
+                )
+            if not current_marker:
+                return ImageProcessResult(
+                    success=False,
+                    file_path=image_path,
+                    message=(
+                        f"File unchanged - already original and no {kind} "
+                        f"available in preferred languages [{preferred_langs}]"
+                    ),
+                    kind=kind,
+                )
+
+        return ImageProcessResult(
+            success=False,
+            file_path=image_path,
+            message=f"No {kind} available in preferred languages [{preferred_langs}]",
+            kind=kind,
+        )
+
     def _resolve_tmdb_ids(
         self, image_path: Path, season_num: int | None
     ) -> TmdbIds | None:
@@ -197,8 +193,7 @@ class ImageProcessor:
 
         @retry(timeout=5.0, interval=1.0, exceptions=(FileNotFoundError,))
         def _find_and_extract_tmdb_id() -> TmdbIds:
-            """
-            Find one target root NFO next to image and extract its TMDB ID.
+            """Find one target root NFO next to image and extract its TMDB ID.
 
             Returns:
                 TmdbIds: An object containing media ID and optional TV season number.
@@ -238,7 +233,7 @@ class ImageProcessor:
             )
 
         try:
-            return _find_and_extract_tmdb_id()
+            return cast(TmdbIds, _find_and_extract_tmdb_id())
         except (FileNotFoundError, ValueError):
             return None
 
@@ -251,7 +246,6 @@ class ImageProcessor:
             dst_path: Destination path for image
             candidate: ImageCandidate with file_path and language info
         """
-
         # Build full URL
         url = f"{TMDB_IMAGE_BASE_URL}{candidate.file_path}"
 

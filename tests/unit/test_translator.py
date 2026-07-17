@@ -869,7 +869,6 @@ def test_find_tmdb_id_by_external_id_cache_negative_result(
 
 def test_ensure_new_format_backward_compatibility(translator: Translator) -> None:
     """Test backward compatibility with old cached TranslatedContent format."""
-
     # Create mock old format TranslatedContent objects (pre-model change)
     # These simulate cached data with string fields instead of TranslatedString objects
     old_format_content_1 = SimpleNamespace(
@@ -935,7 +934,6 @@ def test_get_translations_cache_backward_compatibility_integration(
     translator: Translator,
 ) -> None:
     """Test cache backward compatibility in real get_translations workflow."""
-
     # Create old format cached data
     old_cached_content = SimpleNamespace(
         title="缓存的旧标题", description="缓存的旧描述", language="zh-CN"

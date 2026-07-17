@@ -289,6 +289,7 @@ class TestExtractMetadataInfo:
     """Test metadata extraction for single and multi-episode NFO files."""
 
     def test_extract_single_episode_metadata(self, test_data_dir: Path) -> None:
+        """Extract fields from one episode document."""
         nfo_path = test_data_dir / "episode.nfo"
         nfo_path.write_text(
             """<?xml version=\"1.0\" encoding=\"utf-8\"?>
@@ -313,6 +314,7 @@ class TestExtractMetadataInfo:
         assert len(metadata.episode_entries) == 1
 
     def test_extract_multi_episode_metadata(self, test_data_dir: Path) -> None:
+        """Extract per-episode fields from multiple documents."""
         nfo_path = test_data_dir / "multi_episode.nfo"
         nfo_path.write_text(
             """<?xml version=\"1.0\" encoding=\"utf-8\"?>
@@ -347,6 +349,7 @@ class TestExtractMetadataInfo:
     def test_extract_multi_episode_metadata_uses_later_ids_when_first_missing(
         self, test_data_dir: Path
     ) -> None:
+        """Use identifiers from later documents when earlier values are empty."""
         nfo_path = test_data_dir / "multi_episode_missing_ids.nfo"
         nfo_path.write_text(
             """<?xml version="1.0" encoding="utf-8"?>
@@ -378,6 +381,7 @@ class TestExtractMetadataInfo:
     def test_extract_metadata_info_rejects_unsupported_multi_root_content(
         self, test_data_dir: Path
     ) -> None:
+        """Reject NFO content with mixed unsupported root elements."""
         nfo_path = test_data_dir / "invalid_multi_root.nfo"
         nfo_path.write_text(
             """<?xml version="1.0" encoding="utf-8"?>

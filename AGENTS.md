@@ -187,8 +187,9 @@ development fallback.
 ### Development Tooling
 
 - **Package Manager**: uv with pyproject.toml dependency management
-- **Code Quality**: Black (line-length: 88), Ruff (E/W/F/I/B/C4/UP rules),
-  MyPy (strict typing) with Pydantic plugin
+- **Code Quality**: Ruff format (line-length: 88), Ruff linting
+  (E/W/F/I/B/C4/UP/N/D/SIM/PTH/PL/PERF/RUF rules), MyPy (strict typing) with
+  Pydantic plugin
 - **Architecture**: Tach module dependency enforcement with tach.toml for
   module boundaries (including `_version`)
 - **Testing**: pytest with coverage, separate unit/integration test

@@ -64,8 +64,8 @@ class SeriesManager:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        del exc_type, exc_val, exc_tb  # Unused parameters
         """Clean up series and verify removal."""
+        del exc_type, exc_val, exc_tb  # Unused parameters
         if self.series_id is None or self.series_slug is None:
             print("No series to clean up (series was not successfully added)")
             return

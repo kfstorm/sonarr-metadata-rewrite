@@ -615,12 +615,14 @@ def test_restore_single_file_no_backup_found(
     # restore_from_backup will find the backup and succeed.  To reach the "no backup"
     # warning we need restore_from_backup to return False, which we can do by
     # patching it.
-    with patch(
-        "sonarr_metadata_rewrite.rollback_service.restore_from_backup",
-        return_value=False,
+    with (
+        patch(
+            "sonarr_metadata_rewrite.rollback_service.restore_from_backup",
+            return_value=False,
+        ),
+        caplog.at_level(logging.WARNING),
     ):
-        with caplog.at_level(logging.WARNING):
-            result = service._restore_single_file(fake_backup)
+        result = service._restore_single_file(fake_backup)
 
     assert result is False
     assert "No backup found" in caplog.text
@@ -677,12 +679,14 @@ def test_execute_rollback_counts_exception_as_failure(
     )
     service = RollbackService(settings)
 
-    with patch.object(
-        service,
-        "_restore_single_file",
-        side_effect=RuntimeError("boom"),
+    with (
+        patch.object(
+            service,
+            "_restore_single_file",
+            side_effect=RuntimeError("boom"),
+        ),
+        caplog.at_level(logging.INFO),
     ):
-        with caplog.at_level(logging.INFO):
-            service.execute_rollback()
+        service.execute_rollback()
 
     assert "1 failed" in caplog.text

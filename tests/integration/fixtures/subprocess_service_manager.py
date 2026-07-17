@@ -99,16 +99,23 @@ class SubprocessServiceManager(BaseProcessManager):
     def _cleanup(self) -> None:
         """Clean up temporary directories and resources."""
         for temp_dir in self.temp_dirs:
-            try:
-                if temp_dir.exists():
-                    shutil.rmtree(temp_dir)
-            except Exception as e:
-                print(f"Warning: Failed to cleanup {temp_dir}: {e}")
+            self._remove_temp_dir(temp_dir)
 
         self.temp_dirs.clear()
 
+    @staticmethod
+    def _remove_temp_dir(temp_dir: Path) -> None:
+        """Remove one temporary directory while preserving cleanup warnings."""
+        try:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+        except Exception as error:
+            print(f"Warning: Failed to cleanup {temp_dir}: {error}")
+
     def __enter__(self) -> "SubprocessServiceManager":
+        """Enter context with managed service lifecycle."""
         return self
 
     def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        """Stop service when leaving context."""
         self.stop()

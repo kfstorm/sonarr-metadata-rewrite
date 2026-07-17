@@ -131,34 +131,11 @@ def create_backup(
     if not file_path.exists():
         return False
 
-    # --- New format path ---
-    backup_path = backup_dir / file_path.relative_to("/")
-
-    if backup_path.exists():
+    if get_backup_path(file_path, backup_dir, root_dirs) is not None:
         return True
 
-    if backup_path.parent.exists():
-        stem = backup_path.stem
-        for existing_file in backup_path.parent.iterdir():
-            if existing_file.is_file() and existing_file.stem == stem:
-                return True
-
-    # --- Legacy format check (backward compat): don't create a new backup if
-    #     an old-format backup already covers this file. ---
-    if root_dirs:
-        for root_dir in root_dirs:
-            legacy = _legacy_backup_path(file_path, backup_dir, root_dir)
-            if legacy is None:
-                continue
-            if legacy.exists():
-                return True  # Legacy backup present; preserve it, don't overwrite
-            if legacy.parent.exists():
-                stem = legacy.stem
-                for existing_file in legacy.parent.iterdir():
-                    if existing_file.is_file() and existing_file.stem == stem:
-                        return True  # Legacy stem-match found
-
     # --- Create new backup at new-format path ---
+    backup_path = backup_dir / file_path.relative_to("/")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(file_path, backup_path)
     return True

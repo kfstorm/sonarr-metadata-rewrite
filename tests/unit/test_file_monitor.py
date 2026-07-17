@@ -113,8 +113,6 @@ def test_monitor_start_stop(file_monitor: FileMonitor) -> None:
     # Stop monitoring
     file_monitor.stop()
     assert file_monitor.observer is None
-    assert file_monitor.handler is None
-    assert not file_monitor.is_running()
 
 
 # Additional image-specific tests

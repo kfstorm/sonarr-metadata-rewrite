@@ -3,7 +3,6 @@
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
@@ -25,6 +24,7 @@ class MetadataProcessor:
     """Complete processing unit for .nfo metadata files."""
 
     def __init__(self, settings: Settings, translator: Translator):
+        """Initialize processor with settings and TMDB translator."""
         self.settings = settings
         self.translator = translator
 

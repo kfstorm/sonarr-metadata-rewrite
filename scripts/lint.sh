@@ -8,8 +8,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default behavior is to fix issues
+# Default behavior is to fix issues. CI always checks without writing files.
 CHECK_ONLY=false
+if [ "${CI:-}" = "true" ]; then
+    CHECK_ONLY=true
+fi
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -63,29 +66,29 @@ echo ""
 
 # Set up tool arguments based on CHECK_ONLY flag
 if [ "$CHECK_ONLY" = true ]; then
-    BLACK_ARGS="--check ."
-    BLACK_NAME="Black (code formatting check)"
-    BLACK_EMOJI="🎨"
+    RUFF_FORMAT_ARGS="format --check ."
+    RUFF_FORMAT_NAME="Ruff format (code formatting check)"
+    RUFF_FORMAT_EMOJI="🎨"
     RUFF_ARGS="check"
     RUFF_NAME="Ruff (linting check)"
     RUFF_EMOJI="🔎"
-    MARKDOWN_ARGS="scan *.md"
+    MARKDOWN_ARGS="scan -r AGENTS.md README.md docs"
     MARKDOWN_NAME="PyMarkdownLnt (markdown linting check)"
     MARKDOWN_EMOJI="📝"
 else
-    BLACK_ARGS="."
-    BLACK_NAME="Black (code formatting)"
-    BLACK_EMOJI="🎨"
+    RUFF_FORMAT_ARGS="format ."
+    RUFF_FORMAT_NAME="Ruff format (code formatting)"
+    RUFF_FORMAT_EMOJI="🎨"
     RUFF_ARGS="check --fix"
     RUFF_NAME="Ruff (linting with auto-fix)"
     RUFF_EMOJI="🔧"
-    MARKDOWN_ARGS="fix *.md"
+    MARKDOWN_ARGS="fix -r AGENTS.md README.md docs"
     MARKDOWN_NAME="PyMarkdownLnt (markdown linting with auto-fix)"
     MARKDOWN_EMOJI="📝"
 fi
 
-# Black check/format
-run_check "$BLACK_NAME" "uv run black $BLACK_ARGS" "$BLACK_EMOJI"
+# Ruff format check/format
+run_check "$RUFF_FORMAT_NAME" "uv run ruff $RUFF_FORMAT_ARGS" "$RUFF_FORMAT_EMOJI"
 
 # Ruff check/fix
 run_check "$RUFF_NAME" "uv run ruff $RUFF_ARGS" "$RUFF_EMOJI"

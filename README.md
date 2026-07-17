@@ -372,13 +372,13 @@ EOF
 **Code quality:**
 
 ```bash
-./scripts/lint.sh                    # Fix formatting and imports
-./scripts/lint.sh --check            # Just check, don't fix
+./scripts/lint.sh                    # Fix formatting and lint issues
+./scripts/lint.sh --check            # Run quality checks without fixes
 ```
 
-The codebase uses modern Python tooling - `uv` for dependencies, Black for
-formatting, Ruff for linting, MyPy for type checking. There are pre-commit
-hooks that run all the checks automatically.
+The codebase uses modern Python tooling - `uv` for dependencies, Ruff for
+formatting and linting, MyPy for type checking. There are pre-commit hooks that
+run all checks automatically.
 
 ## Troubleshooting
 

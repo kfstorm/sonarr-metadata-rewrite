@@ -98,9 +98,8 @@ def test_preferred_languages_empty_string_fails(tmp_path: Path) -> None:
         "REWRITE_ROOT_DIR": str(tmp_path),
         "PREFERRED_LANGUAGES": "",
     }
-    with patch.dict(os.environ, env_vars):
-        with pytest.raises(ValueError):
-            get_settings()
+    with patch.dict(os.environ, env_vars), pytest.raises(ValueError):
+        get_settings()
 
 
 def test_preferred_languages_required_field(tmp_path: Path) -> None:
@@ -110,9 +109,8 @@ def test_preferred_languages_required_field(tmp_path: Path) -> None:
         "REWRITE_ROOT_DIR": str(tmp_path),
         # No PREFERRED_LANGUAGES
     }
-    with patch.dict(os.environ, env_vars):
-        with pytest.raises(ValueError):
-            get_settings()
+    with patch.dict(os.environ, env_vars), pytest.raises(ValueError):
+        get_settings()
 
 
 def test_service_mode_default(test_data_dir: Path) -> None:
@@ -149,7 +147,6 @@ def test_service_mode_rollback(test_data_dir: Path) -> None:
 
 def test_service_mode_invalid_value_fails() -> None:
     """Test service_mode with invalid value fails validation."""
-
     with pytest.raises(ValidationError):
         Settings(
             tmdb_api_key="test_key",
@@ -265,9 +262,8 @@ def test_rewrite_root_dirs_empty_string_fails(tmp_path: Path) -> None:
         "REWRITE_ROOT_DIRS": "",
         "PREFERRED_LANGUAGES": "zh-CN",
     }
-    with patch.dict(os.environ, env_vars):
-        with pytest.raises(ValueError):
-            get_settings()
+    with patch.dict(os.environ, env_vars), pytest.raises(ValueError):
+        get_settings()
 
 
 def test_rewrite_root_dirs_comma_separated_with_spaces(tmp_path: Path) -> None:

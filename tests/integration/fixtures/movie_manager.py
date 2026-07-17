@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, cast
 
 from tests.integration.fixtures.radarr_client import RadarrClient
 
@@ -18,6 +18,7 @@ class MovieManager:
         temp_media_root: Path,
         quality_profile_id: int = 1,
     ):
+        """Initialize movie lifecycle manager."""
         self.radarr_client = radarr_client
         self.tmdb_id = tmdb_id
         self.root_folder = root_folder
@@ -50,12 +51,12 @@ class MovieManager:
     @property
     def id(self) -> int:
         """Radarr movie ID."""
-        return self.data["id"]
+        return cast(int, self.data["id"])
 
     @property
     def title(self) -> str:
         """Movie title returned by Radarr."""
-        return self.data["title"]
+        return cast(str, self.data["title"])
 
     @property
     def directory(self) -> Path:
