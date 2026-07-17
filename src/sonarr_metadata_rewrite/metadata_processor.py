@@ -201,6 +201,7 @@ class MetadataProcessor:
 
             entry_tmdb_ids = TmdbIds(
                 tmdb_id=series_tmdb_id,
+                media_type="tv",
                 season=entry.season,
                 episode=entry.episode,
             )
@@ -448,7 +449,7 @@ class MetadataProcessor:
 
         # Build TmdbIds based on file type
         if metadata_info.file_type == "tvshow":
-            return TmdbIds(tmdb_id=tmdb_series_id)
+            return TmdbIds(tmdb_id=tmdb_series_id, media_type="tv")
         elif metadata_info.file_type == "movie":
             return TmdbIds(tmdb_id=tmdb_series_id, media_type="movie")
         elif metadata_info.file_type == "episodedetails":
@@ -457,6 +458,7 @@ class MetadataProcessor:
                 return None
             return TmdbIds(
                 tmdb_id=tmdb_series_id,
+                media_type="tv",
                 season=metadata_info.season,
                 episode=metadata_info.episode,
             )

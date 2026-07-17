@@ -233,7 +233,9 @@ class ImageProcessor:
                     raise ValueError("Movie artwork cannot be season-specific")
                 return TmdbIds(tmdb_id=metadata_info.tmdb_id, media_type="movie")
 
-            return TmdbIds(tmdb_id=metadata_info.tmdb_id, season=season_num)
+            return TmdbIds(
+                tmdb_id=metadata_info.tmdb_id, media_type="tv", season=season_num
+            )
 
         try:
             return _find_and_extract_tmdb_id()

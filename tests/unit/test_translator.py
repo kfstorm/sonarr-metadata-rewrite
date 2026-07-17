@@ -120,11 +120,11 @@ def test_translator_initialization(translator: Translator) -> None:
 def test_tmdb_ids_string_representation() -> None:
     """Test TmdbIds __str__ method."""
     # Series
-    series_ids = TmdbIds(tmdb_id=12345)
+    series_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     assert str(series_ids) == "tv/12345"
 
     # Episode
-    episode_ids = TmdbIds(tmdb_id=12345, season=1, episode=2)
+    episode_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1, episode=2)
     assert str(episode_ids) == "tv/12345/season/1/episode/2"
 
 
@@ -139,7 +139,7 @@ def test_get_translations_series_success(
     mock_response.json.return_value = mock_series_response
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     translations = translator.get_translations(tmdb_ids)
 
     # Verify API call
@@ -185,7 +185,7 @@ def test_get_translations_episode_success(
     mock_response.json.return_value = mock_episode_response
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345, season=1, episode=2)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1, episode=2)
     translations = translator.get_translations(tmdb_ids)
 
     # Verify API call with correct endpoint
@@ -236,7 +236,7 @@ def test_get_translations_http_error(mock_get: Mock, translator: Translator) -> 
     # Mock HTTP error
     mock_get.side_effect = httpx.HTTPError("API error")
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
     # Should raise the HTTP error (fail-fast)
     with pytest.raises(httpx.HTTPError, match="API error"):
@@ -254,7 +254,7 @@ def test_get_translations_json_decode_error(
     mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "doc", 0)
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
     # Should raise the JSON decode error (fail-fast)
     with pytest.raises(json.JSONDecodeError, match="Invalid JSON"):
@@ -272,7 +272,7 @@ def test_get_translations_empty_response(
     mock_response.json.return_value = {"id": 12345, "translations": []}
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     translations = translator.get_translations(tmdb_ids)
 
     # Should return empty dict when no translations available
@@ -305,7 +305,7 @@ def test_get_translations_filters_empty_data(
     }
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     translations = translator.get_translations(tmdb_ids)
 
     # Should only include translations with content
@@ -318,7 +318,7 @@ def test_cache_functionality(
     translator: Translator, mock_series_response: dict[str, Any]
 ) -> None:
     """Test DiskCache functionality."""
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     cache_key = f"translations:{tmdb_ids}/translations"
 
     # Verify cache starts empty
@@ -345,7 +345,7 @@ def test_caching_integration(
     mock_response.json.return_value = mock_series_response
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
     # First call should hit API and cache result
     translations1 = translator.get_translations(tmdb_ids)
@@ -387,7 +387,7 @@ def test_get_original_details_series_success(
     mock_response.json.return_value = mock_series_details_response
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=68034)
+    tmdb_ids = TmdbIds(tmdb_id=68034, media_type="tv")
     result = translator.get_original_details(tmdb_ids)
 
     # Verify API call
@@ -441,7 +441,7 @@ def test_get_original_details_episode_success(
 
     mock_get.side_effect = mock_side_effect
 
-    tmdb_ids = TmdbIds(tmdb_id=12345, season=1, episode=1)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1, episode=1)
     result = translator.get_original_details(tmdb_ids)
 
     # Verify both API calls were made
@@ -468,7 +468,7 @@ def test_get_original_details_http_error(
     # Mock HTTP error
     mock_get.side_effect = httpx.HTTPError("API error")
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
     # Should raise the HTTP error (fail-fast behavior with new implementation)
     with pytest.raises(httpx.HTTPError, match="API error"):
@@ -490,7 +490,7 @@ def test_get_original_details_missing_data(
     }
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     result = translator.get_original_details(tmdb_ids)
 
     # Should return None when required data is missing
@@ -508,7 +508,7 @@ def test_get_original_details_caching(
     mock_response.json.return_value = mock_series_details_response
     mock_get.return_value = mock_response
 
-    tmdb_ids = TmdbIds(tmdb_id=68034)
+    tmdb_ids = TmdbIds(tmdb_id=68034, media_type="tv")
 
     # First call should hit API and cache result
     result1 = translator.get_original_details(tmdb_ids)
@@ -544,7 +544,7 @@ def test_rate_limit_retry_success(
 
     mock_get.side_effect = [rate_limit_error, success_response]
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     translations = translator.get_translations(tmdb_ids)
 
     # Should have made 2 API calls (1 failed, 1 success)
@@ -572,7 +572,7 @@ def test_rate_limit_max_retries_exceeded(
     )
     mock_get.side_effect = rate_limit_error
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
     # Should raise the rate limit error after exhausting retries
     with pytest.raises(httpx.HTTPStatusError, match="Too Many Requests"):
@@ -603,7 +603,7 @@ def test_non_rate_limit_http_error_no_retry(
     )
     mock_get.side_effect = server_error
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
     # Should raise the error immediately without retries
     with pytest.raises(httpx.HTTPStatusError, match="Internal Server Error"):
@@ -634,7 +634,7 @@ def test_rate_limit_exponential_backoff_max_delay(
         )
         mock_get.side_effect = rate_limit_error
 
-        tmdb_ids = TmdbIds(tmdb_id=12345)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
 
         with pytest.raises(httpx.HTTPStatusError):
             translator.get_translations(tmdb_ids)
@@ -662,7 +662,7 @@ def test_rate_limit_preserves_cache_on_failure(
     )
     mock_get.side_effect = rate_limit_error
 
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     cache_key = f"translations:{tmdb_ids}"
 
     # Ensure cache is empty initially
@@ -926,7 +926,7 @@ def test_get_translations_cache_backward_compatibility_integration(
     )
 
     # Manually set old format data in cache to simulate pre-upgrade cache
-    tmdb_ids = TmdbIds(tmdb_id=12345)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     cache_key = f"translations:{tmdb_ids}"
     translator.cache.set(cache_key, {"zh-CN": old_cached_content})
 
@@ -994,7 +994,7 @@ def test_get_translations_404_cached(mock_get: Mock, translator: Translator) -> 
     )
     mock_get.side_effect = not_found_error
 
-    tmdb_ids = TmdbIds(tmdb_id=99999)  # Non-existent series
+    tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv")  # Non-existent series
     cache_key = f"translations:{tmdb_ids}"
 
     # Verify cache starts empty
@@ -1031,7 +1031,7 @@ def test_get_original_details_404_cached(
     )
     mock_get.side_effect = not_found_error
 
-    tmdb_ids = TmdbIds(tmdb_id=99999)  # Non-existent series
+    tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv")  # Non-existent series
     cache_key = f"original_details:{tmdb_ids}"
 
     # Verify cache starts empty
@@ -1155,7 +1155,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_posters
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
 
         assert result is not None
@@ -1174,7 +1174,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_logos
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=67890, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=67890, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["ja-JP"], kind="clearlogo")
 
         assert result is not None
@@ -1223,7 +1223,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = season_response
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=1)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
 
         # Verify correct endpoint was called
@@ -1245,7 +1245,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_posters
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # Prefer en-US first, then ja-JP
         result = translator.select_best_image(
             tmdb_ids, ["en-US", "ja-JP", "zh-CN"], kind="poster"
@@ -1268,7 +1268,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_posters
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # Request fr-FR which doesn't exist in response
         result = translator.select_best_image(tmdb_ids, ["fr-FR"], kind="poster")
 
@@ -1302,7 +1302,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = response_with_nulls
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
 
         assert result is not None
@@ -1320,7 +1320,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_posters
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # Malformed codes without hyphen should be skipped
         result = translator.select_best_image(
             tmdb_ids, ["en", "US", "en-US"], kind="poster"
@@ -1345,7 +1345,7 @@ class TestSelectBestImage:
         )
         mock_get.side_effect = not_found_error
 
-        tmdb_ids = TmdbIds(tmdb_id=99999, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
 
         assert result is None
@@ -1361,7 +1361,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_posters
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
 
         # First call
         result1 = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
@@ -1384,7 +1384,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = empty_response
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-US"], kind="poster")
 
         assert result is None
@@ -1406,7 +1406,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = response_en_gb
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         result = translator.select_best_image(tmdb_ids, ["en-GB"], kind="poster")
         assert result is not None
         assert result.iso_639_1 == "en"
@@ -1465,7 +1465,7 @@ class TestSelectBestImage:
         mock_get.return_value.json.return_value = mock_images_response_posters
         mock_get.return_value.raise_for_status = Mock()
 
-        tmdb_ids = TmdbIds(tmdb_id=12345, season=None, episode=None)
+        tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=None, episode=None)
         # "banner" is not a valid kind
         result = translator.select_best_image(
             tmdb_ids,

@@ -11,7 +11,7 @@ class TmdbIds:
     """TMDB identifiers extracted from .nfo files."""
 
     tmdb_id: int
-    media_type: Literal["tv", "movie"] = "tv"
+    media_type: Literal["tv", "movie"]
     season: int | None = None
     episode: int | None = None
 
