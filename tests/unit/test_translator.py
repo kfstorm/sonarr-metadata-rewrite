@@ -28,7 +28,7 @@ def configure_image_response(mock_get: Mock, response: dict[str, Any]) -> None:
 
 
 @pytest.fixture
-def translator(test_settings: Settings) -> Generator[Translator, None, None]:
+def translator(test_settings: Settings) -> Generator[Translator]:
     """Create translator instance."""
     cache = Cache(str(test_settings.cache_dir))
     translator = Translator(test_settings, cache)

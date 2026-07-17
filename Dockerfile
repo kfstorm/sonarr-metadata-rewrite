@@ -1,10 +1,10 @@
 # Multi-stage Docker build for sonarr-metadata-rewrite using uv
 
 # Build arg for Python version
-ARG PYTHON_VERSION=3.10
+ARG PYTHON_VERSION=3.14
 
 # Build stage
-FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS builder
+FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-trixie-slim AS builder
 
 # Set environment variables for optimal uv behavior
 ENV UV_COMPILE_BYTECODE=1
@@ -24,7 +24,7 @@ COPY dist/*.whl /tmp/
 RUN uv pip install /tmp/*.whl --no-deps
 
 # Runtime stage
-FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
+FROM python:${PYTHON_VERSION}-slim-trixie AS runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1

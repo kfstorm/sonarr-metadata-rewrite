@@ -159,7 +159,7 @@ class BaseProcessManager:
         self._output_thread = None
         self._startup_event = None
 
-    def __enter__(self) -> "BaseProcessManager":
+    def __enter__(self) -> BaseProcessManager:
         """Enter context with managed process lifecycle."""
         return self
 

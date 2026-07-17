@@ -153,6 +153,7 @@ SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'
 ```
 
 **Language codes** are ISO 639-1 format:
+
 - `zh-CN` - Chinese (Simplified)
 - `ja-JP` - Japanese
 - `ko-KR` - Korean
@@ -332,6 +333,7 @@ environment:
 ```
 
 The rollback service will:
+
 - Restore all original .nfo and image files from the backup directory
 - Skip any shows/episodes that have been deleted
 - Log the restoration progress

@@ -208,7 +208,7 @@ class ImageProcessor:
                     continue
                 try:
                     metadata_info = extract_metadata_info(nfo_path)
-                except (ET.ParseError, OSError, ValueError):
+                except ET.ParseError, OSError, ValueError:
                     continue
                 if metadata_info.file_type in {"tvshow", "movie"}:
                     metadata_candidates.append(metadata_info)
@@ -234,7 +234,7 @@ class ImageProcessor:
 
         try:
             return cast(TmdbIds, _find_and_extract_tmdb_id())
-        except (FileNotFoundError, ValueError):
+        except FileNotFoundError, ValueError:
             return None
 
     def _download_and_write_image(

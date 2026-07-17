@@ -104,7 +104,7 @@ class ContainerManager(BaseProcessManager):
 
         self.container_name = None
 
-    def __enter__(self) -> "ContainerManager":
+    def __enter__(self) -> ContainerManager:
         """Enter context with managed container lifecycle."""
         return self
 

@@ -26,7 +26,7 @@ class MovieManager:
         self.quality_profile_id = quality_profile_id
         self.movie_data: dict[str, Any] | None = None
 
-    def __enter__(self) -> "MovieManager":
+    def __enter__(self) -> MovieManager:
         """Add movie to Radarr."""
         self.movie_data = self.radarr_client.add_movie(
             self.tmdb_id, self.root_folder, self.quality_profile_id
