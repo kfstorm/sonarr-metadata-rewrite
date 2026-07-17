@@ -95,42 +95,18 @@ class MetadataProcessor:
                         ),
                     )
                 else:
-                    preferred_langs = ", ".join(self.settings.preferred_languages)
-                    available_langs = (
-                        ", ".join(sorted(all_translations.keys()))
-                        if all_translations
-                        else "none"
-                    )
-                    return MetadataProcessResult(
-                        success=False,
-                        file_path=nfo_path,
-                        message=(
-                            f"File unchanged - content already matches original and "
-                            f"no translation available in preferred languages "
-                            f"[{preferred_langs}]. "
-                            f"Available: [{available_langs}]"
-                        ),
-                        tmdb_ids=tmdb_ids,
-                        file_modified=False,
-                        translated_content=None,
+                    return self._build_no_translation_result(
+                        nfo_path,
+                        tmdb_ids,
+                        all_translations,
+                        content_matches_original=True,
                     )
             else:
-                preferred_langs = ", ".join(self.settings.preferred_languages)
-                available_langs = (
-                    ", ".join(sorted(all_translations.keys()))
-                    if all_translations
-                    else "none"
-                )
-                return MetadataProcessResult(
-                    success=False,
-                    file_path=nfo_path,
-                    message=(
-                        f"File unchanged - no translation available in preferred "
-                        f"languages [{preferred_langs}]. Available: [{available_langs}]"
-                    ),
-                    tmdb_ids=tmdb_ids,
-                    file_modified=False,
-                    translated_content=None,
+                return self._build_no_translation_result(
+                    nfo_path,
+                    tmdb_ids,
+                    all_translations,
+                    content_matches_original=False,
                 )
 
         selected_translation = self._apply_fallback_to_translation(
@@ -168,6 +144,33 @@ class MetadataProcessor:
             backup_created=backup_created,
             file_modified=True,
             translated_content=selected_translation,
+        )
+
+    def _build_no_translation_result(
+        self,
+        nfo_path: Path,
+        tmdb_ids: TmdbIds,
+        all_translations: dict[str, TranslatedContent],
+        *,
+        content_matches_original: bool,
+    ) -> MetadataProcessResult:
+        """Build a result for an unchanged file without a preferred translation."""
+        preferred_langs = ", ".join(self.settings.preferred_languages)
+        available_langs = ", ".join(sorted(all_translations)) or "none"
+        original_match_message = (
+            "content already matches original and " if content_matches_original else ""
+        )
+        return MetadataProcessResult(
+            success=False,
+            file_path=nfo_path,
+            message=(
+                f"File unchanged - {original_match_message}no translation available "
+                f"in preferred languages [{preferred_langs}]. "
+                f"Available: [{available_langs}]"
+            ),
+            tmdb_ids=tmdb_ids,
+            file_modified=False,
+            translated_content=None,
         )
 
     def _process_episode_file(

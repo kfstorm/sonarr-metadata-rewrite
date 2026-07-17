@@ -17,7 +17,33 @@ from sonarr_metadata_rewrite.models import (
     TranslatedString,
 )
 from sonarr_metadata_rewrite.translator import Translator
-from tests.conftest import assert_process_result, create_test_settings
+from tests.conftest import (
+    SAMPLE_MULTI_EPISODE_NFO,
+    assert_process_result,
+    create_test_settings,
+)
+
+
+def translated_content(
+    title: str, description: str, language: str
+) -> TranslatedContent:
+    """Create translated content with one language for both fields."""
+    return TranslatedContent(
+        title=TranslatedString(content=title, language=language),
+        description=TranslatedString(content=description, language=language),
+    )
+
+
+def multi_episode_processor(
+    test_data_dir: Path, create_test_files: Callable[[str, Path], Path]
+) -> tuple[MetadataProcessor, Mock, Path]:
+    """Create processor and series directory for multi-episode tests."""
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(create_test_settings(test_data_dir), mock_translator)
+    series_dir = test_data_dir / "Breaking Bad"
+    series_dir.mkdir(parents=True, exist_ok=True)
+    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    return processor, mock_translator, series_dir
 
 
 @pytest.fixture
@@ -25,10 +51,7 @@ def mock_translator() -> Mock:
     """Create mock translator."""
     translator = Mock(spec=Translator)
     translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="示例剧集", language="zh-CN"),
-            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
-        )
+        "zh-CN": translated_content("示例剧集", "这是一个示例描述", "zh-CN")
     }
     # Mock external ID lookup to return None (no external mapping)
     translator.find_tmdb_id_by_external_id.return_value = None
@@ -154,18 +177,9 @@ def test_process_file_language_preference(
     # Create mock translator with multiple languages
     assert isinstance(processor.translator, Mock)
     processor.translator.get_translations.return_value = {
-        "en": TranslatedContent(
-            title=TranslatedString(content="English Title", language="en"),
-            description=TranslatedString(content="English Description", language="en"),
-        ),
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="中文标题", language="zh-CN"),
-            description=TranslatedString(content="中文描述", language="zh-CN"),
-        ),
-        "ja-JP": TranslatedContent(
-            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
-            description=TranslatedString(content="日本語の説明", language="ja-JP"),
-        ),
+        "en": translated_content("English Title", "English Description", "en"),
+        "zh-CN": translated_content("中文标题", "中文描述", "zh-CN"),
+        "ja-JP": translated_content("日本語タイトル", "日本語の説明", "ja-JP"),
     }
 
     test_path = create_test_files("tvshow.nfo", test_data_dir / "test_lang_pref.nfo")
@@ -481,14 +495,8 @@ def test_select_preferred_translation_single_language_complete(
     processor = MetadataProcessor(settings, mock_translator)
 
     all_translations = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="中文标题", language="zh-CN"),
-            description=TranslatedString(content="中文描述", language="zh-CN"),
-        ),
-        "ja-JP": TranslatedContent(
-            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
-            description=TranslatedString(content="日本語の説明", language="ja-JP"),
-        ),
+        "zh-CN": translated_content("中文标题", "中文描述", "zh-CN"),
+        "ja-JP": translated_content("日本語タイトル", "日本語の説明", "ja-JP"),
     }
 
     result = processor._select_preferred_translation(all_translations)
@@ -594,18 +602,9 @@ def test_process_file_multiple_preferred_languages_first_match(
     # Mock translator with available translations (missing Korean)
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "ja-JP": TranslatedContent(
-            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
-            description=TranslatedString(content="日本語の説明", language="ja-JP"),
-        ),
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="中文标题", language="zh-CN"),
-            description=TranslatedString(content="中文描述", language="zh-CN"),
-        ),
-        "en": TranslatedContent(
-            title=TranslatedString(content="English Title", language="en"),
-            description=TranslatedString(content="English Description", language="en"),
-        ),
+        "ja-JP": translated_content("日本語タイトル", "日本語の説明", "ja-JP"),
+        "zh-CN": translated_content("中文标题", "中文描述", "zh-CN"),
+        "en": translated_content("English Title", "English Description", "en"),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -685,24 +684,10 @@ def test_process_file_multiple_preferred_languages_partial_matches(
     # Mock translator with some matching languages (missing Arabic and Thai)
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="中文标题", language="zh-CN"),
-            description=TranslatedString(content="中文描述", language="zh-CN"),
-        ),
-        "ja-JP": TranslatedContent(
-            title=TranslatedString(content="日本語タイトル", language="ja-JP"),
-            description=TranslatedString(content="日本語の説明", language="ja-JP"),
-        ),
-        "en": TranslatedContent(
-            title=TranslatedString(content="English Title", language="en"),
-            description=TranslatedString(content="English Description", language="en"),
-        ),
-        "de": TranslatedContent(
-            title=TranslatedString(content="Deutscher Titel", language="de"),
-            description=TranslatedString(
-                content="Deutsche Beschreibung", language="de"
-            ),
-        ),
+        "zh-CN": translated_content("中文标题", "中文描述", "zh-CN"),
+        "ja-JP": translated_content("日本語タイトル", "日本語の説明", "ja-JP"),
+        "en": translated_content("English Title", "English Description", "en"),
+        "de": translated_content("Deutscher Titel", "Deutsche Beschreibung", "de"),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -735,22 +720,9 @@ def test_process_file_single_preferred_language_available(
 
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "fr": TranslatedContent(
-            title=TranslatedString(content="Titre français", language="fr"),
-            description=TranslatedString(
-                content="Description française", language="fr"
-            ),
-        ),
-        "en": TranslatedContent(
-            title=TranslatedString(content="English Title", language="en"),
-            description=TranslatedString(content="English Description", language="en"),
-        ),
-        "de": TranslatedContent(
-            title=TranslatedString(content="Deutscher Titel", language="de"),
-            description=TranslatedString(
-                content="Deutsche Beschreibung", language="de"
-            ),
-        ),
+        "fr": translated_content("Titre français", "Description française", "fr"),
+        "en": translated_content("English Title", "English Description", "en"),
+        "de": translated_content("Deutscher Titel", "Deutsche Beschreibung", "de"),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -780,20 +752,9 @@ def test_process_file_single_preferred_language_not_available(
 
     mock_translator = Mock()
     mock_translator.get_translations.return_value = {
-        "fr": TranslatedContent(
-            title=TranslatedString(content="Titre français", language="fr"),
-            description=TranslatedString(
-                content="Description française", language="fr"
-            ),
-        ),
-        "en": TranslatedContent(
-            title=TranslatedString(content="English Title", language="en"),
-            description=TranslatedString(content="English Description", language="en"),
-        ),
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="中文标题", language="zh-CN"),
-            description=TranslatedString(content="中文描述", language="zh-CN"),
-        ),
+        "fr": translated_content("Titre français", "Description française", "fr"),
+        "en": translated_content("English Title", "English Description", "en"),
+        "zh-CN": translated_content("中文标题", "中文描述", "zh-CN"),
     }
 
     processor = MetadataProcessor(settings, mock_translator)
@@ -1273,10 +1234,7 @@ def test_process_file_episode_inherits_parent_tvdb_id(
 
     mock_translator = Mock(spec=Translator)
     mock_translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="示例剧集", language="zh-CN"),
-            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
-        )
+        "zh-CN": translated_content("示例剧集", "这是一个示例描述", "zh-CN")
     }
     # Mock external ID lookup to return TMDB ID for TVDB lookup
     mock_translator.find_tmdb_id_by_external_id.return_value = 1396
@@ -1358,10 +1316,7 @@ def test_process_file_mixed_id_scenarios(
 
     mock_translator = Mock(spec=Translator)
     mock_translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="示例剧集", language="zh-CN"),
-            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
-        )
+        "zh-CN": translated_content("示例剧集", "这是一个示例描述", "zh-CN")
     }
     # Mock external ID lookup to return different TMDB ID
     mock_translator.find_tmdb_id_by_external_id.return_value = 2468
@@ -1406,10 +1361,7 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
 
     mock_translator = Mock(spec=Translator)
     mock_translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="示例剧集", language="zh-CN"),
-            description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
-        )
+        "zh-CN": translated_content("示例剧集", "这是一个示例描述", "zh-CN")
     }
     # Mock external ID lookup to return TMDB ID for episode's external ID
     mock_translator.find_tmdb_id_by_external_id.return_value = 2468
@@ -1498,24 +1450,15 @@ def test_process_file_multi_episode_partial_update(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test partial translation updates for multi-episode NFO files."""
-    settings = create_test_settings(test_data_dir)
-    mock_translator = Mock(spec=Translator)
-    processor = MetadataProcessor(settings, mock_translator)
-
-    series_dir = test_data_dir / "Breaking Bad"
-    series_dir.mkdir(parents=True, exist_ok=True)
-    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    processor, mock_translator, series_dir = multi_episode_processor(
+        test_data_dir, create_test_files
+    )
     nfo_path = create_test_files("multi_episode.nfo", series_dir / "episodes.nfo")
 
     def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
         if tmdb_ids.episode == 1:
             return {
-                "zh-CN": TranslatedContent(
-                    title=TranslatedString(content="试播集", language="zh-CN"),
-                    description=TranslatedString(
-                        content="沃尔特开始了犯罪生涯。", language="zh-CN"
-                    ),
-                )
+                "zh-CN": translated_content("试播集", "沃尔特开始了犯罪生涯。", "zh-CN")
             }
         return {}
 
@@ -1660,28 +1603,15 @@ def test_process_file_multi_episode_skips_entry_without_episode_numbers(
     )
     nfo_path = series_dir / "episodes.nfo"
     nfo_path.write_text(
-        """<?xml version="1.0" encoding="utf-8"?>
-<episodedetails>
-  <title>Pilot</title>
-  <plot>Walter White begins a new life in crime.</plot>
-  <season>1</season>
-  <episode>1</episode>
-</episodedetails>
-<episodedetails>
-  <title>Broken Entry</title>
-  <plot>Missing episode number.</plot>
-</episodedetails>
-""",
+        SAMPLE_MULTI_EPISODE_NFO.replace(
+            "<season>1</season>\n  <episode>2</episode>",
+            "<season>1</season>",
+        ),
         encoding="utf-8",
     )
 
     mock_translator.get_translations.return_value = {
-        "zh-CN": TranslatedContent(
-            title=TranslatedString(content="试播集", language="zh-CN"),
-            description=TranslatedString(
-                content="沃尔特开始了犯罪生涯。", language="zh-CN"
-            ),
-        )
+        "zh-CN": translated_content("试播集", "沃尔特开始了犯罪生涯。", "zh-CN")
     }
     mock_translator.find_tmdb_id_by_external_id.return_value = None
 
@@ -1703,50 +1633,23 @@ def test_process_file_multi_episode_reports_already_matched_entries(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test multi-episode message includes already matched entries."""
-    settings = create_test_settings(test_data_dir)
-    mock_translator = Mock(spec=Translator)
-    processor = MetadataProcessor(settings, mock_translator)
-
-    series_dir = test_data_dir / "Breaking Bad"
-    series_dir.mkdir(parents=True, exist_ok=True)
-    create_test_files("tvshow.nfo", series_dir / "tvshow.nfo")
+    processor, mock_translator, series_dir = multi_episode_processor(
+        test_data_dir, create_test_files
+    )
     nfo_path = series_dir / "episodes.nfo"
     nfo_path.write_text(
-        """<?xml version="1.0" encoding="utf-8"?>
-<episodedetails>
-  <title>试播集</title>
-  <plot>沃尔特开始了犯罪生涯。</plot>
-  <season>1</season>
-  <episode>1</episode>
-</episodedetails>
-<episodedetails>
-  <title>Cat's in the Bag...</title>
-  <plot>Walt and Jesse deal with the aftermath.</plot>
-  <season>1</season>
-  <episode>2</episode>
-</episodedetails>
-""",
+        SAMPLE_MULTI_EPISODE_NFO.replace("Pilot", "试播集").replace(
+            "Walter White begins a new life in crime.", "沃尔特开始了犯罪生涯。"
+        ),
         encoding="utf-8",
     )
 
     def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
         if tmdb_ids.episode == 1:
             return {
-                "zh-CN": TranslatedContent(
-                    title=TranslatedString(content="试播集", language="zh-CN"),
-                    description=TranslatedString(
-                        content="沃尔特开始了犯罪生涯。", language="zh-CN"
-                    ),
-                )
+                "zh-CN": translated_content("试播集", "沃尔特开始了犯罪生涯。", "zh-CN")
             }
-        return {
-            "zh-CN": TranslatedContent(
-                title=TranslatedString(content="袋中猫", language="zh-CN"),
-                description=TranslatedString(
-                    content="两人处理善后。", language="zh-CN"
-                ),
-            )
-        }
+        return {"zh-CN": translated_content("袋中猫", "两人处理善后。", "zh-CN")}
 
     mock_translator.get_translations.side_effect = get_translations
     mock_translator.find_tmdb_id_by_external_id.return_value = None

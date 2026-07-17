@@ -8,7 +8,7 @@ import pytest
 
 from sonarr_metadata_rewrite.backup_utils import create_backup
 from sonarr_metadata_rewrite.rollback_service import RollbackService
-from tests.conftest import create_test_settings
+from tests.conftest import SAMPLE_MULTI_EPISODE_NFO, create_test_settings
 
 
 def _make_backup(original_file: Path, backup_dir: Path) -> None:
@@ -18,6 +18,18 @@ def _make_backup(original_file: Path, backup_dir: Path) -> None:
     automatically.
     """
     create_backup(original_file, backup_dir)
+
+
+def _rollback_service(test_data_dir: Path, backup_dir: Path) -> RollbackService:
+    """Create rollback service for media below test data directory."""
+    return RollbackService(
+        create_test_settings(
+            test_data_dir,
+            service_mode="rollback",
+            rewrite_root_dirs=[test_data_dir / "media"],
+            original_files_backup_dir=backup_dir,
+        )
+    )
 
 
 def test_rollback_service_init(test_data_dir: Path) -> None:
@@ -102,13 +114,7 @@ def test_execute_rollback_successful(
     # Simulate translation (overwrite original)
     original_file.write_text("Translated content")
 
-    settings = create_test_settings(
-        test_data_dir,
-        service_mode="rollback",
-        rewrite_root_dirs=[original_dir],
-        original_files_backup_dir=backup_dir,
-    )
-    service = RollbackService(settings)
+    service = _rollback_service(test_data_dir, backup_dir)
 
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
@@ -141,13 +147,7 @@ def test_execute_rollback_missing_original_directory(
     original_file.unlink()
     deleted_show_dir.rmdir()
 
-    settings = create_test_settings(
-        test_data_dir,
-        service_mode="rollback",
-        rewrite_root_dirs=[original_dir],
-        original_files_backup_dir=backup_dir,
-    )
-    service = RollbackService(settings)
+    service = _rollback_service(test_data_dir, backup_dir)
 
     with caplog.at_level(logging.INFO):
         service.execute_rollback()
@@ -175,13 +175,7 @@ def test_restore_single_file_success(test_data_dir: Path) -> None:
     # Derive the backup file path the same way create_backup would
     backup_file = backup_dir / original_file.relative_to("/")
 
-    settings = create_test_settings(
-        test_data_dir,
-        service_mode="rollback",
-        rewrite_root_dirs=[original_dir],
-        original_files_backup_dir=backup_dir,
-    )
-    service = RollbackService(settings)
+    service = _rollback_service(test_data_dir, backup_dir)
 
     result = service._restore_single_file(backup_file)
 
@@ -207,13 +201,7 @@ def test_restore_single_file_missing_directory(test_data_dir: Path) -> None:
     original_file.unlink()
     deleted_show_dir.rmdir()
 
-    settings = create_test_settings(
-        test_data_dir,
-        service_mode="rollback",
-        rewrite_root_dirs=[original_dir],
-        original_files_backup_dir=backup_dir,
-    )
-    service = RollbackService(settings)
+    service = _rollback_service(test_data_dir, backup_dir)
 
     result = service._restore_single_file(backup_file)
 
@@ -518,20 +506,7 @@ def test_execute_rollback_restores_multi_episode_nfo(test_data_dir: Path) -> Non
     episode_dir = original_dir / "Breaking Bad" / "Season 01"
     episode_dir.mkdir(parents=True, exist_ok=True)
     original_file = episode_dir / "episodes.nfo"
-    original_content = """<?xml version="1.0" encoding="utf-8"?>
-<episodedetails>
-  <title>Pilot</title>
-  <plot>Walter White begins a new life in crime.</plot>
-  <season>1</season>
-  <episode>1</episode>
-</episodedetails>
-<episodedetails>
-  <title>Cat's in the Bag...</title>
-  <plot>Walt and Jesse deal with the aftermath.</plot>
-  <season>1</season>
-  <episode>2</episode>
-</episodedetails>
-"""
+    original_content = SAMPLE_MULTI_EPISODE_NFO
     original_file.write_text(original_content, encoding="utf-8")
     _make_backup(original_file, backup_dir)
 

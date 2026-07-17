@@ -16,6 +16,17 @@ from sonarr_metadata_rewrite.models import (
 from sonarr_metadata_rewrite.rewrite_service import RewriteService
 
 
+def assert_cache_initialization_error(settings: Settings, cache_dir: Path) -> None:
+    """Assert inaccessible cache storage produces the documented error."""
+    with pytest.raises(RuntimeError) as exc_info:
+        RewriteService(settings)
+
+    error_message = str(exc_info.value)
+    assert "Failed to initialize cache" in error_message
+    assert str(cache_dir) in error_message
+    assert "not be accessible or writable" in error_message
+
+
 @pytest.fixture
 def rewrite_service(test_settings: Settings) -> RewriteService:
     """Create rewrite service instance."""
@@ -199,15 +210,7 @@ def test_cache_initialization_error(test_data_dir: Path) -> None:
             cache_dir=cache_dir,
         )
 
-        # Verify that RuntimeError is raised with clear message
-        with pytest.raises(RuntimeError) as exc_info:
-            RewriteService(settings)
-
-        # Verify error message includes the cache directory path
-        error_message = str(exc_info.value)
-        assert "Failed to initialize cache" in error_message
-        assert str(cache_dir) in error_message
-        assert "not be accessible or writable" in error_message
+        assert_cache_initialization_error(settings, cache_dir)
     finally:
         # Restore permissions for cleanup
         os.chmod(db_file, 0o644)
@@ -235,15 +238,7 @@ def test_cache_initialization_permission_error(test_data_dir: Path) -> None:
             cache_dir=cache_dir,
         )
 
-        # Verify that RuntimeError is raised with clear message
-        with pytest.raises(RuntimeError) as exc_info:
-            RewriteService(settings)
-
-        # Verify error message includes the cache directory path
-        error_message = str(exc_info.value)
-        assert "Failed to initialize cache" in error_message
-        assert str(cache_dir) in error_message
-        assert "not be accessible or writable" in error_message
+        assert_cache_initialization_error(settings, cache_dir)
     finally:
         # Restore permissions for cleanup
         os.chmod(readonly_parent, 0o755)
