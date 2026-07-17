@@ -32,7 +32,7 @@ class TestCli:
                     result = runner.invoke(cli)
 
             # Check the initial output
-            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
+            assert "🚀 Starting Sonarr and Radarr Metadata Rewrite..." in result.output
             assert (
                 f"✅ TMDB API key loaded (ending in ...{test_key[-4:]})"
                 in result.output
@@ -76,9 +76,9 @@ class TestCli:
         result = runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
-        assert "Sonarr Metadata Rewrite" in result.output
+        assert "Sonarr and Radarr Metadata Rewrite" in result.output
         assert (
-            "A long-running service that monitors Sonarr-generated .nfo files"
+            "A long-running service that monitors Sonarr TV and Radarr movie"
             in result.output
         )
         assert "In rollback mode, restores original files" in result.output
@@ -109,7 +109,7 @@ class TestCli:
                     result = runner.invoke(cli)
 
             # Check the output
-            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
+            assert "🚀 Starting Sonarr and Radarr Metadata Rewrite..." in result.output
             assert "🔧 Service mode: rollback" in result.output
             assert "🔄 Executing rollback operation..." in result.output
             assert "✅ Rollback completed successfully" in result.output
@@ -140,7 +140,7 @@ class TestCli:
                     result = runner.invoke(cli)
 
             # Check the output
-            assert "🚀 Starting Sonarr Metadata Rewrite..." in result.output
+            assert "🚀 Starting Sonarr and Radarr Metadata Rewrite..." in result.output
             assert "🔧 Service mode: rollback" in result.output
             assert "🔄 Executing rollback operation..." in result.output
             assert (

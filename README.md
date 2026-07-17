@@ -3,13 +3,19 @@
 ![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/kfstorm/2eafe27677e3a2ebbda29cbd026ff32b/raw/coverage.json)
 [![CI](https://github.com/kfstorm/sonarr-metadata-rewrite/actions/workflows/ci.yml/badge.svg)](https://github.com/kfstorm/sonarr-metadata-rewrite/actions/workflows/ci.yml)
 
-Ever been frustrated that Sonarr only gives you English metadata for your TV
-shows? This tool fixes that by watching for Sonarr's `.nfo` files and
-automatically replacing them with translations in whatever language you prefer.
-It can also rewrite poster and clearlogo images to language-specific variants
-when available (e.g., `poster.jpg`, `clearlogo.png`, `season01-poster.jpg`).
+Sonarr only generates English metadata. Radarr can generate movie metadata in
+one configured language, but it cannot make artwork follow that language and
+does not support an ordered language fallback. This tool watches Sonarr TV and
+Radarr movie `.nfo` files, then applies your preferred language list in order.
+It rewrites poster and clearlogo images to language-specific variants when
+available (e.g., `poster.jpg`, `clearlogo.png`, `season01-poster.jpg`).
 
-It's my solution to [Sonarr Issue #269](
+The same Radarr artwork gap is described in [localized poster issue #9863](
+https://github.com/Radarr/Radarr/issues/9863), [translated images issue #5277](
+https://github.com/Radarr/Radarr/issues/5277), and [metadata artwork language
+issue #8025](https://github.com/Radarr/Radarr/issues/8025).
+
+It also addresses [Sonarr Issue #269](
 https://github.com/Sonarr/Sonarr/issues/269) and
 [Sonarr Issue #6663](https://github.com/Sonarr/Sonarr/issues/6663)
 . It turns out a lot of people want
@@ -20,17 +26,20 @@ natively.
 
 The tool runs as a background service that:
 
-- Watches your media folders for when Sonarr creates or updates `.nfo` files
+- Watches your media folders for when Sonarr or Radarr creates or updates `.nfo`
+  files
 - Grabs the TMDB ID from those files and fetches translations from TMDB's API
-- Replaces the English metadata with your preferred language(s)
+- Applies preferred languages in order, falling back when a title, plot, or
+  image is unavailable in a higher-priority language
 - Rewrites poster and clearlogo images based on your preferred language-country
   codes (e.g., `en-US`, `ja-JP`) when such variants exist on TMDB
 - Does this fast enough that you barely notice it happening
 - Keeps backups of the original files in case you want them back
 - Caches everything so it doesn't spam TMDB's API
 
-You can configure multiple languages with fallback priority - like Chinese
-first, then Japanese, then just leave it in English if neither is available.
+You can configure multiple languages with fallback priority, such as Chinese
+first and Japanese second. Metadata fields may use different fallback languages
+when TMDB has only a title or plot in the higher-priority language.
 
 ## Installation
 
@@ -93,7 +102,8 @@ volumes:
 
 ```bash
 TMDB_API_KEY=your_api_read_access_token_here  # Your TMDB API Read Access Token
-# One or more media directories (comma-separated) to watch for Sonarr .nfo files
+# One or more media directories (comma-separated) to watch for
+# Sonarr/Radarr NFO files
 REWRITE_ROOT_DIRS=/tv,/anime
 # Comma-separated language codes in priority order
 PREFERRED_LANGUAGES=zh-CN,ja-JP
@@ -155,9 +165,14 @@ order.
 
 If image rewriting is enabled, the service recognizes these filenames:
 
-- Series-level: `poster.*`, `clearlogo.*`
+- TV series-level: `poster.*`, `clearlogo.*`
 - Season-level: `seasonNN-poster.*` (e.g., `season01-poster.jpg`)
 - Specials: `season-specials-poster.*`
+- Movie-level: `poster.*`, `clearlogo.*`
+
+Current Radarr Kodi/Emby metadata generation creates movie posters but not
+clearlogos. Existing `clearlogo.*` files in movie directories are still
+rewritten when a matching TMDB image is available.
 
 Supported extensions: `.jpg`, `.jpeg`, `.png`.
 
@@ -241,7 +256,7 @@ docker logs sonarr-metadata-rewrite
 You'll see something like:
 
 ```text
-🚀 Starting Sonarr Metadata Rewrite...
+🚀 Starting Sonarr and Radarr Metadata Rewrite...
 ✅ TMDB API key loaded (ending in ...xyz)
 📁 Monitoring directory: /tv
 📁 Monitoring directory: /anime
@@ -249,8 +264,8 @@ You'll see something like:
 ✅ Service started successfully
 ```
 
-The container runs in the background. When Sonarr updates your shows, this
-will automatically translate the metadata files.
+The container runs in the background. When Sonarr updates TV shows or Radarr
+updates movies, it automatically translates their metadata files.
 
 To stop the container:
 
@@ -265,7 +280,7 @@ The service has a few main parts:
 **File monitoring** - Uses Python's `watchdog` to watch for file changes
 (.nfo and image files) in real-time
 
-**TMDB integration** - Extracts TMDB IDs from Sonarr's XML files and
+**TMDB integration** - Extracts TMDB IDs from Sonarr and Radarr XML files and
 fetches translations via their API
 
 **Smart caching** - Stores translations locally so it doesn't hit the API
@@ -282,7 +297,7 @@ about it.
 
 ## Restoring originals (rollback)
 
-If you want to restore Sonarr's original English metadata (and images), you can
+If you want to restore Sonarr or Radarr original English metadata (and images),
 use the built-in rollback functionality to automatically restore all original
 files from backups.
 

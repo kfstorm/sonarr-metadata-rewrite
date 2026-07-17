@@ -17,6 +17,8 @@ from sonarr_metadata_rewrite.file_utils import (
 from sonarr_metadata_rewrite.image_utils import read_embedded_marker
 from sonarr_metadata_rewrite.models import ImageCandidate
 from sonarr_metadata_rewrite.retry_utils import retry
+from tests.integration.fixtures.movie_manager import MovieManager
+from tests.integration.fixtures.radarr_client import RadarrClient
 from tests.integration.fixtures.series_manager import SeriesManager
 from tests.integration.fixtures.sonarr_client import SonarrClient
 from tests.integration.fixtures.subprocess_service_manager import (
@@ -95,6 +97,17 @@ def create_fake_multi_episode_file(
     sample_file = Path(__file__).parent / "fixtures" / "sample_episode.mkv"
     shutil.copy2(sample_file, episode_file)
     return episode_file
+
+
+def create_fake_movie_file(movie: MovieManager) -> Path:
+    """Copy existing valid sample MKV using Radarr's expected movie filename."""
+    movie.directory.mkdir(parents=True, exist_ok=True)
+    year = movie.data.get("year")
+    filename = f"{movie.title} ({year}).mkv" if year else f"{movie.title}.mkv"
+    movie_file = movie.directory / filename
+    sample_file = Path(__file__).parent / "fixtures" / "sample_episode.mkv"
+    shutil.copy2(sample_file, movie_file)
+    return movie_file
 
 
 def wait_for_nfo_files(
@@ -241,6 +254,63 @@ class SeriesWithNfos:
         """Clean up series."""
         if self.series:
             self.series.__exit__(exc_type, exc_val, exc_tb)
+
+
+class MovieWithNfos:
+    """Create Radarr movie, import synthetic video, and wait for Radarr assets."""
+
+    def __init__(
+        self,
+        radarr: RadarrClient,
+        media_root: Path,
+        tmdb_id: int,
+        use_movie_nfo: bool,
+    ):
+        self.radarr = radarr
+        self.media_root = media_root
+        self.tmdb_id = tmdb_id
+        self.use_movie_nfo = use_movie_nfo
+        self.movie: MovieManager | None = None
+
+    def __enter__(self) -> tuple[Path, list[Path]]:
+        """Import movie and return Radarr-created NFO and artwork paths."""
+        self.movie = MovieManager(self.radarr, self.tmdb_id, "/movies", self.media_root)
+        self.movie.__enter__()
+        movie_file = create_fake_movie_file(self.movie)
+        if not self.radarr.trigger_disk_scan(self.movie.id):
+            raise RuntimeError("Failed to trigger Radarr disk scan")
+
+        @retry(timeout=30.0, interval=1.0, log_interval=2.0)
+        def wait_for_import() -> None:
+            assert self.movie is not None
+            movie_data = self.radarr.get_movie(self.movie.id)
+            assert movie_data.get("hasFile"), "Radarr scan has not imported movie file"
+
+        wait_for_import()
+        nfo_file = (
+            self.movie.directory / "movie.nfo"
+            if self.use_movie_nfo
+            else movie_file.with_suffix(".nfo")
+        )
+        image_files = [
+            self.movie.directory / "poster.jpg",
+        ]
+        # Radarr's current TMDB metadata output creates poster/fanart but not
+        # clearlogo. Movie clearlogo rewriting remains covered by unit tests.
+
+        @retry(timeout=30.0, interval=0.5, log_interval=2.0)
+        def wait_for_radarr_assets() -> None:
+            assert nfo_file.exists(), f"Radarr did not create NFO: {nfo_file}"
+            for image_file in image_files:
+                assert image_file.exists(), f"Radarr did not create image: {image_file}"
+
+        wait_for_radarr_assets()
+        return nfo_file, image_files
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Remove Radarr movie and generated files."""
+        if self.movie:
+            self.movie.__exit__(exc_type, exc_val, exc_tb)
 
 
 class ServiceRunner:

@@ -65,6 +65,27 @@ SAMPLE_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 </episodedetails>
 """  # noqa: E501
 
+SAMPLE_MOVIE_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>Original Movie</title>
+  <originaltitle>Original Movie Title</originaltitle>
+  <sorttitle>Movie, Original</sorttitle>
+  <plot>Original movie plot.</plot>
+  <uniqueid type="tmdb" default="true">550</uniqueid>
+  <uniqueid type="imdb">tt0137523</uniqueid>
+  <rating>8.4</rating>
+  <watched>false</watched>
+</movie>
+"""
+
+SAMPLE_MOVIE_NO_TMDB_ID_NFO = """<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>Movie Without TMDB ID</title>
+  <plot>This movie only has an IMDb ID.</plot>
+  <uniqueid type="imdb" default="true">tt0137523</uniqueid>
+</movie>
+"""
+
 SAMPLE_NO_TMDB_ID_NFO = """<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>Series Without TMDB ID</title>
@@ -143,6 +164,8 @@ SAMPLE_MULTI_EPISODE_NFO = """<?xml version="1.0" encoding="utf-8"?>
 SAMPLE_DATA = {
     "tvshow.nfo": SAMPLE_TVSHOW_NFO,
     "episode.nfo": SAMPLE_EPISODE_NFO,
+    "movie.nfo": SAMPLE_MOVIE_NFO,
+    "movie_no_tmdb_id.nfo": SAMPLE_MOVIE_NO_TMDB_ID_NFO,
     "no_tmdb_id.nfo": SAMPLE_NO_TMDB_ID_NFO,
     "tvdb_only.nfo": SAMPLE_TVDB_ONLY_NFO,
     "imdb_only.nfo": SAMPLE_IMDB_ONLY_NFO,
@@ -224,7 +247,7 @@ def callback_tracker() -> Mock:
 def assert_process_result(
     result: MetadataProcessResult,
     expected_success: bool,
-    expected_series_id: int | None = None,
+    expected_tmdb_id: int | None = None,
     expected_season: int | None = None,
     expected_episode: int | None = None,
     expected_file_modified: bool | None = None,
@@ -234,9 +257,9 @@ def assert_process_result(
     """Shared assertion helper for MetadataProcessResult validation."""
     assert result.success == expected_success
 
-    if expected_series_id is not None:
+    if expected_tmdb_id is not None:
         assert result.tmdb_ids is not None
-        assert result.tmdb_ids.series_id == expected_series_id
+        assert result.tmdb_ids.tmdb_id == expected_tmdb_id
 
     if expected_season is not None:
         assert result.tmdb_ids is not None

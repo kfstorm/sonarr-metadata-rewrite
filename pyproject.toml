@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sonarr-metadata-rewrite"
 dynamic = ["version"]
-description = "Compatibility layer that overwrites Sonarr-generated metadata files with TMDB translations"
+description = "Compatibility layer that localizes Sonarr and Radarr metadata files with TMDB translations"
 license = {text = "MIT"}
 authors = [{name = "Kai Yang", email = "kfstorm@outlook.com"}]
 keywords = ["sonarr", "tmdb", "metadata", "translation", "nfo", "automation"]

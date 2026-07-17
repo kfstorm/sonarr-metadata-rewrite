@@ -15,7 +15,7 @@ naming mode:
 - `movie.nfo`
 - `<VideoFileName>.nfo`
 
-Movie artwork support is limited to Radarr's generated short names:
+Movie artwork support is limited to Radarr's recognized short names:
 
 - `poster.*`
 - `clearlogo.*`
@@ -30,8 +30,9 @@ Supported extensions remain `.jpg`, `.jpeg`, and `.png`.
 - Radarr writes `movie.nfo` when `UseMovieNfo` is enabled. Otherwise it writes
   `<VideoFileName>.nfo`.
 - Radarr's current Kodi/Emby metadata provider generates short artwork names.
-  It can generate `poster.*` and `clearlogo.*` when the movie metadata has
-  those image types.
+  In current Radarr releases, TMDB-provided movie covers generate `poster.*`
+  and `fanart.*`; they do not generate `clearlogo.*`. The service still
+  rewrites an existing movie `clearlogo.*` from another artwork source.
 - Sonarr's Kodi/Emby metadata uses `<tvshow>` for series metadata and
   `<episodedetails>` for episode metadata. Sonarr does not generate season NFO
   files. Season artwork is identified by its filename and uses the parent TV
@@ -158,12 +159,13 @@ Every scenario verifies all of the following:
 
 - Radarr produced the selected NFO naming mode and a `<movie>` document.
 - Movie `<title>` and `<plot>` were rewritten to the preferred language.
-- Radarr-produced `poster.*` and `clearlogo.*` received markers for the
-  expected localized TMDB candidates.
+- Radarr-produced `poster.*` received a marker for the expected localized TMDB
+  candidate.
 
-The test movie fixture must have Radarr Clearlogo metadata and TMDB localized
-poster and clearlogo candidates for the configured language. Missing upstream
-data fails the test rather than skipping it.
+Movie `clearlogo.*` rewriting is covered by unit tests because Radarr does not
+currently generate that file from its TMDB metadata. The integration fixture
+must have a localized TMDB poster candidate for the configured language.
+Missing upstream data fails the test rather than skipping it.
 
 Unit tests cover NFO parsing, media-aware paths and endpoints, movie title
 parsing, original-title fallback, movie image resolution, ambiguous root-NFO

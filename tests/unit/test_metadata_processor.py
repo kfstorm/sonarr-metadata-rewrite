@@ -65,7 +65,7 @@ def test_process_file_series_success(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_file_modified=True,
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
@@ -85,13 +85,64 @@ def test_process_file_episode_success(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
     )
+
+
+def test_process_file_movie_parses_and_preserves_other_xml_fields(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test movie NFO translation uses movie IDs and changes only title and plot."""
+    test_path = create_test_files("movie.nfo", test_data_dir / "movie.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_tmdb_id=550,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+    assert result.tmdb_ids is not None
+    assert result.tmdb_ids.media_type == "movie"
+    root = ET.parse(test_path).getroot()
+    assert root.tag == "movie"
+    assert root.findtext("title") == "示例剧集"
+    assert root.findtext("plot") == "这是一个示例描述"
+    assert root.findtext("originaltitle") == "Original Movie Title"
+    assert root.findtext("sorttitle") == "Movie, Original"
+    assert root.findtext("uniqueid[@type='tmdb']") == "550"
+    assert root.findtext("rating") == "8.4"
+    assert root.findtext("watched") == "false"
+
+
+def test_process_file_movie_without_tmdb_id_skips_external_resolution(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test movie NFOs require a direct TMDB ID."""
+    test_path = create_test_files("movie_no_tmdb_id.nfo", test_data_dir / "movie.nfo")
+
+    result = processor.process_file(test_path)
+
+    assert_process_result(
+        result,
+        expected_success=False,
+        expected_file_modified=False,
+        expected_message_contains="No TMDB ID found",
+    )
+    assert isinstance(processor.translator, Mock)
+    processor.translator.find_tmdb_id_by_external_id.assert_not_called()
+    processor.translator.get_translations.assert_not_called()
 
 
 def test_process_file_language_preference(
@@ -173,7 +224,7 @@ def test_process_file_episode_no_tmdb_id_with_parent_tvshow(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,  # From tvshow.nfo
+        expected_tmdb_id=1396,  # From tvshow.nfo
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -269,7 +320,7 @@ def test_process_file_no_preferred_translation(
     assert "preferred languages [zh-CN]" in result.message
     assert "Available: [en, ja-JP]" in result.message
     assert result.tmdb_ids is not None
-    assert result.tmdb_ids.series_id == 1396
+    assert result.tmdb_ids.tmdb_id == 1396
     assert result.file_modified is False  # File was not changed
     assert result.translated_content is None
 
@@ -1103,7 +1154,7 @@ def test_process_file_tvdb_id_only_success(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_file_modified=True,
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
@@ -1137,7 +1188,7 @@ def test_process_file_imdb_id_only_success(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_file_modified=True,
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
@@ -1194,7 +1245,7 @@ def test_process_file_episode_inherits_parent_tvdb_id(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -1271,7 +1322,7 @@ def test_process_file_mixed_id_scenarios(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,  # From parent TMDB ID, not external lookup
+        expected_tmdb_id=1396,  # From parent TMDB ID, not external lookup
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -1318,7 +1369,7 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=2468,  # From episode's external ID lookup
+        expected_tmdb_id=2468,  # From episode's external ID lookup
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -1413,7 +1464,7 @@ def test_process_file_multi_episode_partial_update(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -1477,7 +1528,7 @@ def test_process_file_multi_episode_restore_from_backup_when_translation_missing
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -1516,7 +1567,7 @@ def test_process_file_multi_episode_no_translation_available(
     assert_process_result(
         result,
         expected_success=False,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=False,
@@ -1576,7 +1627,7 @@ def test_process_file_multi_episode_skips_entry_without_episode_numbers(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,
@@ -1642,7 +1693,7 @@ def test_process_file_multi_episode_reports_already_matched_entries(
     assert_process_result(
         result,
         expected_success=True,
-        expected_series_id=1396,
+        expected_tmdb_id=1396,
         expected_season=1,
         expected_episode=1,
         expected_file_modified=True,

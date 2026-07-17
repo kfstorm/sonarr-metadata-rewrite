@@ -31,10 +31,10 @@ class Translator:
         )
 
     def get_translations(self, tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
-        """Get all translations for TV series or episode.
+        """Get all translations for TV, episode, or movie resources.
 
         Args:
-            tmdb_ids: TMDB identifiers containing series_id and optional season/episode
+            tmdb_ids: TMDB identifiers containing media type and optional TV episode
 
         Returns:
             Dictionary mapping language codes to TranslatedContent objects
@@ -44,7 +44,7 @@ class Translator:
         def fetch_translations() -> dict[str, TranslatedContent]:
             endpoint = f"/{tmdb_ids}/translations"
             api_data = self._fetch_with_retry(endpoint)
-            return self._parse_api_translations(api_data)
+            return self._parse_api_translations(api_data, tmdb_ids.media_type)
 
         translations = self._get_with_cache(
             cache_key, fetch_translations, default_on_404={}
@@ -128,7 +128,7 @@ class Translator:
             raise
 
     def _parse_api_translations(
-        self, api_data: dict[str, Any]
+        self, api_data: dict[str, Any], media_type: str
     ) -> dict[str, TranslatedContent]:
         """Parse TMDB API response into TranslatedContent objects."""
         translations = {}
@@ -147,7 +147,8 @@ class Translator:
                 f"{language_code}-{country_code}" if country_code else language_code
             )
 
-            title = data.get("name", "").strip()
+            title_key = "title" if media_type == "movie" else "name"
+            title = data.get(title_key, "").strip()
             description = data.get("overview", "").strip()
 
             # Skip if both title and description are empty
@@ -164,10 +165,10 @@ class Translator:
         return translations
 
     def get_original_details(self, tmdb_ids: TmdbIds) -> tuple[str, str] | None:
-        """Get original language and title for TV series or episode.
+        """Get original language and title for TV, episode, or movie resources.
 
         Args:
-            tmdb_ids: TMDB identifiers containing series_id and optional season/episode
+            tmdb_ids: TMDB identifiers containing media type and optional TV episode
 
         Returns:
             Tuple of (original_language, original_title) if found, None otherwise
@@ -176,23 +177,27 @@ class Translator:
 
         def fetch_details() -> tuple[str, str] | None:
             # For episodes, we need both episode name and series original language
-            if tmdb_ids.season is not None and tmdb_ids.episode is not None:
+            if tmdb_ids.media_type == "movie":
+                api_data = self._fetch_with_retry(f"/movie/{tmdb_ids.tmdb_id}")
+                original_language = api_data.get("original_language", "")
+                original_title = api_data.get("original_title", "")
+            elif tmdb_ids.season is not None and tmdb_ids.episode is not None:
                 # Get episode details for the name
                 episode_endpoint = (
-                    f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}"
+                    f"/tv/{tmdb_ids.tmdb_id}/season/{tmdb_ids.season}"
                     f"/episode/{tmdb_ids.episode}"
                 )
                 episode_data = self._fetch_with_retry(episode_endpoint)
 
                 # Get series details for the original language
-                series_endpoint = f"/tv/{tmdb_ids.series_id}"
+                series_endpoint = f"/tv/{tmdb_ids.tmdb_id}"
                 series_data = self._fetch_with_retry(series_endpoint)
 
                 original_language = series_data.get("original_language", "")
                 original_title = episode_data.get("name", "")
             else:
                 # Series details endpoint
-                endpoint = f"/tv/{tmdb_ids.series_id}"
+                endpoint = f"/tv/{tmdb_ids.tmdb_id}"
                 api_data = self._fetch_with_retry(endpoint)
 
                 original_language = api_data.get("original_language", "")
@@ -283,7 +288,7 @@ class Translator:
         """Select the best image candidate based on language preferences.
 
         Args:
-            tmdb_ids: TMDB identifiers (series_id and optional season)
+            tmdb_ids: TMDB identifiers (media type and optional TV season)
             preferred_languages: List of language codes in preference order
                 (e.g., ["en-US", "ja-JP"])
             kind: Image kind - "poster" or "clearlogo"
@@ -293,9 +298,9 @@ class Translator:
         """
         # Determine endpoint based on kind and season
         if kind == "poster" and tmdb_ids.season is not None:
-            endpoint = f"/tv/{tmdb_ids.series_id}/season/{tmdb_ids.season}/images"
+            endpoint = f"/tv/{tmdb_ids.tmdb_id}/season/{tmdb_ids.season}/images"
         else:
-            endpoint = f"/tv/{tmdb_ids.series_id}/images"
+            endpoint = f"/{tmdb_ids.media_type}/{tmdb_ids.tmdb_id}/images"
 
         # Fetch images from TMDB
         # NOTE: Do NOT pass include_image_language due to TMDB API bug;

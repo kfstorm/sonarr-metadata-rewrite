@@ -1,6 +1,7 @@
 """Image processor for rewriting poster and clearlogo images."""
 
 import logging
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import httpx
@@ -14,6 +15,7 @@ from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_utils import (
     IMAGE_EXTENSIONS,
     extract_metadata_info,
+    is_nfo_file,
     parse_image_info,
 )
 from sonarr_metadata_rewrite.image_utils import (
@@ -196,36 +198,46 @@ class ImageProcessor:
         @retry(timeout=5.0, interval=1.0, exceptions=(FileNotFoundError,))
         def _find_and_extract_tmdb_id() -> TmdbIds:
             """
-            Find and extract TMDB ID from tvshow.nfo file.
-            This function locates the tvshow.nfo file that is always
-            placed next to the image file
-            (as per Kodi's NFO file structure: https://kodi.wiki/view/NFO_files/TV_shows),
-            extracts the TMDB ID from it, and returns a TmdbIds object
-            containing the series ID and season number.
+            Find one target root NFO next to image and extract its TMDB ID.
 
             Returns:
-                TmdbIds: An object containing the TMDB series ID and season number.
+                TmdbIds: An object containing media ID and optional TV season number.
 
             Raises:
-                FileNotFoundError: If tvshow.nfo is not found next to the image file.
-                ValueError: If TMDB ID could not be extracted from the tvshow.nfo file.
+                FileNotFoundError: If no target root NFO is next to the image file.
+                ValueError: If roots are ambiguous or missing a TMDB ID.
             """
-            # tvshow.nfo is always next to the image file
-            nfo_path = image_path.parent / "tvshow.nfo"
-            if not nfo_path.exists():
+            metadata_candidates = []
+            for nfo_path in image_path.parent.iterdir():
+                if not nfo_path.is_file() or not is_nfo_file(nfo_path):
+                    continue
+                try:
+                    metadata_info = extract_metadata_info(nfo_path)
+                except (ET.ParseError, OSError, ValueError):
+                    continue
+                if metadata_info.file_type in {"tvshow", "movie"}:
+                    metadata_candidates.append(metadata_info)
+
+            if not metadata_candidates:
                 raise FileNotFoundError(
-                    f"Could not find tvshow.nfo for image: {image_path}"
+                    f"Could not find target root NFO for image: {image_path}"
                 )
+            if len(metadata_candidates) != 1:
+                raise ValueError(f"Ambiguous target root NFOs for image: {image_path}")
 
-            metadata_info = extract_metadata_info(nfo_path)
+            metadata_info = metadata_candidates[0]
             if not metadata_info.tmdb_id:
-                raise ValueError(f"Could not extract TMDB ID from {nfo_path}")
+                raise ValueError(f"Could not extract TMDB ID for image: {image_path}")
+            if metadata_info.file_type == "movie":
+                if season_num is not None:
+                    raise ValueError("Movie artwork cannot be season-specific")
+                return TmdbIds(tmdb_id=metadata_info.tmdb_id, media_type="movie")
 
-            return TmdbIds(series_id=metadata_info.tmdb_id, season=season_num)
+            return TmdbIds(tmdb_id=metadata_info.tmdb_id, season=season_num)
 
         try:
             return _find_and_extract_tmdb_id()
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             return None
 
     def _download_and_write_image(
