@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -20,6 +20,7 @@ class Translator:
     """TMDB API client with caching and rate limiting."""
 
     def __init__(self, settings: Settings, cache: Cache):
+        """Initialize client and cache settings."""
         self.settings = settings
         self.api_key = settings.tmdb_api_key
         self.cache = cache
@@ -71,25 +72,31 @@ class Translator:
         max_delay = self.settings.tmdb_max_retry_delay
 
         for attempt in range(max_retries + 1):
-            try:
-                response = self.client.get(endpoint, params=params)
+            response, rate_limit_error = self._request(endpoint, params)
+            if response.status_code != httpx.codes.TOO_MANY_REQUESTS:
                 response.raise_for_status()
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                # Handle rate limiting (HTTP 429)
-                if e.response.status_code == 429 and attempt < max_retries:
-                    # Calculate exponential backoff delay
-                    delay = min(initial_delay * (2**attempt), max_delay)
-                    time.sleep(delay)
-                    continue
-                # Re-raise for other HTTP errors or if max retries exceeded
-                raise
-            except (httpx.HTTPError, Exception):
-                # Re-raise all other errors immediately (no retry)
-                raise
+                return cast(dict[str, Any], response.json())
+
+            if attempt == max_retries:
+                if rate_limit_error is not None:
+                    raise rate_limit_error
+                response.raise_for_status()
+            delay = min(initial_delay * (2**attempt), max_delay)
+            time.sleep(delay)
 
         # This should never be reached due to the logic above
         raise RuntimeError("Unexpected code path in _fetch_with_retry")
+
+    def _request(
+        self, endpoint: str, params: dict[str, Any] | None
+    ) -> tuple[httpx.Response, httpx.HTTPStatusError | None]:
+        """Issue one request and preserve a rate-limit error for final re-raise."""
+        try:
+            return self.client.get(endpoint, params=params), None
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code != httpx.codes.TOO_MANY_REQUESTS:
+                raise
+            return error.response, error
 
     def _get_with_cache(
         self,
@@ -118,7 +125,7 @@ class Translator:
             self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
             return result
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
+            if e.response.status_code == httpx.codes.NOT_FOUND:
                 # Cache 404 with default value
                 self.cache.set(
                     cache_key, default_on_404, expire=self.cache_expire_seconds
@@ -208,7 +215,10 @@ class Translator:
 
             return None
 
-        return self._get_with_cache(cache_key, fetch_details, default_on_404=None)
+        return cast(
+            tuple[str, str] | None,
+            self._get_with_cache(cache_key, fetch_details, default_on_404=None),
+        )
 
     def find_tmdb_id_by_external_id(
         self, external_id: str, external_source: str
@@ -240,7 +250,10 @@ class Translator:
 
             return None
 
-        return self._get_with_cache(cache_key, fetch_external_id, default_on_404=None)
+        return cast(
+            int | None,
+            self._get_with_cache(cache_key, fetch_external_id, default_on_404=None),
+        )
 
     def _ensure_new_format(
         self, cached_data: dict[str, TranslatedContent]

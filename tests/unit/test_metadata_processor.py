@@ -712,7 +712,6 @@ def test_process_file_single_preferred_language_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's available."""
-
     settings = create_test_settings(
         test_data_dir,
         preferred_languages="fr",  # Only French
@@ -744,7 +743,6 @@ def test_process_file_single_preferred_language_not_available(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test when only one preferred language is specified and it's not available."""
-
     settings = create_test_settings(
         test_data_dir,
         preferred_languages="ar",  # Only Arabic
@@ -803,7 +801,6 @@ def test_content_matches_preferred_translation_skips_processing(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
     """Test that processing is skipped when content matches translation."""
-
     # Create processor with backup enabled
     settings = create_test_settings(
         test_data_dir,
@@ -839,7 +836,6 @@ def test_preference_changed_better_translation_available_reprocesses(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
     """Test that file is reprocessed when better translation becomes available."""
-
     # Create processor with backup enabled
     settings = create_test_settings(
         test_data_dir,
@@ -885,7 +881,6 @@ def test_preference_change_no_translation_reverts_to_original_with_backup(
     test_data_dir: Path,
 ) -> None:
     """Test reversion to original content when preferences change to unavailable."""
-
     # Create processor with preferences that won't match available translations
     settings = create_test_settings(
         test_data_dir,
@@ -933,7 +928,6 @@ def test_multiple_rapid_processing_only_first_modifies(
     test_data_dir: Path, mock_translator: Mock
 ) -> None:
     """Test that multiple rapid calls to process same file only modify it once."""
-
     # Create processor with backup enabled
     settings = create_test_settings(test_data_dir)
     processor = MetadataProcessor(settings, mock_translator)
@@ -981,7 +975,6 @@ def test_backup_not_overwritten_on_subsequent_processing(
     test_data_dir: Path,
 ) -> None:
     """Test that backup files are not overwritten on subsequent processing."""
-
     # Create processor with backup enabled
     settings = create_test_settings(test_data_dir)
     mock_translator = Mock(spec=Translator)
@@ -1038,20 +1031,21 @@ def test_backup_not_overwritten_on_subsequent_processing(
 
     # Verify that backup was NOT overwritten with Japanese content
     backup_content = backup_path.read_text()
-    assert (
-        "日本語タイトル" not in backup_content
-    ), "Backup should not contain Japanese content"
-    assert (
-        "日本語の説明" not in backup_content
-    ), "Backup should not contain Japanese content"
+    assert "日本語タイトル" not in backup_content, (
+        "Backup should not contain Japanese content"
+    )
+    assert "日本語の説明" not in backup_content, (
+        "Backup should not contain Japanese content"
+    )
 
 
 def test_original_language_fallback_selects_original_title(
     test_data_dir: Path,
 ) -> None:
-    """Test that when preferred language has empty title and original language matches,
-    system uses original title."""
+    """Use original title when matching language has no localized title.
 
+    The original title is valid when its language family matches preference.
+    """
     # Create processor with zh-CN as preferred language
     settings = create_test_settings(
         test_data_dir,
@@ -1114,9 +1108,10 @@ def test_original_language_fallback_selects_original_title(
 def test_original_language_fallback_does_not_apply_for_different_family(
     test_data_dir: Path,
 ) -> None:
-    """Test that when original language family doesn't match preferred,
-    system uses standard fallback."""
+    """Use standard fallback when original and preferred language families differ.
 
+    Original title fallback only applies within matching language families.
+    """
     settings = create_test_settings(
         test_data_dir,
         preferred_languages="zh-CN,ja-JP",
@@ -1229,7 +1224,6 @@ def test_process_file_episode_inherits_parent_tvdb_id(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test episode without IDs inheriting TVDB ID from parent tvshow.nfo."""
-
     settings = create_test_settings(test_data_dir)
 
     mock_translator = Mock(spec=Translator)
@@ -1311,7 +1305,6 @@ def test_process_file_mixed_id_scenarios(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test episode with external ID while parent has TMDB ID (parent wins)."""
-
     settings = create_test_settings(test_data_dir)
 
     mock_translator = Mock(spec=Translator)
@@ -1356,7 +1349,6 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
     create_test_files: Callable[[str, Path], Path],
 ) -> None:
     """Test episode external ID takes priority over parent external ID."""
-
     settings = create_test_settings(test_data_dir)
 
     mock_translator = Mock(spec=Translator)
@@ -1400,7 +1392,6 @@ def test_content_matches_after_fallback_skips_processing(
     test_data_dir: Path,
 ) -> None:
     """Test that content matching works correctly after fallback fills empty fields."""
-
     # Create processor with zh-CN as preferred language
     settings = create_test_settings(
         test_data_dir,

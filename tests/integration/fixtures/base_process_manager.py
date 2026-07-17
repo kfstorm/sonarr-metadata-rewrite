@@ -9,6 +9,7 @@ class BaseProcessManager:
     """Base class for managing a single subprocess with output streaming capability."""
 
     def __init__(self) -> None:
+        """Initialize empty process lifecycle state."""
         self.process: subprocess.Popen[str] | None = None
         self.should_stream_output = False
         self._output_thread: threading.Thread | None = None
@@ -100,9 +101,8 @@ class BaseProcessManager:
                             startup_log_pattern
                             and self._startup_event
                             and not self._startup_event.is_set()
-                        ):
-                            if startup_log_pattern in line_stripped:
-                                self._startup_event.set()
+                        ) and startup_log_pattern in line_stripped:
+                            self._startup_event.set()
 
                 process.stdout.close()
 
@@ -160,7 +160,9 @@ class BaseProcessManager:
         self._startup_event = None
 
     def __enter__(self) -> "BaseProcessManager":
+        """Enter context with managed process lifecycle."""
         return self
 
     def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        """Clean up process state when leaving context."""
         self._cleanup()

@@ -5,9 +5,9 @@ repos:
   # Local hooks using our project tools
   - repo: local
     hooks:
-      # Run lint script with check-only mode
+      # Run quality checks with check-only mode
       - id: lint
-        name: Lint (code quality checks)
+        name: Quality checks
         entry: scripts/lint.sh
         language: system
         types: [python]
@@ -23,20 +23,21 @@ repos:
 
       # Duplication check
       - id: duplication
-        name: Duplication Check
+        name: Duplication check
         entry: npx --yes jscpd
         language: system
         pass_filenames: false
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       # Basic file checks
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-yaml
+      - id: check-added-large-files
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict

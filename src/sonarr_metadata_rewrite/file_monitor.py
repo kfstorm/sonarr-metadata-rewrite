@@ -23,6 +23,7 @@ class MediaFileHandler(FileSystemEventHandler):
     """File system event handler for .nfo and image files."""
 
     def __init__(self, callback: Callable[[Path], None]):
+        """Initialize handler with callback for target files."""
         self.callback = callback
 
     def on_any_event(self, event: FileSystemEvent) -> None:
@@ -50,6 +51,7 @@ class FileMonitor:
     """Real-time directory monitoring for .nfo and image file changes."""
 
     def __init__(self, settings: Settings):
+        """Initialize monitor with validated settings."""
         self.settings = settings
         self.observer: BaseObserver | None = None
         self.handler: MediaFileHandler | None = None

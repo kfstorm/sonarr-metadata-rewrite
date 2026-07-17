@@ -2,7 +2,7 @@
 
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fast_langdetect import (  # type: ignore[import-untyped]
     DetectError,
@@ -143,7 +143,7 @@ def wait_for_nfo_files(
         print(f"Found {len(nfo_files)} .nfo files: {nfo_files}")
         return sorted(nfo_files)
 
-    return check_nfo_files()
+    return cast(list[Path], check_nfo_files())
 
 
 def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
@@ -266,6 +266,7 @@ class MovieWithNfos:
         tmdb_id: int,
         use_movie_nfo: bool,
     ):
+        """Initialize movie fixture inputs."""
         self.radarr = radarr
         self.media_root = media_root
         self.tmdb_id = tmdb_id
@@ -322,6 +323,7 @@ class ServiceRunner:
         service_config: dict[str, str],
         startup_pattern: str | None = None,
     ):
+        """Initialize service runner configuration."""
         # Base configuration
         env_overrides = {
             "REWRITE_ROOT_DIR": str(temp_media_root),
@@ -338,10 +340,12 @@ class ServiceRunner:
         )
 
     def __enter__(self) -> SubprocessServiceManager:
+        """Start service and return its process manager."""
         self.service.start()
         return self.service
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Stop service when leaving context."""
         self.service.stop()
 
 

@@ -1,5 +1,6 @@
 """Image utility functions for embedding and reading metadata markers."""
 
+import contextlib
 import json
 import os
 import tempfile
@@ -40,19 +41,17 @@ def read_embedded_marker(path: Path) -> ImageCandidate | None:
                     user_comment = exif_dict.get("Exif", {}).get(
                         piexif.ExifIFD.UserComment
                     )
-                    if user_comment:
-                        # UserComment is encoded, decode it
-                        if isinstance(user_comment, bytes):
-                            # Skip encoding prefix if present
-                            if user_comment.startswith(b"ASCII\x00\x00\x00"):
-                                user_comment = user_comment[8:]
-                            elif user_comment.startswith(b"UNICODE\x00"):
-                                user_comment = user_comment[8:]
-                            try:
-                                marker_text = user_comment.decode("utf-8")
-                                return ImageCandidate(**json.loads(marker_text))
-                            except (UnicodeDecodeError, json.JSONDecodeError):
-                                pass
+                    if user_comment and isinstance(user_comment, bytes):
+                        # UserComment is encoded, decode it.
+                        if user_comment.startswith(
+                            (b"ASCII\x00\x00\x00", b"UNICODE\x00")
+                        ):
+                            user_comment = user_comment[8:]
+                        with contextlib.suppress(
+                            UnicodeDecodeError, json.JSONDecodeError
+                        ):
+                            marker_text = user_comment.decode("utf-8")
+                            return ImageCandidate(**json.loads(marker_text))
     except Exception:
         # Image may be corrupted or format not supported
         pass
@@ -100,19 +99,16 @@ def embed_marker_and_atomic_write(
 
     # Create temp file in same directory for atomic replace
     fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=dst.suffix)
+    temp_file = Path(temp_path)
     try:
         os.write(fd, final_bytes)
         os.close(fd)
         # Atomic replace
-        os.replace(temp_path, dst)
+        temp_file.replace(dst)
     except Exception:
         # Clean up temp file on error
-        try:
+        with contextlib.suppress(Exception):
             os.close(fd)
-        except Exception:
-            pass
-        try:
-            os.unlink(temp_path)
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            temp_file.unlink()
         raise

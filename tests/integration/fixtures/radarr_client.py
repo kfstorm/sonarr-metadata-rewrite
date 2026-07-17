@@ -1,7 +1,7 @@
 """Radarr API client for integration testing."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from tests.integration.fixtures.arr_client import ArrClient
 
@@ -40,7 +40,7 @@ class RadarrClient(ArrClient):
         )
         response = self._make_request("POST", "/api/v3/movie", json=movie_data)
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def ensure_root_folder(self, root_folder: str) -> None:
         """Register mounted movie root when Radarr has not seen it yet."""
@@ -64,7 +64,7 @@ class RadarrClient(ArrClient):
         """Get movie details, including imported file state."""
         response = self._make_request("GET", f"/api/v3/movie/{movie_id}")
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     def configure_metadata_settings(self, use_movie_nfo: bool) -> bool:
         """Enable Kodi/Emby movie metadata and images for selected NFO mode."""

@@ -1,5 +1,6 @@
 """Simple container orchestrator agnostic container management."""
 
+import contextlib
 import subprocess
 from typing import Any
 
@@ -10,6 +11,7 @@ class ContainerManager(BaseProcessManager):
     """Simple container manager that works with podman, docker, or any OCI runtime."""
 
     def __init__(self) -> None:
+        """Initialize manager with detected container runtime."""
         super().__init__()
         self.runtime = self._detect_runtime()
         self.container_name: str | None = None
@@ -17,17 +19,15 @@ class ContainerManager(BaseProcessManager):
     def _detect_runtime(self) -> str:
         """Detect available container runtime."""
         for runtime in ["podman", "docker"]:
-            try:
-                subprocess.run(
-                    [runtime, "--version"], capture_output=True, check=True, timeout=5
-                )
-                return runtime
-            except (
+            with contextlib.suppress(
                 subprocess.CalledProcessError,
                 FileNotFoundError,
                 subprocess.TimeoutExpired,
             ):
-                continue
+                subprocess.run(
+                    [runtime, "--version"], capture_output=True, check=True, timeout=5
+                )
+                return runtime
         raise RuntimeError("No container runtime found. Install podman or docker.")
 
     def run_container(
@@ -92,19 +92,22 @@ class ContainerManager(BaseProcessManager):
 
         # Force remove any remaining container
         if self.container_name:
-            try:
+            with contextlib.suppress(
+                subprocess.CalledProcessError, subprocess.TimeoutExpired
+            ):
                 subprocess.run(
                     [self.runtime, "rm", "-f", self.container_name],
+                    check=False,
                     capture_output=True,
                     timeout=10,
                 )
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                pass
 
         self.container_name = None
 
     def __enter__(self) -> "ContainerManager":
+        """Enter context with managed container lifecycle."""
         return self
 
     def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        """Clean up container when leaving context."""
         self.cleanup()

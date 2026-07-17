@@ -30,12 +30,6 @@ jobs:
     - name: Run pre-commit hooks
       run: uv run pre-commit run --all-files
 
-    - name: Run linting checks
-      run: ./scripts/lint.sh --check
-
-    - name: Run unit tests
-      run: ./scripts/run-unit-tests.sh
-
     - name: Run integration tests
       env:
         TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}

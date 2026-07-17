@@ -25,6 +25,7 @@ class MetadataProcessor:
     """Complete processing unit for .nfo metadata files."""
 
     def __init__(self, settings: Settings, translator: Translator):
+        """Initialize processor with settings and TMDB translator."""
         self.settings = settings
         self.translator = translator
 

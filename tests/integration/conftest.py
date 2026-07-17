@@ -52,7 +52,7 @@ def _find_free_port() -> int:
     """Reserve an available local TCP port number."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as socket_handle:
         socket_handle.bind(("", 0))
-        return socket_handle.getsockname()[1]
+        return int(socket_handle.getsockname()[1])
 
 
 def _arr_environment() -> dict[str, str]:

@@ -7,6 +7,7 @@ extensions so other modules can reuse the same logic consistently.
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import cast
 from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.models import EpisodeMetadataInfo, MetadataInfo
@@ -89,11 +90,8 @@ def find_root_dir_for_file(file_path: Path, root_dirs: list[Path]) -> Path | Non
         The first root directory that contains the file, or None if none match
     """
     for root_dir in root_dirs:
-        try:
-            file_path.relative_to(root_dir)
+        if file_path == root_dir or root_dir in file_path.parents:
             return root_dir
-        except ValueError:
-            continue
     return None
 
 
@@ -153,7 +151,7 @@ def parse_nfo_with_retry(nfo_path: Path) -> MetadataInfo:
     def parse_file() -> MetadataInfo:
         return _parse_nfo_documents(nfo_path)
 
-    return parse_file()
+    return cast(MetadataInfo, parse_file())
 
 
 def extract_metadata_info(nfo_path: Path) -> MetadataInfo:

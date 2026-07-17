@@ -15,6 +15,7 @@ class RollbackService:
     """Service for rolling back all translated files to their original versions."""
 
     def __init__(self, settings: Settings):
+        """Initialize rollback service with validated settings."""
         self.settings = settings
 
     def execute_rollback(self) -> None:
@@ -56,20 +57,23 @@ class RollbackService:
         failed_count = 0
 
         for backup_file in backup_files:
-            try:
-                success = self._restore_single_file(backup_file)
-                if success:
-                    restored_count += 1
-                else:
-                    failed_count += 1
-            except Exception:
-                logger.exception(f"Failed to restore {backup_file}")
+            if self._restore_backup_file(backup_file):
+                restored_count += 1
+            else:
                 failed_count += 1
 
         logger.info(
             f"Rollback completed: {restored_count} files restored, "
             f"{failed_count} failed"
         )
+
+    def _restore_backup_file(self, backup_file: Path) -> bool:
+        """Restore one backup file and log unexpected failures."""
+        try:
+            return self._restore_single_file(backup_file)
+        except Exception:
+            logger.exception(f"Failed to restore {backup_file}")
+            return False
 
     def _restore_single_file(self, backup_file: Path) -> bool:
         """Restore a single file from backup to its original location.

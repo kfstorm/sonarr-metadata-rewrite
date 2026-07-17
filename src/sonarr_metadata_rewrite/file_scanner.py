@@ -15,6 +15,7 @@ class FileScanner:
     """Periodic scanner for .nfo files in directory tree."""
 
     def __init__(self, settings: Settings):
+        """Initialize scanner with validated settings."""
         self.settings = settings
         self.scan_thread: threading.Thread | None = None
         self.stop_event: threading.Event | None = None

@@ -258,10 +258,12 @@ class TestEmbedMarkerAndAtomicWrite:
 
         raw_bytes = _create_image_bytes((30, 30), "white", "PNG")
 
-        # Mock os.replace to raise exception
-        with patch("os.replace", side_effect=OSError("Mock error")):
-            with pytest.raises(OSError, match="Mock error"):
-                embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
+        # Mock atomic replacement to raise an exception.
+        with (
+            patch.object(Path, "replace", side_effect=OSError("Mock error")),
+            pytest.raises(OSError, match="Mock error"),
+        ):
+            embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
 
         # Verify temp files cleaned up
         temp_files = list(tmp_path.glob(".tmp_*"))
