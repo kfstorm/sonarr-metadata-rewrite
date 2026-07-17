@@ -43,9 +43,7 @@ class MovieManager:
         if self.movie_data is None:
             return
         try:
-            self.radarr_client.remove_movie(
-                self.id, self.temp_media_root, self.directory
-            )
+            self.radarr_client.remove_movie(self.id, self.directory)
         except Exception as exc:
             print(f"Error during movie cleanup: {exc}")
 

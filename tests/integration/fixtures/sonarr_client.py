@@ -1,53 +1,15 @@
 """Sonarr API client for integration testing."""
 
-import time
 from pathlib import Path
 from typing import Any
 
-import httpx
-
-from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.arr_client import ArrClient
 
 
 class SonarrClient(ArrClient):
     """Simple Sonarr API client for integration tests."""
 
-    def wait_for_ready(self, max_attempts: int = 30, delay: float = 1.0) -> bool:
-        """Wait for Sonarr to be ready and responding."""
-        timeout_sec = max_attempts * delay
-        print(f"Waiting for Sonarr at {self.base_url} (max {timeout_sec:.1f}s timeout)")
-
-        @retry(
-            timeout=timeout_sec,
-            interval=delay,
-            log_interval=5.0,
-            exceptions=(httpx.RequestError, httpx.HTTPStatusError),
-        )
-        def check_sonarr_status() -> bool:
-            # Use API key if we have one
-            params = {}
-            if self.api_key:
-                params["apikey"] = self.api_key
-
-            response = self.client.get(
-                f"{self.base_url}/api/v3/system/status", params=params, timeout=5.0
-            )
-            if response.status_code != 200:
-                raise httpx.HTTPStatusError(
-                    f"HTTP {response.status_code}",
-                    request=response.request,
-                    response=response,
-                )
-            return True
-
-        try:
-            result = check_sonarr_status()
-            print("Sonarr is ready")
-            return result
-        except Exception as e:
-            print(f"Sonarr failed to become ready: {e}")
-            return False
+    service_name = "Sonarr"
 
     def add_series(
         self,
@@ -222,29 +184,5 @@ class SonarrClient(ArrClient):
 
         print(f"Series {series_id} deletion command sent successfully")
 
-        # Wait for series directory to be removed from filesystem
         series_dir = media_root / series_slug
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            if not series_dir.exists():
-                print(f"Series directory {series_dir} successfully removed")
-                return True
-
-            time.sleep(1)
-            elapsed = time.time() - start_time
-            if elapsed % 5 == 0:  # Log every 5 seconds
-                print(
-                    f"Still waiting for series directory removal... "
-                    f"({elapsed:.1f}s elapsed)"
-                )
-
-        # Directory still exists after timeout
-        if series_dir.exists():
-            remaining_files = list(series_dir.rglob("*"))
-            raise RuntimeError(
-                f"Series directory {series_dir} still exists after {timeout}s. "
-                f"Remaining files: {remaining_files}"
-            )
-
-        return True
+        return self._wait_for_directory_removal(series_dir, "Series", timeout)
