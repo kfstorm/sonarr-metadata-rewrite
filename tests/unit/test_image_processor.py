@@ -580,6 +580,21 @@ class TestResolveTmdbIds:
         assert result.tmdb_id == 99999
         assert result.media_type == "tv"
 
+    def test_resolve_ignores_malformed_nfo_next_to_movie(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test malformed NFO files do not prevent movie artwork resolution."""
+        movie_dir = tmp_path / "Movie"
+        movie_dir.mkdir()
+        poster_path = movie_dir / "poster.jpg"
+        create_test_image(poster_path)
+        (movie_dir / "broken.nfo").write_text("<movie>", encoding="utf-8")
+        create_test_nfo(movie_dir / "movie.nfo", 550, root_tag="movie")
+
+        assert image_processor._resolve_tmdb_ids(poster_path, None) == TmdbIds(
+            tmdb_id=550, media_type="movie"
+        )
+
     @pytest.mark.parametrize("root_count", [0, 2])
     def test_resolve_rejects_missing_or_ambiguous_roots(
         self, tmp_path: Path, image_processor: ImageProcessor, root_count: int

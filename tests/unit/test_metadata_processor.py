@@ -255,6 +255,69 @@ def test_process_file_episode_no_tmdb_id_no_parent_tvshow(
     )
 
 
+def test_find_parent_metadata_ignores_malformed_nfo(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test parent lookup skips malformed NFO files while searching upward."""
+    series_dir = test_data_dir / "Series"
+    season_dir = series_dir / "Season 1"
+    season_dir.mkdir(parents=True)
+    episode_path = season_dir / "episode.nfo"
+    episode_path.write_text("<episodedetails />", encoding="utf-8")
+    (season_dir / "broken.nfo").write_text("<tvshow>", encoding="utf-8")
+    (series_dir / "Series.nfo").write_text(
+        '<tvshow><uniqueid type="tmdb">1396</uniqueid></tvshow>',
+        encoding="utf-8",
+    )
+
+    parent = processor._find_parent_metadata_info(episode_path)
+
+    assert parent is not None
+    assert parent.tmdb_id == 1396
+
+
+def test_find_parent_metadata_rejects_ambiguous_roots(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test parent lookup rejects directories with multiple TV roots."""
+    episode_path = test_data_dir / "Season 1" / "episode.nfo"
+    episode_path.parent.mkdir()
+    episode_path.write_text("<episodedetails />", encoding="utf-8")
+    for name, tmdb_id in (("Series.nfo", 1396), ("tvshow.nfo", 999)):
+        (episode_path.parent / name).write_text(
+            f'<tvshow><uniqueid type="tmdb">{tmdb_id}</uniqueid></tvshow>',
+            encoding="utf-8",
+        )
+
+    assert processor._find_parent_metadata_info(episode_path) is None
+
+
+@pytest.mark.parametrize(
+    ("season", "episode"),
+    [(None, 1), (1, None)],
+)
+def test_build_tmdb_ids_rejects_episode_without_numbers(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    season: int | None,
+    episode: int | None,
+) -> None:
+    """Test episodes need both season and episode numbers."""
+    metadata_info = MetadataInfo(
+        tmdb_id=1396,
+        file_type="episodedetails",
+        season=season,
+        episode=episode,
+    )
+
+    assert (
+        processor._build_tmdb_ids_from_metadata(
+            metadata_info, test_data_dir / "episode.nfo"
+        )
+        is None
+    )
+
+
 def test_process_file_invalid_xml(
     processor: MetadataProcessor,
     test_data_dir: Path,
