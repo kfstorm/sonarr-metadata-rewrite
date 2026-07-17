@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 @click.command()
 @click.version_option(version=__version__)
 def cli() -> None:
-    """Sonarr Metadata Rewrite.
+    """Sonarr and Radarr Metadata Rewrite.
 
-    A long-running service that monitors Sonarr-generated .nfo files and
-    overwrites them with TMDB translations in your desired language.
+    A long-running service that monitors Sonarr TV and Radarr movie metadata
+    files and localizes them with TMDB translations in your desired language.
 
     In rollback mode, restores original files from backups and hangs.
     """
@@ -39,7 +39,7 @@ def cli() -> None:
         click.echo(f"❌ {e}", err=True)
         sys.exit(1)
 
-    click.echo("🚀 Starting Sonarr Metadata Rewrite...")
+    click.echo("🚀 Starting Sonarr and Radarr Metadata Rewrite...")
     click.echo(f"✅ TMDB API key loaded (ending in ...{settings.tmdb_api_key[-4:]})")
     for root_dir in settings.rewrite_root_dirs:
         click.echo(f"📁 Monitoring directory: {root_dir}")

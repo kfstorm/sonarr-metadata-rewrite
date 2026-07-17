@@ -3,22 +3,34 @@
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass
 class TmdbIds:
     """TMDB identifiers extracted from .nfo files."""
 
-    series_id: int
-    season: int | None = None  # None for tvshow.nfo
-    episode: int | None = None  # None for tvshow.nfo
+    tmdb_id: int
+    media_type: Literal["tv", "movie"]
+    season: int | None = None
+    episode: int | None = None
+
+    def __post_init__(self) -> None:
+        """Reject invalid media and episode combinations."""
+        if self.media_type == "movie" and (
+            self.season is not None or self.episode is not None
+        ):
+            raise ValueError("Movie TMDB IDs cannot include season or episode")
+        if self.episode is not None and self.season is None:
+            raise ValueError("TV episode TMDB IDs require a season")
 
     def __str__(self) -> str:
         """Return TMDB resource path."""
+        if self.media_type == "movie":
+            return f"movie/{self.tmdb_id}"
         if self.season is not None and self.episode is not None:
-            return f"tv/{self.series_id}/season/{self.season}/episode/{self.episode}"
-        else:
-            return f"tv/{self.series_id}"
+            return f"tv/{self.tmdb_id}/season/{self.season}/episode/{self.episode}"
+        return f"tv/{self.tmdb_id}"
 
 
 @dataclass
@@ -47,7 +59,7 @@ class MetadataInfo:
     imdb_id: str | None = None
 
     # File structure
-    file_type: str = "unknown"  # "tvshow" or "episodedetails" or "unknown"
+    file_type: str = "unknown"  # "tvshow", "movie", "episodedetails", or "unknown"
     season: int | None = None
     episode: int | None = None
 

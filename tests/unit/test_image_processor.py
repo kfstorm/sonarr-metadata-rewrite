@@ -19,7 +19,7 @@ from sonarr_metadata_rewrite.image_utils import (
     embed_marker_and_atomic_write,
     read_embedded_marker,
 )
-from sonarr_metadata_rewrite.models import ImageCandidate
+from sonarr_metadata_rewrite.models import ImageCandidate, TmdbIds
 from sonarr_metadata_rewrite.translator import Translator
 
 
@@ -55,9 +55,9 @@ def image_processor(
     return ImageProcessor(test_settings, translator)
 
 
-def create_test_nfo(path: Path, tmdb_id: int) -> None:
+def create_test_nfo(path: Path, tmdb_id: int, root_tag: str = "tvshow") -> None:
     """Create a test NFO file with TMDB ID."""
-    root = ET.Element("tvshow")
+    root = ET.Element(root_tag)
     uniqueid = ET.SubElement(root, "uniqueid", type="tmdb")
     uniqueid.text = str(tmdb_id)
     tree = ET.ElementTree(root)
@@ -147,6 +147,36 @@ class TestProcessSuccessScenarios:
         assert result.success is True, f"Processing failed: {result.message}"
         assert result.kind == "clearlogo"
         assert result.selected_language == "ja-JP"
+
+    def test_process_movie_clearlogo_success(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test movie clearlogos use the shared image rewrite flow."""
+        movie_dir = tmp_path / "Movie"
+        movie_dir.mkdir()
+        clearlogo_path = movie_dir / "clearlogo.png"
+        create_test_image(clearlogo_path)
+        create_test_nfo(movie_dir / "movie.nfo", 550, root_tag="movie")
+
+        candidate = ImageCandidate(
+            file_path="/movie_clearlogo.png", iso_639_1="zh", iso_3166_1="CN"
+        )
+        image = Image.new("RGB", (100, 100), color="red")
+        output = BytesIO()
+        image.save(output, format="PNG")
+        response = Mock(content=output.getvalue())
+        image_processor.http_client.get = Mock(return_value=response)  # type: ignore[method-assign]
+
+        with mock_translator_select(image_processor, return_value=candidate) as select:
+            result = image_processor.process(clearlogo_path)
+
+        assert result.success is True, result.message
+        assert result.kind == "clearlogo"
+        select.assert_called_once_with(
+            TmdbIds(tmdb_id=550, media_type="movie"),
+            image_processor.settings.preferred_languages,
+            "clearlogo",
+        )
 
     def test_process_image_already_has_marker(
         self, tmp_path: Path, image_processor: ImageProcessor
@@ -516,8 +546,84 @@ class TestResolveTmdbIds:
         result = image_processor._resolve_tmdb_ids(poster_path, None)
 
         assert result is not None
-        assert result.series_id == 99999
+        assert result.tmdb_id == 99999
         assert result.season is None
+
+    def test_resolve_movie_ids_from_video_named_nfo(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test movie root NFO names do not need to be movie.nfo."""
+        movie_dir = tmp_path / "Movie"
+        movie_dir.mkdir()
+        poster_path = movie_dir / "poster.jpg"
+        create_test_image(poster_path)
+        create_test_nfo(movie_dir / "Movie.2024.nfo", 550, root_tag="movie")
+
+        result = image_processor._resolve_tmdb_ids(poster_path, None)
+
+        assert result == TmdbIds(tmdb_id=550, media_type="movie")
+
+    def test_resolve_ignores_episode_nfo_next_to_tvshow(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test episode NFOs do not make TV artwork root selection ambiguous."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+        poster_path = series_dir / "poster.jpg"
+        create_test_image(poster_path)
+        create_test_nfo(series_dir / "tvshow.nfo", 99999)
+        create_test_nfo(series_dir / "episode.nfo", 99999, root_tag="episodedetails")
+
+        result = image_processor._resolve_tmdb_ids(poster_path, None)
+
+        assert result is not None
+        assert result.tmdb_id == 99999
+        assert result.media_type == "tv"
+
+    def test_resolve_ignores_malformed_nfo_next_to_movie(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test malformed NFO files do not prevent movie artwork resolution."""
+        movie_dir = tmp_path / "Movie"
+        movie_dir.mkdir()
+        poster_path = movie_dir / "poster.jpg"
+        create_test_image(poster_path)
+        (movie_dir / "broken.nfo").write_text("<movie>", encoding="utf-8")
+        create_test_nfo(movie_dir / "movie.nfo", 550, root_tag="movie")
+
+        assert image_processor._resolve_tmdb_ids(poster_path, None) == TmdbIds(
+            tmdb_id=550, media_type="movie"
+        )
+
+    @pytest.mark.parametrize("root_count", [0, 2])
+    def test_resolve_rejects_missing_or_ambiguous_roots(
+        self, tmp_path: Path, image_processor: ImageProcessor, root_count: int
+    ) -> None:
+        """Test image ownership needs exactly one same-directory root NFO."""
+        image_dir = tmp_path / "Media"
+        image_dir.mkdir()
+        poster_path = image_dir / "poster.jpg"
+        create_test_image(poster_path)
+        for index in range(root_count):
+            create_test_nfo(
+                image_dir / f"root-{index}.nfo",
+                550 + index,
+                root_tag="movie" if index else "tvshow",
+            )
+
+        assert image_processor._resolve_tmdb_ids(poster_path, None) is None
+
+    def test_resolve_rejects_movie_season_poster(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test movie roots cannot select season artwork."""
+        movie_dir = tmp_path / "Movie"
+        movie_dir.mkdir()
+        poster_path = movie_dir / "season01-poster.jpg"
+        create_test_image(poster_path)
+        create_test_nfo(movie_dir / "movie.nfo", 550, root_tag="movie")
+
+        assert image_processor._resolve_tmdb_ids(poster_path, 1) is None
 
 
 class TestDownloadAndWriteImage:

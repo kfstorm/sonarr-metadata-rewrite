@@ -26,7 +26,7 @@ _.frame
 _.description
 _.file_modified
 _.file_path
-_.series_id
+_.tmdb_id
 _.translated_content
 _.selected_language
 _.selected_file_path

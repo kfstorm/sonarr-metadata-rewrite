@@ -4,8 +4,8 @@ This file provides guidance for AI agents working with code in this repository.
 
 ## Project Overview
 
-Sonarr Metadata Rewrite - A compatibility layer that monitors
-Sonarr-generated .nfo files and overwrites them with TMDB translations in
+Sonarr Metadata Rewrite - A compatibility layer that monitors Sonarr- and
+Radarr-generated .nfo files and overwrites them with TMDB translations in
 desired languages, and rewrites poster/clearlogo images to language-specific
 variants when available. This addresses [Sonarr Issue #269](
 https://github.com/Sonarr/Sonarr/issues/269) (multilingual metadata) and
@@ -60,7 +60,7 @@ uv run sonarr-metadata-rewrite
 uv run sonarr-metadata-rewrite --version
 
 # Run with custom settings for testing
-REWRITE_ROOT_DIR=/tmp/test/media \
+REWRITE_ROOT_DIRS=/tmp/test/tv,/tmp/test/movies \
 PREFERRED_LANGUAGES='zh-CN,ja-JP' \
 CACHE_DURATION_HOURS=1 \
 uv run sonarr-metadata-rewrite
@@ -70,7 +70,8 @@ uv run sonarr-metadata-rewrite
 
 ### Current Implementation
 
-Metadata translation and image rewrite service with Click framework providing:
+Sonarr TV and Radarr movie metadata translation and image rewrite service with
+Click framework providing:
 
 - Entry point: `sonarr_metadata_rewrite.main:cli` command that runs a
   persistent service (CLI: `sonarr-metadata-rewrite`)
@@ -105,10 +106,10 @@ backup creation.
 
 1. **Translator** (`translator.py`)
 TMDB API client using httpx with diskcache-backed caching and exponential
-backoff for HTTP 429. Supports series and episode translations. For images,
-fetches `/tv/{id}/images` or `/tv/{id}/season/{s}/images`, filters locally for
-preferred language-country (e.g., `en-US`) and chooses the first exact match;
-does not pass `include_image_language` due to TMDB API issues.
+backoff for HTTP 429. Supports TV series, TV episode, and movie translations.
+For images, fetches TV, TV season, or movie image resources, filters locally
+for preferred language-country (e.g., `en-US`) and chooses the first exact
+match; does not pass `include_image_language` due to TMDB API issues.
 
 1. **FileMonitor** (`file_monitor.py`)
 Real-time file system monitoring using watchdog. Processes .nfo and image files
@@ -121,9 +122,10 @@ scanning with graceful shutdown.
 
 1. **Configuration** (`config.py`)
 Pydantic Settings-based configuration with custom env source parsing
-`PREFERRED_LANGUAGES` as a comma-separated string (not JSON) into `list[str]`.
-Includes `ENABLE_IMAGE_REWRITE` flag (default: true). Loads from .env and
-performs comprehensive validation.
+`PREFERRED_LANGUAGES` and `REWRITE_ROOT_DIRS` as comma-separated strings (not
+JSON) into lists. `REWRITE_ROOT_DIR` remains supported as a single-root legacy
+setting. Includes independent NFO and image rewrite flags. Loads from `.env`
+and performs comprehensive validation.
 
 1. **ImageProcessor** (`image_processor.py`)
 Complete image rewrite workflow: identify rewritable image files (poster,
@@ -153,10 +155,11 @@ Retry logic with exponential backoff for handling transient failures, particular
 for TMDB API rate limiting (HTTP 429) responses.
 
 1. **Data Models** (`models.py`)
-TmdbIds: TMDB identifier structures for series/episodes. TranslatedContent:
-Translated metadata containers. ProcessResult: base outcome. MetadataProcessResult:
-NFO-specific. ImageCandidate: TMDB image candidate (file_path, iso_639_1,
-iso_3166_1). ImageProcessResult: image-specific outcome.
+TmdbIds: media-aware TMDB identifier structures for TV series/episodes and
+movies; `media_type` is required and movies cannot include season or episode.
+TranslatedContent: translated metadata containers. ProcessResult: base outcome.
+MetadataProcessResult: NFO-specific. ImageCandidate: TMDB image candidate
+(file_path, iso_639_1, iso_3166_1). ImageProcessResult: image-specific outcome.
 
 1. **Version Management** (`_version.py`)
 Hatch-generated version file from VCS tags with dynamic version handling and
@@ -164,9 +167,11 @@ development fallback.
 
 ### TMDB API Integration Design
 
-- **Text endpoints**: `/tv/{series_id}/translations` and
-  `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`
-- **Image endpoints**: `/tv/{series_id}/images` and `/tv/{series_id}/season/{season_number}/images`
+- **Text endpoints**: `/tv/{series_id}/translations`,
+  `/tv/{series_id}/season/{season_number}/episode/{episode_number}/translations`,
+  and `/movie/{movie_id}/translations`
+- **Image endpoints**: `/tv/{series_id}/images`,
+  `/tv/{series_id}/season/{season_number}/images`, and `/movie/{movie_id}/images`
   - Don't pass `include_image_language`; fetch all and filter client-side in
     code due to TMDB API quirk
 - **Rate Limits**: TMDB has rate limits, and explicit rate limiting with
@@ -185,8 +190,8 @@ development fallback.
   module boundaries (including `_version`)
 - **Testing**: pytest with coverage, separate unit/integration test
   directories with shared container infrastructure
-- **Integration Testing**: Docker-based Sonarr integration with comprehensive
-  test scenarios
+- **Integration Testing**: Docker/Podman-based Sonarr and Radarr integration
+  tests
 - **Dead Code**: Vulture with whitelist support
 - **Automation**: pre-commit hooks for all quality checks
 
@@ -212,8 +217,8 @@ src/sonarr_metadata_rewrite/
 └── retry_utils.py (retry logic with exponential backoff)
 tests/
 ├── unit/ (fast unit tests for all modules)
-├── integration/ (comprehensive Sonarr integration tests with Docker)
-│   └── fixtures/ (container management, series management, subprocess service)
+├── integration/ (Sonarr and Radarr integration tests with Docker/Podman)
+│   └── fixtures/ (container clients, media managers, subprocess service)
 └── conftest.py (shared test fixtures)
 scripts/ (development automation)
 ```
@@ -240,9 +245,9 @@ scripts/ (development automation)
 - **TMDB Rate Limits**: TMDB has rate limits, and explicit rate limiting with
   exponential backoff retry is implemented - the service automatically retries
   rate-limited requests with configurable delays
-- **File Format**: Sonarr generates XML .nfo files with TMDB IDs
-- **Target Files**: `tvshow.nfo` (series), episode-specific .nfo files, and
-  image files matching the patterns above
+- **File Format**: Sonarr and Radarr generate XML `.nfo` files with TMDB IDs
+- **Target Files**: TV show, episode, and movie `.nfo` files, plus image files
+  matching the patterns above
 - **Service Architecture**: Long-running daemon process with graceful
   shutdown support
 - **Reprocessing Avoidance**: Implemented to prevent unnecessary API calls and

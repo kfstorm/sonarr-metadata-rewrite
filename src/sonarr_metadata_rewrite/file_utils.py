@@ -179,8 +179,12 @@ def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
     if not list(wrapped_root):
         raise ET.ParseError("No XML document found")
 
-    if len(wrapped_root) == 1 and wrapped_root[0].tag == "tvshow":
-        return _extract_tvshow_metadata(wrapped_root[0])
+    if len(wrapped_root) == 1:
+        root = wrapped_root[0]
+        if root.tag == "tvshow":
+            return _extract_tvshow_metadata(root)
+        if root.tag == "movie":
+            return _extract_movie_metadata(root)
 
     if all(child.tag == "episodedetails" for child in wrapped_root):
         return _extract_episode_metadata(wrapped_root)
@@ -192,6 +196,16 @@ def _extract_tvshow_metadata(root: ET.Element) -> MetadataInfo:
     """Extract metadata from a single tvshow document."""
     info = MetadataInfo(
         file_type="tvshow",
+        xml_tree=ET.ElementTree(ET.fromstring(ET.tostring(root, encoding="unicode"))),
+    )
+    _populate_common_metadata(info, root)
+    return info
+
+
+def _extract_movie_metadata(root: ET.Element) -> MetadataInfo:
+    """Extract metadata from a single movie document."""
+    info = MetadataInfo(
+        file_type="movie",
         xml_tree=ET.ElementTree(ET.fromstring(ET.tostring(root, encoding="unicode"))),
     )
     _populate_common_metadata(info, root)

@@ -1,7 +1,7 @@
-"""Sonarr Metadata Rewrite.
+"""Sonarr and Radarr Metadata Rewrite.
 
-A compatibility layer that monitors Sonarr-generated .nfo files and overwrites
-them with TMDB translations in desired languages.
+A compatibility layer that monitors Sonarr TV and Radarr movie metadata files
+and localizes them with TMDB translations in desired languages.
 """
 
 try:

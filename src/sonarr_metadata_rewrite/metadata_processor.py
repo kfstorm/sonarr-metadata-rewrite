@@ -7,7 +7,7 @@ from xml.etree.ElementTree import ElementTree  # noqa: F401
 
 from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.file_utils import extract_metadata_info
+from sonarr_metadata_rewrite.file_utils import extract_metadata_info, is_nfo_file
 from sonarr_metadata_rewrite.models import (
     EpisodeMetadataInfo,
     MetadataInfo,
@@ -200,7 +200,8 @@ class MetadataProcessor:
                 continue
 
             entry_tmdb_ids = TmdbIds(
-                series_id=series_tmdb_id,
+                tmdb_id=series_tmdb_id,
+                media_type="tv",
                 season=entry.season,
                 episode=entry.episode,
             )
@@ -318,6 +319,11 @@ class MetadataProcessor:
         Returns:
             TMDB series ID if found, None otherwise
         """
+        # Movies must have a direct TMDB ID; TV external-ID resolution does not
+        # identify movie resources safely.
+        if metadata_info.file_type == "movie":
+            return metadata_info.tmdb_id
+
         # Tier 1: Direct TMDB ID (already checked in metadata_info)
         if metadata_info.tmdb_id:
             return metadata_info.tmdb_id
@@ -333,7 +339,7 @@ class MetadataProcessor:
         return self._resolve_via_external_apis(metadata_info, parent_info)
 
     def _find_parent_metadata_info(self, episode_nfo_path: Path) -> MetadataInfo | None:
-        """Find and parse parent tvshow.nfo file for episode.
+        """Find a unique parent TV show NFO for an episode.
 
         Args:
             episode_nfo_path: Path to episode .nfo file
@@ -343,18 +349,23 @@ class MetadataProcessor:
         """
         current_dir = episode_nfo_path.parent
 
-        # Check up to 3 levels up to find tvshow.nfo
+        # Check up to 3 levels up. A series root can use a nonstandard NFO name.
         for _ in range(3):
-            tvshow_path = current_dir / "tvshow.nfo"
-            if tvshow_path.exists() and tvshow_path.is_file():
+            candidates: list[MetadataInfo] = []
+            for nfo_path in current_dir.iterdir():
+                if not nfo_path.is_file() or not is_nfo_file(nfo_path):
+                    continue
                 try:
-                    # Parse and extract metadata info
-                    metadata_info = extract_metadata_info(tvshow_path)
+                    metadata_info = extract_metadata_info(nfo_path)
                     if metadata_info.file_type == "tvshow":
-                        return metadata_info
+                        candidates.append(metadata_info)
                 except (ET.ParseError, ValueError, AttributeError):
-                    # Failed to parse, continue searching
-                    pass
+                    continue
+
+            if len(candidates) == 1:
+                return candidates[0]
+            if len(candidates) > 1:
+                return None
 
             # Move up one directory level
             parent_dir = current_dir.parent
@@ -438,13 +449,16 @@ class MetadataProcessor:
 
         # Build TmdbIds based on file type
         if metadata_info.file_type == "tvshow":
-            return TmdbIds(series_id=tmdb_series_id)
+            return TmdbIds(tmdb_id=tmdb_series_id, media_type="tv")
+        elif metadata_info.file_type == "movie":
+            return TmdbIds(tmdb_id=tmdb_series_id, media_type="movie")
         elif metadata_info.file_type == "episodedetails":
             if metadata_info.season is None or metadata_info.episode is None:
                 # Missing season/episode information
                 return None
             return TmdbIds(
-                series_id=tmdb_series_id,
+                tmdb_id=tmdb_series_id,
+                media_type="tv",
                 season=metadata_info.season,
                 episode=metadata_info.episode,
             )
@@ -533,7 +547,8 @@ class MetadataProcessor:
 
             # Build TmdbIds object for API call
             tmdb_ids = TmdbIds(
-                series_id=metadata_info.tmdb_id,
+                tmdb_id=metadata_info.tmdb_id,
+                media_type="movie" if metadata_info.file_type == "movie" else "tv",
                 season=metadata_info.season,
                 episode=metadata_info.episode,
             )

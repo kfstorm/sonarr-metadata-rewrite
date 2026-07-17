@@ -7,15 +7,11 @@ from typing import Any
 import httpx
 
 from sonarr_metadata_rewrite.retry_utils import retry
+from tests.integration.fixtures.arr_client import ArrClient
 
 
-class SonarrClient:
+class SonarrClient(ArrClient):
     """Simple Sonarr API client for integration tests."""
-
-    def __init__(self, base_url: str, api_key: str | None = None):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.client = httpx.Client(timeout=30.0)
 
     def wait_for_ready(self, max_attempts: int = 30, delay: float = 1.0) -> bool:
         """Wait for Sonarr to be ready and responding."""
@@ -52,20 +48,6 @@ class SonarrClient:
         except Exception as e:
             print(f"Sonarr failed to become ready: {e}")
             return False
-
-    def _make_request(
-        self, method: str, endpoint: str, **kwargs: Any
-    ) -> httpx.Response:
-        """Make authenticated request to Sonarr API."""
-        url = f"{self.base_url}{endpoint}"
-
-        # Add API key if we have one
-        if self.api_key:
-            if "params" not in kwargs:
-                kwargs["params"] = {}
-            kwargs["params"]["apikey"] = self.api_key
-
-        return self.client.request(method, url, **kwargs)
 
     def add_series(
         self,
@@ -266,7 +248,3 @@ class SonarrClient:
             )
 
         return True
-
-    def close(self) -> None:
-        """Close the HTTP client."""
-        self.client.close()

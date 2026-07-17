@@ -39,7 +39,7 @@ class RewriteService:
 
     def start(self) -> None:
         """Start file monitoring and scanning services."""
-        logger.info("Starting Sonarr Metadata Rewrite Service")
+        logger.info("Starting Sonarr and Radarr Metadata Rewrite Service")
         for root_dir in self.settings.rewrite_root_dirs:
             logger.info(f"Monitoring directory: {root_dir}")
         logger.info(f"Preferred languages: {self.settings.preferred_languages}")
@@ -61,7 +61,7 @@ class RewriteService:
 
     def stop(self) -> None:
         """Stop the service and cleanup all resources."""
-        logger.info("Stopping Sonarr Metadata Rewrite Service")
+        logger.info("Stopping Sonarr and Radarr Metadata Rewrite Service")
 
         # Stop monitoring and scanning (only if they were started)
         if self.settings.enable_file_monitor:

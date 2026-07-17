@@ -9,10 +9,31 @@ from pathlib import Path
 import pytest
 
 from tests.integration.fixtures.container_manager import ContainerManager
+from tests.integration.fixtures.radarr_client import RadarrClient
 from tests.integration.fixtures.sonarr_client import SonarrClient
 
 # Test API key used for integration tests
 TEST_API_KEY = "testkey12345678901234567890"
+
+
+def _write_arr_config(config_dir: Path, port: int, instance_name: str) -> None:
+    """Write common LinuxServer Arr config."""
+    (config_dir / "config.xml").write_text(f"""<?xml version="1.0" encoding="utf-8"?>
+<Config>
+  <Port>{port}</Port>
+  <SslPort>9898</SslPort>
+  <EnableSsl>False</EnableSsl>
+  <LaunchBrowser>False</LaunchBrowser>
+  <AuthenticationMethod>None</AuthenticationMethod>
+  <AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>
+  <Branch>main</Branch>
+  <ApiKey>{TEST_API_KEY}</ApiKey>
+  <SslCertPath></SslCertPath>
+  <SslCertPassword></SslCertPassword>
+  <UrlBase></UrlBase>
+  <UpdateMechanism>Docker</UpdateMechanism>
+  <InstanceName>{instance_name}</InstanceName>
+</Config>""")
 
 
 @pytest.fixture(scope="session")
@@ -28,24 +49,11 @@ def temp_config_dir() -> Generator[Path, None, None]:
     with tempfile.TemporaryDirectory(prefix="sonarr_config_") as temp_dir:
         temp_path = Path(temp_dir)
 
-        # Create config.xml inside the directory
-        config_file = temp_path / "config.xml"
-        config_file.write_text(f"""<?xml version="1.0" encoding="utf-8"?>
-<Config>
-  <Port>8989</Port>
-  <SslPort>9898</SslPort>
-  <EnableSsl>False</EnableSsl>
-  <LaunchBrowser>False</LaunchBrowser>
-  <AuthenticationMethod>None</AuthenticationMethod>
-  <AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>
-  <Branch>main</Branch>
-  <ApiKey>{TEST_API_KEY}</ApiKey>
-  <SslCertPath></SslCertPath>
-  <SslCertPassword></SslCertPassword>
-  <UrlBase></UrlBase>
-  <UpdateMechanism>Docker</UpdateMechanism>
-  <InstanceName>Sonarr (Test)</InstanceName>
-</Config>""")
+        _write_arr_config(
+            temp_path,
+            port=8989,
+            instance_name="Sonarr (Test)",
+        )
         yield temp_path
 
 
@@ -123,3 +131,49 @@ def configured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
         raise RuntimeError("Failed to configure metadata settings")
     print("Metadata settings configured successfully")
     return sonarr_container
+
+
+@pytest.fixture(scope="session")
+def temp_radarr_config_dir() -> Generator[Path, None, None]:
+    """Create temporary config directory for Radarr container."""
+    with tempfile.TemporaryDirectory(prefix="radarr_config_") as temp_dir:
+        temp_path = Path(temp_dir)
+        _write_arr_config(temp_path, port=7878, instance_name="Radarr (Test)")
+        yield temp_path
+
+
+@pytest.fixture(scope="session")
+def radarr_container(
+    temp_media_root: Path,
+    temp_radarr_config_dir: Path,
+) -> Generator[RadarrClient, None, None]:
+    """Start Radarr container and return configured client."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("", 0))
+        free_port = sock.getsockname()[1]
+
+    with ContainerManager() as manager:
+        extra_args = ["--userns=keep-id"] if manager.runtime == "podman" else []
+        manager.run_container(
+            image="docker.io/linuxserver/radarr:latest",
+            name=f"radarr-test-{free_port}",
+            ports={7878: free_port},
+            volumes={
+                str(temp_media_root): "/movies",
+                str(temp_radarr_config_dir): "/config",
+            },
+            environment={
+                "TZ": "UTC",
+                "PUID": str(os.getuid()),
+                "PGID": str(os.getgid()),
+            },
+            extra_args=extra_args,
+        )
+        client = RadarrClient(f"http://localhost:{free_port}", api_key=TEST_API_KEY)
+        if not client.wait_for_ready(max_attempts=30, delay=1.0):
+            raise RuntimeError("Radarr failed to become ready within 30 seconds")
+        manager.start_streaming()
+        try:
+            yield client
+        finally:
+            client.close()

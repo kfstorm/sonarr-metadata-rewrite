@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from sonarr_metadata_rewrite.models import (
     ImageCandidate,
     ImageProcessResult,
@@ -13,20 +15,30 @@ from sonarr_metadata_rewrite.models import (
 )
 
 
-def test_tmdb_ids_series() -> None:
-    """Test TmdbIds for series files."""
-    tmdb_ids = TmdbIds(series_id=12345)
-    assert tmdb_ids.series_id == 12345
+def test_tmdb_ids_tv() -> None:
+    """Test TmdbIds for TV show files."""
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
+    assert tmdb_ids.tmdb_id == 12345
+    assert tmdb_ids.media_type == "tv"
     assert tmdb_ids.season is None
     assert tmdb_ids.episode is None
 
 
 def test_tmdb_ids_episode() -> None:
     """Test TmdbIds for episode files."""
-    tmdb_ids = TmdbIds(series_id=12345, season=1, episode=1)
-    assert tmdb_ids.series_id == 12345
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1, episode=1)
+    assert tmdb_ids.tmdb_id == 12345
     assert tmdb_ids.season == 1
     assert tmdb_ids.episode == 1
+
+
+def test_tmdb_ids_season_artwork() -> None:
+    """Test TmdbIds allows TV season artwork without an episode."""
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1)
+
+    assert str(tmdb_ids) == "tv/12345"
+    assert tmdb_ids.season == 1
+    assert tmdb_ids.episode is None
 
 
 def test_translated_content() -> None:
@@ -51,7 +63,7 @@ def test_process_result() -> None:
         success=True,
         file_path=Path("/test/path.nfo"),
         message="Test message",
-        tmdb_ids=TmdbIds(series_id=12345),
+        tmdb_ids=TmdbIds(tmdb_id=12345, media_type="tv"),
         backup_created=True,
         file_modified=True,
         translated_content=translated_content,
@@ -60,7 +72,7 @@ def test_process_result() -> None:
     assert result.file_path == Path("/test/path.nfo")
     assert result.message == "Test message"
     assert result.tmdb_ids is not None
-    assert result.tmdb_ids.series_id == 12345
+    assert result.tmdb_ids.tmdb_id == 12345
     assert result.backup_created is True
     assert result.file_modified is True
     assert result.translated_content is not None
@@ -76,7 +88,7 @@ def test_process_result_no_translation() -> None:
             "File unchanged - no translation available in preferred languages [zh-CN]. "
             "Available: [en, ja-JP]"
         ),
-        tmdb_ids=TmdbIds(series_id=12345),
+        tmdb_ids=TmdbIds(tmdb_id=12345, media_type="tv"),
         file_modified=False,
         translated_content=None,
     )
@@ -150,7 +162,7 @@ def test_metadata_process_result_backward_compatibility() -> None:
         success=True,
         file_path=Path("/test/tvshow.nfo"),
         message="NFO updated",
-        tmdb_ids=TmdbIds(series_id=999, season=1, episode=1),
+        tmdb_ids=TmdbIds(tmdb_id=999, media_type="tv", season=1, episode=1),
         backup_created=True,
         file_modified=True,
         translated_content=translated_content,
@@ -158,7 +170,7 @@ def test_metadata_process_result_backward_compatibility() -> None:
 
     # Metadata-specific fields
     assert result.tmdb_ids is not None
-    assert result.tmdb_ids.series_id == 999
+    assert result.tmdb_ids.tmdb_id == 999
     assert result.tmdb_ids.season == 1
     assert result.tmdb_ids.episode == 1
     assert result.translated_content is not None
@@ -168,3 +180,24 @@ def test_metadata_process_result_backward_compatibility() -> None:
     assert result.success is True
     assert result.file_path == Path("/test/tvshow.nfo")
     assert result.backup_created is True
+
+
+def test_tmdb_ids_movie_path() -> None:
+    """Test TmdbIds builds movie resource paths."""
+    tmdb_ids = TmdbIds(tmdb_id=550, media_type="movie")
+
+    assert str(tmdb_ids) == "movie/550"
+    assert tmdb_ids.season is None
+    assert tmdb_ids.episode is None
+
+
+def test_tmdb_ids_movie_rejects_season_or_episode() -> None:
+    """Test movie IDs cannot include TV episode fields."""
+    with pytest.raises(ValueError, match="cannot include season or episode"):
+        TmdbIds(tmdb_id=550, media_type="movie", season=1)
+
+
+def test_tmdb_ids_episode_requires_season() -> None:
+    """Test episodes cannot omit their season number."""
+    with pytest.raises(ValueError, match="require a season"):
+        TmdbIds(tmdb_id=12345, media_type="tv", episode=1)
