@@ -1,5 +1,6 @@
 """Unit tests for rewrite service."""
 
+import sqlite3
 from collections.abc import Callable, Generator
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -28,9 +29,11 @@ def assert_cache_initialization_error(settings: Settings, cache_dir: Path) -> No
 
 
 @pytest.fixture
-def rewrite_service(test_settings: Settings) -> RewriteService:
+def rewrite_service(test_settings: Settings) -> Generator[RewriteService, None, None]:
     """Create rewrite service instance."""
-    return RewriteService(test_settings)
+    service = RewriteService(test_settings)
+    yield service
+    service.stop()
 
 
 def test_rewrite_service_initialization(rewrite_service: RewriteService) -> None:
@@ -183,37 +186,19 @@ def test_service_integration_processing_error_with_exception(
 
 def test_cache_initialization_error(test_data_dir: Path) -> None:
     """Test cache initialization errors are handled with clear messages."""
-    import os
-
-    from diskcache import Cache  # type: ignore[import-untyped]
-
-    from sonarr_metadata_rewrite.config import Settings
-
-    # Create a cache directory and initialize it
     cache_dir = test_data_dir / "readonly_cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dirs=[test_data_dir],
+        preferred_languages=["en-US"],
+        cache_dir=cache_dir,
+    )
 
-    # Create a cache to generate the database file
-    cache = Cache(str(cache_dir))
-    cache.close()
-
-    # Make the cache database file read-only to trigger sqlite3.OperationalError
-    db_file = cache_dir / "cache.db"
-    os.chmod(db_file, 0o444)
-
-    try:
-        # Create settings pointing to the read-only cache
-        settings = Settings(
-            tmdb_api_key="test_key",
-            rewrite_root_dirs=[test_data_dir],
-            preferred_languages=["en-US"],
-            cache_dir=cache_dir,
-        )
-
+    with patch(
+        "sonarr_metadata_rewrite.rewrite_service.Cache",
+        side_effect=sqlite3.OperationalError("attempt to write a readonly database"),
+    ):
         assert_cache_initialization_error(settings, cache_dir)
-    finally:
-        # Restore permissions for cleanup
-        os.chmod(db_file, 0o644)
 
 
 def test_cache_initialization_permission_error(test_data_dir: Path) -> None:

@@ -1,5 +1,6 @@
 """Shared test configuration and fixtures."""
 
+import gc
 import tempfile
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -10,6 +11,14 @@ import pytest
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import MetadataProcessResult
+
+
+@pytest.fixture(autouse=True)
+def collect_garbage() -> Generator[None, None, None]:
+    """Collect unclosed resources before pytest finishes each test."""
+    yield
+    gc.collect()
+
 
 # Inline test data constants
 SAMPLE_TVSHOW_NFO = """<?xml version="1.0" encoding="utf-8"?>

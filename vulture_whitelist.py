@@ -40,6 +40,7 @@ _.return_value
 _.side_effect
 
 # Pytest fixtures with autouse=True are automatically used
+collect_garbage
 patch_time_sleep
 patch_retry_timeout
 patch_fetch_with_retry

@@ -98,6 +98,10 @@ warn_required_dynamic_aliases = true
 minversion = "7.0"
 addopts = "-ra -q --strict-markers --cov=src/sonarr_metadata_rewrite --cov-report=term-missing"
 testpaths = ["tests"]
+filterwarnings = [
+    "error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
 markers = [
     "slow: marks tests as slow (integration tests)",
     "unit: marks tests as unit tests",
