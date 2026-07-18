@@ -19,7 +19,7 @@ from sonarr_metadata_rewrite.translator import Translator
 
 
 @pytest.fixture(autouse=True)
-def patch_time_sleep() -> Generator[None, None, None]:
+def patch_time_sleep() -> Generator[None]:
     """Patch time.sleep to be instant for retry logic, but preserve test timing.
 
     This speeds up retry logic while allowing tests that need real timing to work.
@@ -38,7 +38,7 @@ def patch_time_sleep() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def patch_retry_timeout() -> Generator[None, None, None]:
+def patch_retry_timeout() -> Generator[None]:
     """Reduce retry timeout for unit tests to speed up failure cases."""
 
     def fast_parse_nfo_with_retry(nfo_path: Path) -> Any:
@@ -61,7 +61,7 @@ def patch_retry_timeout() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def patch_image_download_retry() -> Generator[None, None, None]:
+def patch_image_download_retry() -> Generator[None]:
     """Patch retry decorator in image processor to use minimal timeout for tests."""
     original_retry = sonarr_metadata_rewrite.image_processor.retry
 
@@ -88,7 +88,7 @@ def patch_image_download_retry() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def patch_fetch_with_retry() -> Generator[None, None, None]:
+def patch_fetch_with_retry() -> Generator[None]:
     """Mock _fetch_with_retry to avoid real HTTP requests in integration tests.
 
     This is not autouse=True because translator unit tests need to test
@@ -120,9 +120,7 @@ def patch_fetch_with_retry() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def translator(
-    test_settings: Settings, tmp_path: Path
-) -> Generator[Translator, None, None]:
+def translator(test_settings: Settings, tmp_path: Path) -> Generator[Translator]:
     """Create a Translator instance with a temporary cache for testing."""
     cache = Cache(tmp_path / "cache")
     yield Translator(test_settings, cache)

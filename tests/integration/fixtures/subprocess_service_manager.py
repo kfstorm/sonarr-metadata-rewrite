@@ -112,7 +112,7 @@ class SubprocessServiceManager(BaseProcessManager):
         except Exception as error:
             print(f"Warning: Failed to cleanup {temp_dir}: {error}")
 
-    def __enter__(self) -> "SubprocessServiceManager":
+    def __enter__(self) -> SubprocessServiceManager:
         """Enter context with managed service lifecycle."""
         return self
 

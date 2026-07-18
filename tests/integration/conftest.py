@@ -40,7 +40,7 @@ def _write_arr_config(config_dir: Path, port: int, instance_name: str) -> None:
 @contextmanager
 def _temporary_arr_config(
     prefix: str, port: int, instance_name: str
-) -> Generator[Path, None, None]:
+) -> Generator[Path]:
     """Create temporary Arr config with common LinuxServer settings."""
     with tempfile.TemporaryDirectory(prefix=prefix) as temp_dir:
         config_dir = Path(temp_dir)
@@ -95,28 +95,28 @@ def _start_arr_container(
 
 
 @pytest.fixture(scope="session")
-def temp_sonarr_media_root() -> Generator[Path, None, None]:
+def temp_sonarr_media_root() -> Generator[Path]:
     """Create session-wide temporary media directory for Sonarr tests."""
     with tempfile.TemporaryDirectory(prefix="sonarr_media_") as temp_dir:
         yield Path(temp_dir)
 
 
 @pytest.fixture(scope="session")
-def temp_radarr_media_root() -> Generator[Path, None, None]:
+def temp_radarr_media_root() -> Generator[Path]:
     """Create session-wide temporary media directory for Radarr tests."""
     with tempfile.TemporaryDirectory(prefix="radarr_media_") as temp_dir:
         yield Path(temp_dir)
 
 
 @pytest.fixture(scope="session")
-def temp_sonarr_config_dir() -> Generator[Path, None, None]:
+def temp_sonarr_config_dir() -> Generator[Path]:
     """Create temporary config directory for Sonarr container."""
     with _temporary_arr_config("sonarr_config_", 8989, "Sonarr (Test)") as config_dir:
         yield config_dir
 
 
 @pytest.fixture(scope="session")
-def container_manager() -> Generator[ContainerManager, None, None]:
+def container_manager() -> Generator[ContainerManager]:
     """Create container manager with automatic cleanup."""
     with ContainerManager() as manager:
         yield manager
@@ -127,7 +127,7 @@ def sonarr_container(
     container_manager: ContainerManager,
     temp_sonarr_media_root: Path,
     temp_sonarr_config_dir: Path,
-) -> Generator[SonarrClient, None, None]:
+) -> Generator[SonarrClient]:
     """Start Sonarr container and return configured client."""
     free_port = _start_arr_container(
         container_manager,
@@ -169,7 +169,7 @@ def configured_sonarr_container(sonarr_container: SonarrClient) -> SonarrClient:
 
 
 @pytest.fixture(scope="session")
-def temp_radarr_config_dir() -> Generator[Path, None, None]:
+def temp_radarr_config_dir() -> Generator[Path]:
     """Create temporary config directory for Radarr container."""
     with _temporary_arr_config("radarr_config_", 7878, "Radarr (Test)") as config_dir:
         yield config_dir
@@ -179,7 +179,7 @@ def temp_radarr_config_dir() -> Generator[Path, None, None]:
 def radarr_container(
     temp_radarr_media_root: Path,
     temp_radarr_config_dir: Path,
-) -> Generator[RadarrClient, None, None]:
+) -> Generator[RadarrClient]:
     """Start Radarr container and return configured client."""
     with ContainerManager() as manager:
         free_port = _start_arr_container(

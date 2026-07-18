@@ -4,10 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any, cast
 
-from fast_langdetect import (  # type: ignore[import-untyped]
-    DetectError,
-    detect_multilingual,
-)
+from fast_langdetect import FastLangdetectError, detect  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.file_utils import (
     extract_metadata_info,
@@ -397,11 +394,11 @@ def verify_translations(
             # Helper function to detect and validate language
             def check_language(
                 content: str,
-            ) -> tuple[bool, list[dict[str, str]] | None]:
+            ) -> tuple[bool, list[dict[str, str | float]] | None]:
                 if has_exception(content):
                     return True, None  # Skip detection, treat as matching
 
-                detected_langs = detect_multilingual(content)
+                detected_langs = detect(content, model="full", k=3)
 
                 # Post-filter to only include possible languages
                 detected_langs = [
@@ -455,7 +452,7 @@ def verify_translations(
 
                         raise AssertionError(". ".join(error_parts))
 
-                except DetectError as e:
+                except FastLangdetectError as e:
                     raise AssertionError(
                         f"Language detection failed for {nfo_file}: {e}. "
                         f"Title: '{title}', Plot: '{plot}'"

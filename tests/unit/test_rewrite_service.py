@@ -29,7 +29,7 @@ def assert_cache_initialization_error(settings: Settings, cache_dir: Path) -> No
 
 
 @pytest.fixture
-def rewrite_service(test_settings: Settings) -> Generator[RewriteService, None, None]:
+def rewrite_service(test_settings: Settings) -> Generator[RewriteService]:
     """Create rewrite service instance."""
     service = RewriteService(test_settings)
     yield service
@@ -127,7 +127,7 @@ def test_service_integration_processing_failure(
     rewrite_service: RewriteService,
     test_data_dir: Path,
     create_test_files: Callable[[str, Path], Path],
-    patch_fetch_with_retry: Generator[None, None, None],
+    patch_fetch_with_retry: Generator[None],
 ) -> None:
     """Test integration: service handles processing failures through callback."""
     # patch_fetch_with_retry fixture is used to mock HTTP requests

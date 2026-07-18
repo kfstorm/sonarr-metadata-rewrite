@@ -97,5 +97,5 @@ class FileScanner:
 
                 logger.info(f"Completed scan of directory: {root_dir}")
 
-            except (OSError, PermissionError):
+            except OSError, PermissionError:
                 logger.exception(f"File system error during scan of {root_dir}")

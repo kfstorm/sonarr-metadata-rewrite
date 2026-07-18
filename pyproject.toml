@@ -16,14 +16,12 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Video",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
     "click>=8.1.0",
     "pydantic>=2.0.0",
@@ -43,7 +41,7 @@ sonarr-metadata-rewrite = "sonarr_metadata_rewrite.main:cli"
 packages = ["src/sonarr_metadata_rewrite"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py314"
 line-length = 88
 include = ["src/**/*.py", "tests/**/*.py"]
 
@@ -94,7 +92,7 @@ skip-magic-trailing-comma = false
 line-ending = "lf"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.14"
 plugins = ["pydantic.mypy"]
 check_untyped_defs = true
 disallow_any_generics = true

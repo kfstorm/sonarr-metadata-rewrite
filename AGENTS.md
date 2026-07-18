@@ -244,7 +244,7 @@ scripts/ (development automation)
 
 ### Key Technical Constraints
 
-- **Python**: >=3.10 with strict typing enforcement
+- **Python**: >=3.14 with strict typing enforcement
 - **Dependencies**: Core runtime deps (Click, Pydantic, httpx, watchdog,
   diskcache) plus Pillow and piexif for image processing
 - **TMDB Rate Limits**: TMDB has rate limits, and explicit rate limiting with

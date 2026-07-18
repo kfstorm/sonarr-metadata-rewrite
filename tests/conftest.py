@@ -14,7 +14,7 @@ from sonarr_metadata_rewrite.models import MetadataProcessResult
 
 
 @pytest.fixture(autouse=True)
-def collect_garbage() -> Generator[None, None, None]:
+def collect_garbage() -> Generator[None]:
     """Collect unclosed resources before pytest finishes each test."""
     yield
     gc.collect()
@@ -185,7 +185,7 @@ SAMPLE_DATA = {
 
 
 @pytest.fixture
-def test_data_dir() -> Generator[Path, None, None]:
+def test_data_dir() -> Generator[Path]:
     """Create a temporary test data directory for all tests."""
     with tempfile.TemporaryDirectory() as temp_dir:
         yield Path(temp_dir)
@@ -225,7 +225,7 @@ def test_settings(test_data_dir: Path) -> Settings:
 
 
 @pytest.fixture
-def create_test_files() -> Generator[Callable[[str, Path], Path], None, None]:
+def create_test_files() -> Generator[Callable[[str, Path], Path]]:
     """Factory fixture to create test files from inline data with cleanup."""
     created_files = []
 

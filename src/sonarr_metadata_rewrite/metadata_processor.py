@@ -362,7 +362,7 @@ class MetadataProcessor:
                     metadata_info = extract_metadata_info(nfo_path)
                     if metadata_info.file_type == "tvshow":
                         candidates.append(metadata_info)
-                except (ET.ParseError, ValueError, AttributeError):
+                except ET.ParseError, ValueError, AttributeError:
                     continue
 
             if len(candidates) == 1:
@@ -564,8 +564,8 @@ class MetadataProcessor:
             original_language, original_title = original_details
 
             # Check if language families match
-            preferred_base = preferred_language.split("-")[0]
-            original_base = original_language.split("-")[0]
+            preferred_base = preferred_language.split("-", 1)[0]
+            original_base = original_language.split("-", 1)[0]
 
             if preferred_base == original_base:
                 return original_title

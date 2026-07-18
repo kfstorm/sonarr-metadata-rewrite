@@ -39,7 +39,7 @@ class SeriesManager:
         self.series_slug: str | None = None
         self.series_title: str | None = None
 
-    def __enter__(self) -> "SeriesManager":
+    def __enter__(self) -> SeriesManager:
         """Add series and return self."""
         print(f"Adding series with TVDB ID {self.tvdb_id}...")
         self.series_data = self.sonarr_client.add_series(
