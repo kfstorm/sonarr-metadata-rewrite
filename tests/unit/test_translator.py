@@ -4,14 +4,14 @@ import json
 from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import httpx
 import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds, TranslatedContent, TranslatedString
+from sonarr_metadata_rewrite.models import TmdbIds, TranslatedString
 from sonarr_metadata_rewrite.translator import Translator
 
 
@@ -387,24 +387,23 @@ def test_get_translations_skips_entry_without_language_code(
     assert "en-US" in translations
 
 
-def test_cache_functionality(
-    translator: Translator, mock_series_response: dict[str, Any]
-) -> None:
-    """Test DiskCache functionality."""
-    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
-    cache_key = f"translations:{tmdb_ids}/translations"
+def test_response_cache_key_uses_httpx_serialized_url(translator: Translator) -> None:
+    """Test cache keys use the same URL serialization as HTTPX requests."""
+    endpoint = "/find/tt0286112"
+    params = {"empty": None, "enabled": True, "query": "A+B"}
+    request = translator.client.build_request("GET", endpoint, params=params)
 
-    # Verify cache starts empty
-    assert cache_key not in translator.cache
+    cache_key = translator._response_cache_key(endpoint, params)
 
-    # Add item to cache
-    translations = {"en-US": mock_series_response}
-    translator.cache.set(cache_key, translations, expire=3600)
-
-    # Verify cache contains the item
-    assert cache_key in translator.cache
-    cached_data = translator.cache[cache_key]
-    assert cached_data == translations
+    assert cache_key == (
+        f"{translator._RESPONSE_CACHE_NAMESPACE}:{request.method}:{request.url}"
+    )
+    assert translator._response_cache_key(endpoint, {"empty": None}) != (
+        translator._response_cache_key(endpoint)
+    )
+    assert translator._response_cache_key(endpoint, {"enabled": True}) != (
+        translator._response_cache_key(endpoint, {"enabled": "True"})
+    )
 
 
 @patch("httpx.Client.get")
@@ -424,6 +423,11 @@ def test_caching_integration(
     translations1 = translator.get_translations(tmdb_ids)
     assert mock_get.call_count == 1
     assert len(translations1) == 3
+    cache_key = translator._response_cache_key("/tv/12345/translations")
+    assert translator.cache[cache_key] == {
+        "status": 200,
+        "body": mock_series_response,
+    }
 
     # Second call should use cache (no additional API calls)
     translations2 = translator.get_translations(tmdb_ids)
@@ -664,27 +668,24 @@ def test_rate_limit_max_retries_exceeded(
     assert actual_delays == expected_delays
 
 
+@pytest.mark.parametrize("status_code", [400, 401, 403, 500])
 @patch("httpx.Client.get")
-def test_non_rate_limit_http_error_no_retry(
-    mock_get: Mock, translator: Translator
+def test_non_cacheable_http_error_is_not_retried_or_cached(
+    mock_get: Mock, translator: Translator, status_code: int
 ) -> None:
-    """Test that non-rate-limit HTTP errors are not retried."""
-    # Return 500 error (not rate limit)
-    server_error_response = Mock()
-    server_error_response.status_code = 500
-    server_error = httpx.HTTPStatusError(
-        "Internal Server Error", request=Mock(), response=server_error_response
+    """Test non-404 HTTP errors are neither retried nor cached."""
+    error_response = Mock(status_code=status_code)
+    error = httpx.HTTPStatusError(
+        f"HTTP {status_code}", request=Mock(), response=error_response
     )
-    mock_get.side_effect = server_error
+    mock_get.side_effect = error
 
-    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
+    with pytest.raises(httpx.HTTPStatusError, match=f"HTTP {status_code}"):
+        translator.get_translations(TmdbIds(tmdb_id=12345, media_type="tv"))
 
-    # Should raise the error immediately without retries
-    with pytest.raises(httpx.HTTPStatusError, match="Internal Server Error"):
-        translator.get_translations(tmdb_ids)
-
-    # Should have made only 1 attempt (no retries)
     assert mock_get.call_count == 1
+    cache_key = translator._response_cache_key("/tv/12345/translations")
+    assert cache_key not in translator.cache
 
 
 @patch("httpx.Client.get")
@@ -737,7 +738,7 @@ def test_rate_limit_preserves_cache_on_failure(
     mock_get.side_effect = rate_limit_error
 
     tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
-    cache_key = f"translations:{tmdb_ids}"
+    cache_key = translator._response_cache_key("/tv/12345/translations")
 
     # Ensure cache is empty initially
     assert cache_key not in translator.cache
@@ -925,151 +926,52 @@ def test_find_tmdb_id_by_external_id_cache_negative_result(
         mock_get.assert_called_once()
 
 
-def test_ensure_new_format_backward_compatibility(translator: Translator) -> None:
-    """Test backward compatibility with old cached TranslatedContent format."""
-    # Create mock old format TranslatedContent objects (pre-model change)
-    # These simulate cached data with string fields instead of TranslatedString objects
-    old_format_content_1 = SimpleNamespace(
-        title="旧格式标题",  # str instead of TranslatedString
-        description="旧格式描述",  # str instead of TranslatedString
-        language="zh-CN",  # old format had language field
-    )
-
-    old_format_content_2 = SimpleNamespace(
-        title="Old Format Title", description="Old format description", language="en-US"
-    )
-
-    # Create new format TranslatedContent for mixed testing
-    new_format_content = TranslatedContent(
-        title=TranslatedString(content="新格式标题", language="ja"),
-        description=TranslatedString(content="新格式描述", language="ja"),
-    )
-
-    # Create cached data with mix of old and new formats
-    cached_data = {
-        "zh-CN": old_format_content_1,
-        "en-US": old_format_content_2,
-        "ja": new_format_content,
-    }
-
-    # Test the conversion method
-    converted_data = translator._ensure_new_format(cached_data)  # type: ignore[arg-type]
-
-    # Verify all data is now in new format
-    assert len(converted_data) == 3
-
-    # Check converted old format data
-    zh_cn = converted_data["zh-CN"]
-    assert isinstance(zh_cn, TranslatedContent)
-    assert isinstance(zh_cn.title, TranslatedString)
-    assert isinstance(zh_cn.description, TranslatedString)
-    assert zh_cn.title.content == "旧格式标题"
-    assert zh_cn.title.language == "zh-CN"
-    assert zh_cn.description.content == "旧格式描述"
-    assert zh_cn.description.language == "zh-CN"
-    assert zh_cn.tagline.content == ""
-    assert zh_cn.tagline.language == "unknown"
-
-    en_us = converted_data["en-US"]
-    assert isinstance(en_us, TranslatedContent)
-    assert isinstance(en_us.title, TranslatedString)
-    assert isinstance(en_us.description, TranslatedString)
-    assert en_us.title.content == "Old Format Title"
-    assert en_us.title.language == "en-US"
-    assert en_us.description.content == "Old format description"
-    assert en_us.description.language == "en-US"
-
-    # Check that already new format data is preserved unchanged
-    ja = converted_data["ja"]
-    assert isinstance(ja, TranslatedContent)
-    assert isinstance(ja.title, TranslatedString)
-    assert isinstance(ja.description, TranslatedString)
-    assert ja.title.content == "新格式标题"
-    assert ja.title.language == "ja"
-    assert ja.description.content == "新格式描述"
-    assert ja.description.language == "ja"
-
-
-def test_ensure_new_format_adds_tagline_to_current_cached_format(
-    translator: Translator,
+@patch("httpx.Client.get")
+def test_get_translations_ignores_legacy_derived_cache(
+    mock_get: Mock, translator: Translator, mock_series_response: dict[str, Any]
 ) -> None:
-    """Test cached content without tagline gains its default value."""
-    cached_data = {
-        "zh-CN": SimpleNamespace(
-            title=TranslatedString(content="中文标题", language="zh-CN"),
-            description=TranslatedString(content="中文描述", language="zh-CN"),
-        )
-    }
-
-    converted_data = translator._ensure_new_format(cached_data)  # type: ignore[arg-type]
-
-    assert converted_data["zh-CN"].title.content == "中文标题"
-    assert converted_data["zh-CN"].description.content == "中文描述"
-    assert converted_data["zh-CN"].tagline == TranslatedString(
-        content="", language="unknown"
-    )
-
-
-def test_get_translations_cache_backward_compatibility_integration(
-    translator: Translator,
-) -> None:
-    """Test cache backward compatibility in real get_translations workflow."""
-    # Create old format cached data
-    old_cached_content = SimpleNamespace(
-        title="缓存的旧标题", description="缓存的旧描述", language="zh-CN"
-    )
-
-    # Manually set old format data in cache to simulate pre-upgrade cache
+    """Test a legacy parsed cache entry cannot hide new TMDB fields."""
     tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
-    cache_key = f"translations:{tmdb_ids}"
-    translator.cache.set(cache_key, {"zh-CN": old_cached_content})
+    legacy_cache_key = f"translations:{tmdb_ids}"
+    translator.cache.set(
+        legacy_cache_key,
+        {
+            "zh-CN": SimpleNamespace(
+                title=TranslatedString(content="旧中文标题", language="zh-CN"),
+                description=TranslatedString(content="旧中文描述", language="zh-CN"),
+            )
+        },
+    )
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = mock_series_response
+    mock_get.return_value = mock_response
 
-    # Call get_translations - should convert old format to new format
     translations = translator.get_translations(tmdb_ids)
 
-    # Verify the cached data was converted properly
-    assert len(translations) == 1
-    assert "zh-CN" in translations
-
+    assert mock_get.call_count == 1
     zh_cn = translations["zh-CN"]
-    assert isinstance(zh_cn, TranslatedContent)
-    assert isinstance(zh_cn.title, TranslatedString)
-    assert isinstance(zh_cn.description, TranslatedString)
-    assert zh_cn.title.content == "缓存的旧标题"
-    assert zh_cn.title.language == "zh-CN"
-    assert zh_cn.description.content == "缓存的旧描述"
-    assert zh_cn.description.language == "zh-CN"
+    assert zh_cn.tagline.content == "命运由你掌握。"
+    response_cache_key = translator._response_cache_key("/tv/12345/translations")
+    assert translator.cache[response_cache_key]["body"] == mock_series_response
 
 
 @patch("httpx.Client.get")
-def test_get_with_cache_404_caching(mock_get: Mock, translator: Translator) -> None:
-    """Test that _get_with_cache properly caches 404 responses."""
-    # Mock 404 HTTP error
+def test_get_cached_json_caches_404_outcome(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test the response cache stores a not-found outcome."""
     mock_get.side_effect = mock_not_found_error()
+    endpoint = "/test/endpoint"
+    cache_key = translator._response_cache_key(endpoint)
 
-    # Define a simple fetch function that calls _fetch_with_retry
-    def fetch_func() -> dict[str, Any]:
-        return translator._fetch_with_retry("/test/endpoint")
-
-    cache_key = "test_404_cache"
-    default_value = {"test": "default"}
-
-    # First call should hit API and cache the default value
-    result1 = translator._get_with_cache(cache_key, fetch_func, default_value)
-    assert result1 == default_value
+    assert translator._get_cached_json(endpoint) is None
     assert mock_get.call_count == 1
-
-    # Verify the default value was cached
     assert cache_key in translator.cache
-    assert translator.cache[cache_key] == default_value
+    assert translator.cache[cache_key] == {"status": 404}
 
-    # Second call should use cache (no additional API calls)
-    result2 = translator._get_with_cache(cache_key, fetch_func, default_value)
-    assert result2 == default_value
-    assert mock_get.call_count == 1  # Still only 1 call
-
-    # Results should be identical
-    assert result1 == result2
+    assert translator._get_cached_json(endpoint) is None
+    assert mock_get.call_count == 1
 
 
 @patch("httpx.Client.get")
@@ -1079,7 +981,7 @@ def test_get_translations_404_cached(mock_get: Mock, translator: Translator) -> 
     mock_get.side_effect = mock_not_found_error()
 
     tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv")  # Non-existent series
-    cache_key = f"translations:{tmdb_ids}"
+    cache_key = translator._response_cache_key("/tv/99999/translations")
 
     # Verify cache starts empty
     assert cache_key not in translator.cache
@@ -1089,9 +991,9 @@ def test_get_translations_404_cached(mock_get: Mock, translator: Translator) -> 
     assert translations1 == {}
     assert mock_get.call_count == 1
 
-    # Verify empty dict was cached
+    # Verify the not-found outcome was cached
     assert cache_key in translator.cache
-    assert translator.cache[cache_key] == {}
+    assert translator.cache[cache_key] == {"status": 404}
 
     # Second call should use cache (no additional API calls)
     translations2 = translator.get_translations(tmdb_ids)
@@ -1116,7 +1018,7 @@ def test_get_original_details_404_cached(
     mock_get.side_effect = not_found_error
 
     tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv")  # Non-existent series
-    cache_key = f"original_details:{tmdb_ids}"
+    cache_key = translator._response_cache_key("/tv/99999")
 
     # Verify cache starts empty
     assert cache_key not in translator.cache
@@ -1126,9 +1028,9 @@ def test_get_original_details_404_cached(
     assert details1 is None
     assert mock_get.call_count == 1
 
-    # Verify None was cached
+    # Verify the not-found outcome was cached
     assert cache_key in translator.cache
-    assert translator.cache[cache_key] is None
+    assert translator.cache[cache_key] == {"status": 404}
 
     # Second call should use cache (no additional API calls)
     details2 = translator.get_original_details(tmdb_ids)
@@ -1137,6 +1039,51 @@ def test_get_original_details_404_cached(
 
     # Results should be identical
     assert details1 == details2
+
+
+@pytest.mark.parametrize(
+    ("tmdb_ids", "endpoint"),
+    [
+        (TmdbIds(tmdb_id=99999, media_type="movie"), "/movie/99999"),
+        (
+            TmdbIds(tmdb_id=99999, media_type="tv", season=1, episode=1),
+            "/tv/99999/season/1/episode/1",
+        ),
+    ],
+)
+@patch("httpx.Client.get")
+def test_get_original_details_returns_none_when_resource_not_found(
+    mock_get: Mock,
+    translator: Translator,
+    tmdb_ids: TmdbIds,
+    endpoint: str,
+) -> None:
+    """Test movie and episode detail 404 responses return None."""
+    mock_get.side_effect = mock_not_found_error()
+
+    assert translator.get_original_details(tmdb_ids) is None
+    mock_get.assert_called_once_with(endpoint, params=None)
+
+
+@patch("httpx.Client.get")
+def test_get_original_details_episode_returns_none_when_series_not_found(
+    mock_get: Mock,
+    translator: Translator,
+    mock_episode_details_response: dict[str, Any],
+) -> None:
+    """Test episode details return None when its series is unavailable."""
+    episode_response = Mock()
+    episode_response.raise_for_status.return_value = None
+    episode_response.json.return_value = mock_episode_details_response
+    mock_get.side_effect = [episode_response, mock_not_found_error()]
+
+    tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv", season=1, episode=1)
+
+    assert translator.get_original_details(tmdb_ids) is None
+    assert mock_get.call_args_list == [
+        call("/tv/99999/season/1/episode/1", params=None),
+        call("/tv/99999", params=None),
+    ]
 
 
 @patch("httpx.Client.get")
@@ -1152,7 +1099,9 @@ def test_find_tmdb_id_404_cached(mock_get: Mock, translator: Translator) -> None
 
     external_id = "99999"
     external_source = "tvdb_id"
-    cache_key = f"external_find:{external_source}:{external_id}"
+    cache_key = translator._response_cache_key(
+        "/find/99999", {"external_source": "tvdb_id"}
+    )
 
     # Verify cache starts empty
     assert cache_key not in translator.cache
@@ -1162,9 +1111,9 @@ def test_find_tmdb_id_404_cached(mock_get: Mock, translator: Translator) -> None
     assert result1 is None
     assert mock_get.call_count == 1
 
-    # Verify None was cached
+    # Verify the not-found outcome was cached
     assert cache_key in translator.cache
-    assert translator.cache[cache_key] is None
+    assert translator.cache[cache_key] == {"status": 404}
 
     # Second call should use cache (no additional API calls)
     result2 = translator.find_tmdb_id_by_external_id(external_id, external_source)
