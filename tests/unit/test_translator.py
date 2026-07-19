@@ -4,7 +4,7 @@ import json
 from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import httpx
 import pytest
@@ -1035,6 +1035,51 @@ def test_get_original_details_404_cached(
 
     # Results should be identical
     assert details1 == details2
+
+
+@pytest.mark.parametrize(
+    ("tmdb_ids", "endpoint"),
+    [
+        (TmdbIds(tmdb_id=99999, media_type="movie"), "/movie/99999"),
+        (
+            TmdbIds(tmdb_id=99999, media_type="tv", season=1, episode=1),
+            "/tv/99999/season/1/episode/1",
+        ),
+    ],
+)
+@patch("httpx.Client.get")
+def test_get_original_details_returns_none_when_resource_not_found(
+    mock_get: Mock,
+    translator: Translator,
+    tmdb_ids: TmdbIds,
+    endpoint: str,
+) -> None:
+    """Test movie and episode detail 404 responses return None."""
+    mock_get.side_effect = mock_not_found_error()
+
+    assert translator.get_original_details(tmdb_ids) is None
+    mock_get.assert_called_once_with(endpoint, params=None)
+
+
+@patch("httpx.Client.get")
+def test_get_original_details_episode_returns_none_when_series_not_found(
+    mock_get: Mock,
+    translator: Translator,
+    mock_episode_details_response: dict[str, Any],
+) -> None:
+    """Test episode details return None when its series is unavailable."""
+    episode_response = Mock()
+    episode_response.raise_for_status.return_value = None
+    episode_response.json.return_value = mock_episode_details_response
+    mock_get.side_effect = [episode_response, mock_not_found_error()]
+
+    tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv", season=1, episode=1)
+
+    assert translator.get_original_details(tmdb_ids) is None
+    assert mock_get.call_args_list == [
+        call("/tv/99999/season/1/episode/1", params=None),
+        call("/tv/99999", params=None),
+    ]
 
 
 @patch("httpx.Client.get")
