@@ -25,12 +25,13 @@ from tests.conftest import (
 
 
 def translated_content(
-    title: str, description: str, language: str
+    title: str, description: str, language: str, tagline: str = ""
 ) -> TranslatedContent:
     """Create translated content with one language for both fields."""
     return TranslatedContent(
         title=TranslatedString(content=title, language=language),
         description=TranslatedString(content=description, language=language),
+        tagline=TranslatedString(content=tagline, language=language),
     )
 
 
@@ -773,13 +774,20 @@ def test_process_file_single_preferred_language_not_available(
 # Reprocessing Prevention Tests
 
 
-def create_custom_nfo(path: Path, title: str, plot: str, tmdb_id: int = 1396) -> None:
+def create_custom_nfo(
+    path: Path,
+    title: str,
+    plot: str,
+    tmdb_id: int = 1396,
+    tagline: str | None = None,
+) -> None:
     """Helper to create custom .nfo files for reprocessing tests."""
+    tagline_element = f"  <tagline>{tagline}</tagline>\n" if tagline is not None else ""
     content = f"""<?xml version="1.0" encoding="utf-8"?>
 <tvshow>
   <title>{title}</title>
   <plot>{plot}</plot>
-  <uniqueid type="tmdb" default="true">{tmdb_id}</uniqueid>
+{tagline_element}  <uniqueid type="tmdb" default="true">{tmdb_id}</uniqueid>
 </tvshow>
 """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -795,6 +803,171 @@ def parse_nfo_content(nfo_path: Path) -> tuple[str, str]:
     title = (title_elem.text or "") if title_elem is not None else ""
     plot = (plot_elem.text or "") if plot_elem is not None else ""
     return title, plot
+
+
+def test_process_file_adds_tagline_after_plot(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test a translated tagline is added after plot when missing from the NFO."""
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {
+        "zh-CN": translated_content(
+            "示例剧集", "这是一个示例描述", "zh-CN", "命运由你掌握。"
+        )
+    }
+    nfo_path = create_test_files("tvshow.nfo", test_data_dir / "tvshow.nfo")
+
+    result = processor.process_file(nfo_path)
+
+    assert result.file_modified is True
+    root = ET.parse(nfo_path).getroot()
+    assert root.findtext("tagline") == "命运由你掌握。"
+    assert [element.tag for element in root].index("tagline") == [
+        element.tag for element in root
+    ].index("plot") + 1
+
+
+def test_process_file_tagline_only_preserves_title_and_plot(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test a tagline-only translation leaves title and plot unchanged."""
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {
+        "zh-CN": translated_content("", "", "zh-CN", "命运由你掌握。")
+    }
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(
+        nfo_path, "Original Title", "Original plot", tagline="Old tagline"
+    )
+
+    first_result = processor.process_file(nfo_path)
+    second_result = processor.process_file(nfo_path)
+
+    assert first_result.file_modified is True
+    assert second_result.file_modified is False
+    title, plot = parse_nfo_content(nfo_path)
+    assert title == "Original Title"
+    assert plot == "Original plot"
+    assert ET.parse(nfo_path).getroot().findtext("tagline") == "命运由你掌握。"
+
+
+def test_process_file_preserves_tagline_when_tmdb_value_is_empty(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test an empty TMDB tagline cannot overwrite the existing NFO value."""
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {
+        "zh-CN": translated_content("中文标题", "中文剧情", "zh-CN")
+    }
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(
+        nfo_path, "Original Title", "Original plot", tagline="Old tagline"
+    )
+
+    result = processor.process_file(nfo_path)
+
+    assert result.file_modified is True
+    assert ET.parse(nfo_path).getroot().findtext("tagline") == "Old tagline"
+
+
+def test_process_file_restores_and_removes_added_tagline_from_backup(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test restoring a backup without a tagline removes an added tagline."""
+    nfo_path = test_data_dir / "tvshow.nfo"
+    backup_path = test_data_dir / "backups" / nfo_path.relative_to("/")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    create_custom_nfo(backup_path, "Original Title", "Original plot")
+    create_custom_nfo(
+        nfo_path,
+        "中文标题",
+        "中文剧情",
+        tagline="命运由你掌握。",
+    )
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {}
+
+    result = processor.process_file(nfo_path)
+
+    assert result.file_modified is True
+    root = ET.parse(nfo_path).getroot()
+    assert root.findtext("title") == "Original Title"
+    assert root.findtext("plot") == "Original plot"
+    assert root.findall("tagline") == []
+
+
+def test_process_file_episode_adds_tagline(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test episode NFOs receive non-empty TMDB taglines."""
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {
+        "zh-CN": translated_content(
+            "示例剧集", "这是一个示例描述", "zh-CN", "命运由你掌握。"
+        )
+    }
+    nfo_path = create_test_files("episode.nfo", test_data_dir / "episode.nfo")
+
+    result = processor.process_file(nfo_path)
+
+    assert result.file_modified is True
+    assert ET.parse(nfo_path).getroot().findtext("tagline") == "命运由你掌握。"
+
+
+def test_process_file_replaces_duplicate_taglines(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test rewriting collapses duplicate tagline elements into one value."""
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {
+        "zh-CN": translated_content("中文标题", "中文剧情", "zh-CN", "新宣传语")
+    }
+    nfo_path = test_data_dir / "tvshow.nfo"
+    create_custom_nfo(
+        nfo_path, "Original Title", "Original plot", tagline="Old tagline"
+    )
+    nfo_path.write_text(
+        nfo_path.read_text(encoding="utf-8").replace(
+            "  <tagline>Old tagline</tagline>",
+            "  <tagline>Old tagline</tagline>\n  <tagline>Duplicate tagline</tagline>",
+        ),
+        encoding="utf-8",
+    )
+
+    processor.process_file(nfo_path)
+
+    taglines = ET.parse(nfo_path).getroot().findall("tagline")
+    assert len(taglines) == 1
+    assert taglines[0].text == "新宣传语"
+
+
+def test_process_file_appends_tagline_when_plot_is_missing(
+    processor: MetadataProcessor, test_data_dir: Path
+) -> None:
+    """Test a tagline is appended when an NFO has no plot element."""
+    assert isinstance(processor.translator, Mock)
+    processor.translator.get_translations.return_value = {
+        "zh-CN": translated_content("", "", "zh-CN", "命运由你掌握。")
+    }
+    nfo_path = test_data_dir / "tvshow.nfo"
+    nfo_path.write_text(
+        """<tvshow>
+  <title>Original Title</title>
+  <uniqueid type="tmdb">1396</uniqueid>
+</tvshow>
+""",
+        encoding="utf-8",
+    )
+
+    processor.process_file(nfo_path)
+
+    root = ET.parse(nfo_path).getroot()
+    assert root[-1].tag == "tagline"
+    assert root[-1].text == "命运由你掌握。"
 
 
 def test_content_matches_preferred_translation_skips_processing(

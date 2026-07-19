@@ -53,6 +53,7 @@ def mock_series_response() -> dict[str, Any]:
                 "data": {
                     "name": "测试剧集",
                     "overview": "这是一个测试剧集的描述",
+                    "tagline": "命运由你掌握。",
                     "homepage": "",
                 },
             },
@@ -169,6 +170,7 @@ def test_get_translations_series_success(
     zh_cn = translations["zh-CN"]
     assert zh_cn.title.content == "测试剧集"
     assert zh_cn.description.content == "这是一个测试剧集的描述"
+    assert zh_cn.tagline.content == "命运由你掌握。"
     assert zh_cn.title.language == "zh-CN"
     assert zh_cn.description.language == "zh-CN"
 
@@ -232,7 +234,11 @@ def test_get_translations_movie_uses_movie_path_and_title(
             {
                 "iso_639_1": "zh",
                 "iso_3166_1": "CN",
-                "data": {"title": "电影标题", "overview": "电影剧情"},
+                "data": {
+                    "title": "电影标题",
+                    "overview": "电影剧情",
+                    "tagline": "电影宣传语",
+                },
             }
         ]
     }
@@ -243,6 +249,27 @@ def test_get_translations_movie_uses_movie_path_and_title(
     mock_get.assert_called_once_with("/movie/550/translations", params=None)
     assert translations["zh-CN"].title.content == "电影标题"
     assert translations["zh-CN"].description.content == "电影剧情"
+    assert translations["zh-CN"].tagline.content == "电影宣传语"
+
+
+def test_get_translations_keeps_tagline_only_record(translator: Translator) -> None:
+    """Test translations with only a tagline remain available for selection."""
+    translations = translator._parse_api_translations(
+        {
+            "translations": [
+                {
+                    "iso_639_1": "zh",
+                    "iso_3166_1": "CN",
+                    "data": {"tagline": "命运由你掌握。"},
+                }
+            ]
+        },
+        "movie",
+    )
+
+    assert translations["zh-CN"].title.content == ""
+    assert translations["zh-CN"].description.content == ""
+    assert translations["zh-CN"].tagline.content == "命运由你掌握。"
 
 
 @patch("httpx.Client.get")
@@ -909,6 +936,8 @@ def test_ensure_new_format_backward_compatibility(translator: Translator) -> Non
     assert zh_cn.title.language == "zh-CN"
     assert zh_cn.description.content == "旧格式描述"
     assert zh_cn.description.language == "zh-CN"
+    assert zh_cn.tagline.content == ""
+    assert zh_cn.tagline.language == "unknown"
 
     en_us = converted_data["en-US"]
     assert isinstance(en_us, TranslatedContent)
@@ -928,6 +957,26 @@ def test_ensure_new_format_backward_compatibility(translator: Translator) -> Non
     assert ja.title.language == "ja"
     assert ja.description.content == "新格式描述"
     assert ja.description.language == "ja"
+
+
+def test_ensure_new_format_adds_tagline_to_current_cached_format(
+    translator: Translator,
+) -> None:
+    """Test cached content without tagline gains its default value."""
+    cached_data = {
+        "zh-CN": SimpleNamespace(
+            title=TranslatedString(content="中文标题", language="zh-CN"),
+            description=TranslatedString(content="中文描述", language="zh-CN"),
+        )
+    }
+
+    converted_data = translator._ensure_new_format(cached_data)  # type: ignore[arg-type]
+
+    assert converted_data["zh-CN"].title.content == "中文标题"
+    assert converted_data["zh-CN"].description.content == "中文描述"
+    assert converted_data["zh-CN"].tagline == TranslatedString(
+        content="", language="unknown"
+    )
 
 
 def test_get_translations_cache_backward_compatibility_integration(

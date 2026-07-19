@@ -245,6 +245,13 @@ def test_advanced_translation_scenarios(
     else:
         possible_languages.add("zh")
 
+    # For Every Treasure Tells a Story (86965/364698) and Gen V (205715/417909),
+    # TMDB zh-CN has empty taglines, so we allow them to be empty.
+    require_tagline = tvdb_id not in {
+        EVERY_TREASURE_TELLS_A_STORY_TVDB_ID,
+        GEN_V_TVDB_ID,
+    }
+
     with (
         SeriesWithNfos(
             configured_sonarr_container, temp_sonarr_media_root, tvdb_id, images
@@ -258,6 +265,7 @@ def test_advanced_translation_scenarios(
             nfo_files,
             expected_language,
             possible_languages=list(possible_languages),
+            require_tagline=require_tagline,
         )
 
 

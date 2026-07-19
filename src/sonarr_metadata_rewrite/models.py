@@ -1,7 +1,7 @@
 """Data models for sonarr-metadata-rewrite."""
 
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -47,6 +47,9 @@ class TranslatedContent:
 
     title: TranslatedString
     description: TranslatedString
+    tagline: TranslatedString = field(
+        default_factory=lambda: TranslatedString(content="", language="unknown")
+    )
 
 
 @dataclass
@@ -66,6 +69,7 @@ class MetadataInfo:
     # Content
     title: str = ""
     description: str = ""
+    tagline: str = ""
 
     # Raw XML for writing
     xml_tree: ET.ElementTree | None = None
@@ -83,6 +87,7 @@ class EpisodeMetadataInfo:
     episode: int | None = None
     title: str = ""
     description: str = ""
+    tagline: str = ""
     xml_tree: ET.ElementTree | None = None
 
 

@@ -46,11 +46,13 @@ def test_translated_content() -> None:
     content = TranslatedContent(
         title=TranslatedString(content="示例剧集", language="zh-CN"),
         description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
+        tagline=TranslatedString(content="命运由你掌握。", language="zh-CN"),
     )
     assert content.title.content == "示例剧集"
     assert content.description.content == "这是一个示例描述"
     assert content.title.language == "zh-CN"
     assert content.description.language == "zh-CN"
+    assert content.tagline.content == "命运由你掌握。"
 
 
 def test_process_result() -> None:

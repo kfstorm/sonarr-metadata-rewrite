@@ -158,6 +158,7 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
         "root_tag": extracted.file_type,
         "title": extracted.title,
         "plot": extracted.description,
+        "tagline": extracted.tagline,
         "tmdb_id": extracted.tmdb_id,
         "tvdb_id": extracted.tvdb_id,
         "entries": [],
@@ -165,12 +166,20 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
 
     if extracted.episode_entries:
         metadata["entries"] = [
-            {"title": entry.title, "plot": entry.description}
+            {
+                "title": entry.title,
+                "plot": entry.description,
+                "tagline": entry.tagline,
+            }
             for entry in extracted.episode_entries
         ]
     else:
         metadata["entries"] = [
-            {"title": extracted.title, "plot": extracted.description}
+            {
+                "title": extracted.title,
+                "plot": extracted.description,
+                "tagline": extracted.tagline,
+            }
         ]
 
     return metadata
@@ -350,6 +359,7 @@ def verify_translations(
     nfo_files: list[Path],
     expected_language: str,
     possible_languages: list[str],
+    require_tagline: bool = True,
 ) -> None:
     """Wait for and verify translation results.
 
@@ -360,6 +370,7 @@ def verify_translations(
                            Must include "en" since Sonarr only generates English
                            metadata files initially, and English text remains if
                            translation fails.
+        require_tagline: Whether a tagline is expected and should be validated.
 
     Raises:
         AssertionError: If files don't match expected state
@@ -422,21 +433,40 @@ def verify_translations(
 
                 return threshold_match, detected_langs
 
+            # Verify tagline status. Single episodes do not have taglines.
+            # English metadata (e.g. original or disabled NFO rewrite) has no tagline.
+            is_episode = metadata.get("root_tag") == "episodedetails"
+            is_english = expected_language == "en"
+
             for entry in metadata.get("entries", []):
                 title = entry.get("title", "").strip()
                 plot = entry.get("plot", "").strip()
+                tagline = entry.get("tagline", "").strip()
 
                 # Ensure we have content to detect
                 assert title, f"NFO file {nfo_file} has no title"
                 assert plot, f"NFO file {nfo_file} has no plot"
 
-                # Detect language in title and plot
+                if is_episode or is_english:
+                    assert not tagline, (
+                        f"Expected empty tagline in {nfo_file.name} for "
+                        f"episode={is_episode}/english={is_english}, got '{tagline}'"
+                    )
+                elif require_tagline:
+                    assert tagline, f"NFO file {nfo_file} has no tagline"
+
+                # Detect language in title, plot, and tagline
                 try:
                     title_matches, title_langs = check_language(title)
                     plot_matches, plot_langs = check_language(plot)
 
-                    # Both title and plot must match
-                    if not (title_matches and plot_matches):
+                    tagline_matches = True
+                    tagline_langs = None
+                    if tagline:
+                        tagline_matches, tagline_langs = check_language(tagline)
+
+                    # Both title and plot must match, tagline must also match if present
+                    if not (title_matches and plot_matches and tagline_matches):
                         error_parts = [
                             f"Language mismatch in {nfo_file.name}. "
                             f"Expected {expected_language}"
@@ -447,15 +477,23 @@ def verify_translations(
                             error_parts.append(f"title_langs={title_langs}")
                         if not plot_matches and plot_langs is not None:
                             error_parts.append(f"plot_langs={plot_langs}")
+                        if not tagline_matches and tagline_langs is not None:
+                            error_parts.append(f"tagline_langs={tagline_langs}")
 
-                        error_parts.extend([f"Title: '{title}'", f"Plot: '{plot}'"])
+                        error_parts.extend(
+                            [
+                                f"Title: '{title}'",
+                                f"Plot: '{plot}'",
+                                f"Tagline: '{tagline}'",
+                            ]
+                        )
 
                         raise AssertionError(". ".join(error_parts))
 
                 except FastLangdetectError as e:
                     raise AssertionError(
                         f"Language detection failed for {nfo_file}: {e}. "
-                        f"Title: '{title}', Plot: '{plot}'"
+                        f"Title: '{title}', Plot: '{plot}', Tagline: '{tagline}'"
                     ) from e
 
     check_translation_state()

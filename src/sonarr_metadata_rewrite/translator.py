@@ -157,9 +157,10 @@ class Translator:
             title_key = "title" if media_type == "movie" else "name"
             title = data.get(title_key, "").strip()
             description = data.get("overview", "").strip()
+            tagline = data.get("tagline", "").strip()
 
-            # Skip if both title and description are empty
-            if not title and not description:
+            # Skip records without any localizable metadata.
+            if not title and not description and not tagline:
                 continue
 
             translations[full_language_code] = TranslatedContent(
@@ -167,6 +168,7 @@ class Translator:
                 description=TranslatedString(
                     content=description, language=full_language_code
                 ),
+                tagline=TranslatedString(content=tagline, language=full_language_code),
             )
 
         return translations
@@ -273,16 +275,42 @@ class Translator:
         converted_data = {}
 
         for lang_code, content in cached_data.items():
-            if isinstance(content.title, str):
+            has_tagline = hasattr(content, "tagline")
+            tagline = getattr(
+                content,
+                "tagline",
+                TranslatedString(content="", language="unknown"),
+            )
+            if (
+                isinstance(content.title, str)
+                or not has_tagline
+                or not isinstance(tagline, TranslatedString)
+            ):
                 # Old format - convert to new format
                 converted_content = TranslatedContent(
-                    title=TranslatedString(
-                        content=content.title,
-                        language=getattr(content, "language", lang_code),
+                    title=(
+                        TranslatedString(
+                            content=content.title,
+                            language=getattr(content, "language", lang_code),
+                        )
+                        if isinstance(content.title, str)
+                        else content.title
                     ),
-                    description=TranslatedString(
-                        content=str(content.description),
-                        language=getattr(content, "language", lang_code),
+                    description=(
+                        TranslatedString(
+                            content=str(content.description),
+                            language=getattr(content, "language", lang_code),
+                        )
+                        if isinstance(content.description, str)
+                        else content.description
+                    ),
+                    tagline=(
+                        tagline
+                        if isinstance(tagline, TranslatedString)
+                        else TranslatedString(
+                            content=str(tagline),
+                            language=getattr(content, "language", lang_code),
+                        )
                     ),
                 )
                 converted_data[lang_code] = converted_content
