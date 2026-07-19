@@ -128,6 +128,49 @@ class ArrClient:
 
         check_command()
 
+    def _configure_metadata_settings(
+        self, provider_names: tuple[str, ...], field_values: dict[str, bool]
+    ) -> bool:
+        """Enable one metadata provider after Arr finishes registering it."""
+
+        @retry(timeout=30.0, interval=0.5, log_interval=2.0)
+        def get_provider() -> dict[str, Any]:
+            response = self._make_request("GET", "/api/v3/metadata")
+            response.raise_for_status()
+            provider = next(
+                (
+                    config
+                    for config in response.json()
+                    if any(
+                        name in config.get("name", "").lower()
+                        for name in provider_names
+                    )
+                    and set(field_values).issubset(
+                        {
+                            field.get("name", "").lower()
+                            for field in config.get("fields", [])
+                        }
+                    )
+                ),
+                None,
+            )
+            assert provider is not None, (
+                f"{self.service_name} metadata providers are not initialized yet"
+            )
+            return cast(dict[str, Any], provider)
+
+        provider = get_provider()
+        provider["enable"] = True
+        for field in provider.get("fields", []):
+            field_name = field.get("name", "").lower()
+            if field_name in field_values:
+                field["value"] = field_values[field_name]
+
+        response = self._make_request(
+            "PUT", f"/api/v3/metadata/{provider['id']}", json=provider
+        )
+        return response.is_success
+
     def _assert_command_completed(self, command: dict[str, Any]) -> None:
         """Validate command state, retrying active commands via AssertionError."""
         status = str(command.get("status", "")).lower()

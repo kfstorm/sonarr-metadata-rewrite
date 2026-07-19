@@ -43,33 +43,66 @@ def test_arr_command_failure_is_not_retried(
         client.close()
 
 
-def test_radarr_metadata_configuration_waits_for_provider() -> None:
-    """Wait until Radarr finishes registering metadata providers."""
-    client = RadarrClient("http://radarr.invalid")
-    provider = {
-        "id": 4,
-        "name": "Kodi (XMBC) / Emby",
-        "fields": [
-            {"name": "movieMetadata", "value": False},
-            {"name": "movieImages", "value": False},
-            {"name": "UseMovieNfo", "value": False},
-        ],
-    }
-    responses = [
-        httpx.Response(200, json=[], request=httpx.Request("GET", "http://radarr")),
-        httpx.Response(
-            200, json=[provider], request=httpx.Request("GET", "http://radarr")
+@pytest.mark.parametrize(
+    ("client_class", "provider", "is_radarr"),
+    [
+        (
+            RadarrClient,
+            {
+                "id": 4,
+                "name": "Kodi (XMBC) / Emby",
+                "fields": [
+                    {"name": "movieMetadata", "value": False},
+                    {"name": "movieImages", "value": False},
+                    {"name": "UseMovieNfo", "value": False},
+                ],
+            },
+            True,
         ),
-        httpx.Response(202, request=httpx.Request("PUT", "http://radarr")),
+        (
+            SonarrClient,
+            {
+                "id": 5,
+                "name": "Kodi (XBMC)",
+                "fields": [
+                    {"name": "seriesMetadata", "value": False},
+                    {"name": "episodeMetadata", "value": False},
+                    {"name": "episodeImages", "value": False},
+                    {"name": "seriesImages", "value": False},
+                    {"name": "seasonImages", "value": False},
+                ],
+            },
+            False,
+        ),
+    ],
+)
+def test_arr_metadata_configuration_waits_for_provider(
+    client_class: type[RadarrClient] | type[SonarrClient],
+    provider: dict[str, Any],
+    is_radarr: bool,
+) -> None:
+    """Wait until either Arr platform finishes registering metadata providers."""
+    client = client_class("http://arr.invalid")
+    responses = [
+        httpx.Response(200, json=[], request=httpx.Request("GET", "http://arr")),
+        httpx.Response(
+            200, json=[provider], request=httpx.Request("GET", "http://arr")
+        ),
+        httpx.Response(202, request=httpx.Request("PUT", "http://arr")),
     ]
     make_request = MagicMock(side_effect=responses)
 
     try:
         with (
-            patch("tests.integration.fixtures.radarr_client.retry", immediate_retry),
+            patch("tests.integration.fixtures.arr_client.retry", immediate_retry),
             patch.object(client, "_make_request", make_request),
         ):
-            assert client.configure_metadata_settings(use_movie_nfo=True)
+            if is_radarr:
+                assert isinstance(client, RadarrClient)
+                assert client.configure_metadata_settings(use_movie_nfo=True)
+            else:
+                assert isinstance(client, SonarrClient)
+                assert client.configure_metadata_settings()
     finally:
         client.close()
 

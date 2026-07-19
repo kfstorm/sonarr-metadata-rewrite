@@ -3,7 +3,6 @@
 from pathlib import Path
 from typing import Any, cast
 
-from sonarr_metadata_rewrite.retry_utils import retry
 from tests.integration.fixtures.arr_client import ArrClient
 
 
@@ -78,49 +77,14 @@ class RadarrClient(ArrClient):
 
     def configure_metadata_settings(self, use_movie_nfo: bool) -> bool:
         """Enable Kodi/Emby movie metadata and images for selected NFO mode."""
-        field_values = {
-            "moviemetadata": True,
-            "movieimages": True,
-            "usemovienfo": use_movie_nfo,
-        }
-
-        @retry(timeout=30.0, interval=0.5, log_interval=2.0)
-        def get_provider() -> dict[str, Any]:
-            response = self._make_request("GET", "/api/v3/metadata")
-            response.raise_for_status()
-            provider = next(
-                (
-                    config
-                    for config in response.json()
-                    if any(
-                        name in config.get("name", "").lower()
-                        for name in ("kodi", "xbmc", "emby")
-                    )
-                    and set(field_values).issubset(
-                        {
-                            field.get("name", "").lower()
-                            for field in config.get("fields", [])
-                        }
-                    )
-                ),
-                None,
-            )
-            assert provider is not None, (
-                "Radarr metadata providers are not initialized yet"
-            )
-            return cast(dict[str, Any], provider)
-
-        provider = get_provider()
-        provider["enable"] = True
-        for field in provider["fields"]:
-            field_name = field.get("name", "").lower()
-            if field_name in field_values:
-                field["value"] = field_values[field_name]
-
-        response = self._make_request(
-            "PUT", f"/api/v3/metadata/{provider['id']}", json=provider
+        return self._configure_metadata_settings(
+            provider_names=("kodi", "xbmc", "emby"),
+            field_values={
+                "moviemetadata": True,
+                "movieimages": True,
+                "usemovienfo": use_movie_nfo,
+            },
         )
-        return response.is_success
 
     def remove_movie(
         self,

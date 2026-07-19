@@ -112,51 +112,16 @@ class SonarrClient(ArrClient):
         Returns:
             True if configuration was successful
         """
-        # Get existing metadata settings
-        response = self._make_request("GET", "/api/v3/metadata")
-        if not response.is_success:
-            print(f"Failed to get metadata settings: {response.status_code}")
-            return False
-
-        metadata_configs = response.json()
-
-        # Look for Kodi/XBMC metadata provider and enable it
-        kodi_config = None
-        for config in metadata_configs:
-            config_name = config.get("name", "").lower()
-            if any(name in config_name for name in ["kodi", "xbmc"]):
-                kodi_config = config
-                break
-
-        if not kodi_config:
-            raise ValueError("No Kodi/XBMC metadata provider found")
-
-        # Enable the provider itself
-        kodi_config["enable"] = True
-
-        # Update the individual field values in the fields array
-        for field in kodi_config.get("fields", []):
-            field_name = field.get("name")
-            if field_name in [
-                "seriesMetadata",
-                "episodeMetadata",
-                "episodeImages",
-                "seriesImages",
-                "seasonImages",
-            ]:
-                field["value"] = True
-
-        # Update the configuration
-        response = self._make_request(
-            "PUT", f"/api/v3/metadata/{kodi_config['id']}", json=kodi_config
+        return self._configure_metadata_settings(
+            provider_names=("kodi", "xbmc"),
+            field_values={
+                "seriesmetadata": True,
+                "episodemetadata": True,
+                "episodeimages": True,
+                "seriesimages": True,
+                "seasonimages": True,
+            },
         )
-
-        if response.is_success:
-            return True
-        else:
-            print(f"Failed to update metadata settings: {response.status_code}")
-            print(f"Response body: {response.text}")
-            return False
 
     def remove_series(
         self,
