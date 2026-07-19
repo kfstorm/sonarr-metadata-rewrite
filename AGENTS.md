@@ -257,3 +257,13 @@ scripts/ (development automation)
   shutdown support
 - **Reprocessing Avoidance**: Implemented to prevent unnecessary API calls and
   file writes for both text and images
+
+### Release Process
+
+1. Ensure all changes merged to `main`
+2. Create annotated tag: `git tag -a v<major>.<minor>.<patch> -m "Release v<major>.<minor>.<patch>"`
+3. Push tag: `git push origin v<major>.<minor>.<patch>`
+4. GitHub Actions auto-creates GitHub Release with auto-generated notes, builds
+   multi-arch Docker images, and syncs Docker Hub description
+5. Run `github-release-key-changes` skill to manually add `## Key Changes`
+   section to release notes
