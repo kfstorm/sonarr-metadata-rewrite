@@ -1,8 +1,8 @@
 """TMDB API client with translation caching."""
 
 import time
-from collections.abc import Callable
 from typing import Any, cast
+from urllib.parse import urlencode
 
 import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -18,6 +18,8 @@ from sonarr_metadata_rewrite.models import (
 
 class Translator:
     """TMDB API client with caching and rate limiting."""
+
+    _RESPONSE_CACHE_NAMESPACE = "tmdb:v3:response:v1"
 
     def __init__(self, settings: Settings, cache: Cache):
         """Initialize client and cache settings."""
@@ -40,17 +42,12 @@ class Translator:
         Returns:
             Dictionary mapping language codes to TranslatedContent objects
         """
-        cache_key = f"translations:{tmdb_ids}"
+        endpoint = f"/{tmdb_ids}/translations"
+        api_data = self._get_cached_json(endpoint)
+        if api_data is None:
+            return {}
 
-        def fetch_translations() -> dict[str, TranslatedContent]:
-            endpoint = f"/{tmdb_ids}/translations"
-            api_data = self._fetch_with_retry(endpoint)
-            return self._parse_api_translations(api_data, tmdb_ids.media_type)
-
-        translations = self._get_with_cache(
-            cache_key, fetch_translations, default_on_404={}
-        )
-        return self._ensure_new_format(translations)
+        return self._parse_api_translations(api_data, tmdb_ids.media_type)
 
     def _fetch_with_retry(
         self, endpoint: str, params: dict[str, Any] | None = None
@@ -98,41 +95,56 @@ class Translator:
                 raise
             return error.response, error
 
-    def _get_with_cache(
-        self,
-        cache_key: str,
-        fetch_func: Callable[[], Any],
-        default_on_404: Any = None,
-    ) -> Any:
-        """Generic cache wrapper that handles 404 caching.
-
-        Args:
-            cache_key: Cache key to use
-            fetch_func: Function that performs the API fetch
-            default_on_404: Value to cache and return on 404 errors
-
-        Returns:
-            Cached or fetched data, or default_on_404 for 404 responses
-        """
-        # Check cache first
-        if cache_key in self.cache:
-            return self.cache[cache_key]
+    def _get_cached_json(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """Get one TMDB JSON response, caching only 200 and 404 outcomes."""
+        cache_key = self._response_cache_key(endpoint, params)
+        cached_outcome = self.cache.get(cache_key)
+        if cached_outcome is not None:
+            if cached_outcome["status"] == httpx.codes.NOT_FOUND:
+                return None
+            return cast(dict[str, Any], cached_outcome["body"])
 
         try:
-            # Execute the fetch function
-            result = fetch_func()
-            # Cache successful result
-            self.cache.set(cache_key, result, expire=self.cache_expire_seconds)
-            return result
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == httpx.codes.NOT_FOUND:
-                # Cache 404 with default value
-                self.cache.set(
-                    cache_key, default_on_404, expire=self.cache_expire_seconds
-                )
-                return default_on_404
-            # Re-raise other HTTP errors
-            raise
+            api_data = self._fetch_with_retry(endpoint, params)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code != httpx.codes.NOT_FOUND:
+                raise
+            self.cache.set(
+                cache_key,
+                {"status": httpx.codes.NOT_FOUND},
+                expire=self.cache_expire_seconds,
+            )
+            return None
+
+        self.cache.set(
+            cache_key,
+            {"status": httpx.codes.OK, "body": api_data},
+            expire=self.cache_expire_seconds,
+        )
+        return api_data
+
+    def _response_cache_key(
+        self, endpoint: str, params: dict[str, Any] | None = None
+    ) -> str:
+        """Build a stable cache key for one TMDB GET request."""
+        query = self._canonical_query_params(params)
+        query_suffix = f"?{query}" if query else ""
+        return f"{self._RESPONSE_CACHE_NAMESPACE}:GET:{endpoint}{query_suffix}"
+
+    @staticmethod
+    def _canonical_query_params(params: dict[str, Any] | None) -> str:
+        """Return canonical URL query parameters for a cache key."""
+        if not params:
+            return ""
+
+        query_items: list[tuple[str, str]] = []
+        for name, value in sorted(params.items()):
+            values = value if isinstance(value, (list, tuple)) else [value]
+            query_items.extend((name, str(item)) for item in values if item is not None)
+
+        return urlencode(query_items)
 
     def _parse_api_translations(
         self, api_data: dict[str, Any], media_type: str
@@ -182,45 +194,39 @@ class Translator:
         Returns:
             Tuple of (original_language, original_title) if found, None otherwise
         """
-        cache_key = f"original_details:{tmdb_ids}"
+        # For episodes, we need both episode name and series original language.
+        if tmdb_ids.media_type == "movie":
+            api_data = self._get_cached_json(f"/movie/{tmdb_ids.tmdb_id}")
+            if api_data is None:
+                return None
+            original_language = api_data.get("original_language", "")
+            original_title = api_data.get("original_title", "")
+        elif tmdb_ids.season is not None and tmdb_ids.episode is not None:
+            episode_endpoint = (
+                f"/tv/{tmdb_ids.tmdb_id}/season/{tmdb_ids.season}"
+                f"/episode/{tmdb_ids.episode}"
+            )
+            episode_data = self._get_cached_json(episode_endpoint)
+            if episode_data is None:
+                return None
 
-        def fetch_details() -> tuple[str, str] | None:
-            # For episodes, we need both episode name and series original language
-            if tmdb_ids.media_type == "movie":
-                api_data = self._fetch_with_retry(f"/movie/{tmdb_ids.tmdb_id}")
-                original_language = api_data.get("original_language", "")
-                original_title = api_data.get("original_title", "")
-            elif tmdb_ids.season is not None and tmdb_ids.episode is not None:
-                # Get episode details for the name
-                episode_endpoint = (
-                    f"/tv/{tmdb_ids.tmdb_id}/season/{tmdb_ids.season}"
-                    f"/episode/{tmdb_ids.episode}"
-                )
-                episode_data = self._fetch_with_retry(episode_endpoint)
+            series_data = self._get_cached_json(f"/tv/{tmdb_ids.tmdb_id}")
+            if series_data is None:
+                return None
 
-                # Get series details for the original language
-                series_endpoint = f"/tv/{tmdb_ids.tmdb_id}"
-                series_data = self._fetch_with_retry(series_endpoint)
+            original_language = series_data.get("original_language", "")
+            original_title = episode_data.get("name", "")
+        else:
+            api_data = self._get_cached_json(f"/tv/{tmdb_ids.tmdb_id}")
+            if api_data is None:
+                return None
+            original_language = api_data.get("original_language", "")
+            original_title = api_data.get("original_name", "")
 
-                original_language = series_data.get("original_language", "")
-                original_title = episode_data.get("name", "")
-            else:
-                # Series details endpoint
-                endpoint = f"/tv/{tmdb_ids.tmdb_id}"
-                api_data = self._fetch_with_retry(endpoint)
+        if original_language and original_title:
+            return (original_language, original_title.strip())
 
-                original_language = api_data.get("original_language", "")
-                original_title = api_data.get("original_name", "")
-
-            if original_language and original_title:
-                return (original_language, original_title.strip())
-
-            return None
-
-        return cast(
-            tuple[str, str] | None,
-            self._get_with_cache(cache_key, fetch_details, default_on_404=None),
-        )
+        return None
 
     def find_tmdb_id_by_external_id(
         self, external_id: str, external_source: str
@@ -234,91 +240,19 @@ class Translator:
         Returns:
             TMDB series ID if found, None otherwise
         """
-        cache_key = f"external_find:{external_source}:{external_id}"
-
-        def fetch_external_id() -> int | None:
-            # Use TMDB's find endpoint with external source
-            endpoint = f"/find/{external_id}"
-            params = {"external_source": external_source}
-
-            api_data = self._fetch_with_retry(endpoint, params)
-
-            # Look for TV results
-            tv_results = api_data.get("tv_results", [])
-            if tv_results:
-                tmdb_id = tv_results[0].get("id")
-                if tmdb_id:
-                    return int(tmdb_id)
-
+        endpoint = f"/find/{external_id}"
+        api_data = self._get_cached_json(endpoint, {"external_source": external_source})
+        if api_data is None:
             return None
 
-        return cast(
-            int | None,
-            self._get_with_cache(cache_key, fetch_external_id, default_on_404=None),
-        )
+        # Look for TV results.
+        tv_results = api_data.get("tv_results", [])
+        if tv_results:
+            tmdb_id = tv_results[0].get("id")
+            if tmdb_id:
+                return int(tmdb_id)
 
-    def _ensure_new_format(
-        self, cached_data: dict[str, TranslatedContent]
-    ) -> dict[str, TranslatedContent]:
-        """Ensure cached data is in new format with TranslatedString objects.
-
-        This handles backward compatibility for cache data from before the
-        model change where TranslatedContent had string fields instead of
-        TranslatedString objects.
-
-        Args:
-            cached_data: Dictionary of cached translation data
-
-        Returns:
-            Dictionary with TranslatedContent objects in new format
-        """
-        converted_data = {}
-
-        for lang_code, content in cached_data.items():
-            has_tagline = hasattr(content, "tagline")
-            tagline = getattr(
-                content,
-                "tagline",
-                TranslatedString(content="", language="unknown"),
-            )
-            if (
-                isinstance(content.title, str)
-                or not has_tagline
-                or not isinstance(tagline, TranslatedString)
-            ):
-                # Old format - convert to new format
-                converted_content = TranslatedContent(
-                    title=(
-                        TranslatedString(
-                            content=content.title,
-                            language=getattr(content, "language", lang_code),
-                        )
-                        if isinstance(content.title, str)
-                        else content.title
-                    ),
-                    description=(
-                        TranslatedString(
-                            content=str(content.description),
-                            language=getattr(content, "language", lang_code),
-                        )
-                        if isinstance(content.description, str)
-                        else content.description
-                    ),
-                    tagline=(
-                        tagline
-                        if isinstance(tagline, TranslatedString)
-                        else TranslatedString(
-                            content=str(tagline),
-                            language=getattr(content, "language", lang_code),
-                        )
-                    ),
-                )
-                converted_data[lang_code] = converted_content
-            else:
-                # Already in new format
-                converted_data[lang_code] = content
-
-        return converted_data
+        return None
 
     def select_best_image(
         self,
@@ -346,14 +280,9 @@ class Translator:
         # Fetch images from TMDB
         # NOTE: Do NOT pass include_image_language due to TMDB API bug;
         # fetch all images and filter locally in Python.
-        # Cache by endpoint only since server response is independent of
-        # preference ordering; selection happens client-side.
-        cache_key = f"images:{endpoint}"
-
-        def fetch_images() -> dict[str, Any]:
-            return self._fetch_with_retry(endpoint)
-
-        api_data = self._get_with_cache(cache_key, fetch_images, default_on_404={})
+        api_data = self._get_cached_json(endpoint)
+        if api_data is None:
+            return None
 
         # Select from appropriate array
         if kind == "poster":
