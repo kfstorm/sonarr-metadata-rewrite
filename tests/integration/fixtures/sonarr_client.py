@@ -59,7 +59,11 @@ class SonarrClient(ArrClient):
 
         response = self._make_request("POST", "/api/v3/series", json=add_data)
         response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+        added_series = cast(dict[str, Any], response.json())
+        self._wait_for_queued_command(
+            "RefreshSeries", "seriesIds", cast(int, added_series["id"])
+        )
+        return added_series
 
     def trigger_disk_scan(self, series_id: int) -> bool:
         """Trigger a disk scan for episode files.
@@ -76,7 +80,12 @@ class SonarrClient(ArrClient):
         }
 
         response = self._make_request("POST", "/api/v3/command", json=command_data)
-        return response.status_code in (200, 201)
+        if response.status_code not in (200, 201):
+            return False
+
+        command = cast(dict[str, Any], response.json())
+        self._wait_for_command(cast(int, command["id"]))
+        return True
 
     def get_episode_files(self, series_id: int) -> list[dict[str, Any]]:
         """Get episode files for a series to verify imports.

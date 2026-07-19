@@ -80,6 +80,69 @@ class ArrClient:
             )
         return True
 
+    def _wait_for_queued_command(
+        self,
+        command_name: str,
+        resource_id_field: str,
+        resource_id: int,
+        timeout: float = 30.0,
+    ) -> None:
+        """Wait for an Arr command queued automatically for one resource."""
+
+        @retry(
+            timeout=timeout,
+            interval=0.5,
+            log_interval=2.0,
+            exceptions=(AssertionError, httpx.RequestError),
+        )
+        def check_command() -> None:
+            response = self._make_request("GET", "/api/v3/command")
+            response.raise_for_status()
+            matching_commands = [
+                command
+                for command in response.json()
+                if command.get("name", "").lower() == command_name.lower()
+                and resource_id in command.get("body", {}).get(resource_id_field, [])
+            ]
+            assert matching_commands, (
+                f"{command_name} command for {resource_id} not queued yet"
+            )
+            command = max(matching_commands, key=lambda item: item["id"])
+            self._assert_command_completed(command)
+
+        check_command()
+
+    def _wait_for_command(self, command_id: int, timeout: float = 30.0) -> None:
+        """Wait for one Arr command to complete successfully."""
+
+        @retry(
+            timeout=timeout,
+            interval=0.5,
+            log_interval=2.0,
+            exceptions=(AssertionError, httpx.RequestError),
+        )
+        def check_command() -> None:
+            response = self._make_request("GET", f"/api/v3/command/{command_id}")
+            response.raise_for_status()
+            self._assert_command_completed(response.json())
+
+        check_command()
+
+    def _assert_command_completed(self, command: dict[str, Any]) -> None:
+        """Validate command state, retrying active commands via AssertionError."""
+        status = str(command.get("status", "")).lower()
+        if status == "completed":
+            return
+        if status in {"failed", "aborted"}:
+            raise RuntimeError(
+                f"{self.service_name} command {command.get('id')} ended with status "
+                f"{status}: {command.get('message', '')}"
+            )
+        raise AssertionError(
+            f"{self.service_name} command {command.get('id')} still has status "
+            f"{status or 'unknown'}"
+        )
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()

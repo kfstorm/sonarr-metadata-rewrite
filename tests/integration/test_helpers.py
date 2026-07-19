@@ -1,6 +1,7 @@
 """Helper functions for integration tests."""
 
 import shutil
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, cast
 
@@ -211,6 +212,7 @@ class SeriesWithNfos:
         self.expected_image_filenames = expected_image_filenames
         self.episodes = episodes or [("Episode 1", 1, 1), ("Episode 2", 1, 2)]
         self.series: SeriesManager | None = None
+        self._stack: ExitStack | None = None
 
     def __enter__(self) -> tuple[list[Path], list[Path]]:
         """Set up series and return series info.
@@ -218,48 +220,44 @@ class SeriesWithNfos:
         Returns:
             Tuple of (nfo_files, image_files)
         """
-        self.series = SeriesManager(self.sonarr, self.tvdb_id, "/tv", self.media_root)
-        self.series.__enter__()
-
-        # Create fake episode files to trigger Sonarr processing
-        episode_files = []
-        for title, season, episode in self.episodes:
-            episode_file = create_fake_episode_file(
-                self.media_root, self.series.slug, season, episode, title
+        with ExitStack() as stack:
+            self.series = stack.enter_context(
+                SeriesManager(self.sonarr, self.tvdb_id, "/tv", self.media_root)
             )
-            episode_files.append(episode_file)
 
-        # Trigger disk scan to detect episode files
-        series_path = self.media_root / self.series.slug
-        scan_success = self.sonarr.trigger_disk_scan(self.series.id)
-        if not scan_success:
-            raise RuntimeError("Failed to trigger disk scan")
+            # Create fake episode files to trigger Sonarr processing
+            episode_files = []
+            for title, season, episode in self.episodes:
+                episode_file = create_fake_episode_file(
+                    self.media_root, self.series.slug, season, episode, title
+                )
+                episode_files.append(episode_file)
 
-        # Wait for disk scan to complete and import files
-        @retry(timeout=15.0, interval=1.0, log_interval=2.0)
-        def check_disk_scan_complete() -> None:
-            assert self.series is not None
+            # Trigger disk scan to detect episode files and wait for it to finish
+            series_path = self.media_root / self.series.slug
+            scan_success = self.sonarr.trigger_disk_scan(self.series.id)
+            if not scan_success:
+                raise RuntimeError("Failed to trigger disk scan")
+
             imported_files = self.sonarr.get_episode_files(self.series.id)
             assert len(imported_files) >= len(episode_files), (
-                f"Disk scan still in progress: expected {len(episode_files)} "
-                f"episode files, but only {len(imported_files)} imported so far"
+                f"Expected {len(episode_files)} imported episode files after scan, "
+                f"but found {len(imported_files)}"
             )
 
-        check_disk_scan_complete()
+            # NFO files are generated automatically during series/episode import
+            expected_nfo_count = len(episode_files) + 1  # episodes + series
+            nfo_files = wait_for_nfo_files(
+                series_path, expected_nfo_count, timeout=30.0
+            )
 
-        # NFO files are generated automatically during series/episode import
-
-        # Wait for .nfo files to be generated
-        expected_nfo_count = len(episode_files) + 1  # episodes + series
-        series_path = self.media_root / self.series.slug
-        nfo_files = wait_for_nfo_files(series_path, expected_nfo_count, timeout=30.0)
-
-        return nfo_files, [series_path / f for f in self.expected_image_filenames]
+            self._stack = stack.pop_all()
+            return nfo_files, [series_path / f for f in self.expected_image_filenames]
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Clean up series."""
-        if self.series:
-            self.series.__exit__(exc_type, exc_val, exc_tb)
+        if self._stack:
+            self._stack.__exit__(exc_type, exc_val, exc_tb)
 
 
 class MovieWithNfos:
@@ -278,46 +276,54 @@ class MovieWithNfos:
         self.tmdb_id = tmdb_id
         self.use_movie_nfo = use_movie_nfo
         self.movie: MovieManager | None = None
+        self._stack: ExitStack | None = None
 
     def __enter__(self) -> tuple[Path, list[Path]]:
         """Import movie and return Radarr-created NFO and artwork paths."""
-        self.movie = MovieManager(self.radarr, self.tmdb_id, "/movies", self.media_root)
-        self.movie.__enter__()
-        movie_file = create_fake_movie_file(self.movie)
-        if not self.radarr.trigger_disk_scan(self.movie.id):
-            raise RuntimeError("Failed to trigger Radarr disk scan")
+        with ExitStack() as stack:
+            self.movie = stack.enter_context(
+                MovieManager(self.radarr, self.tmdb_id, "/movies", self.media_root)
+            )
+            movie_file = create_fake_movie_file(self.movie)
+            if not self.radarr.trigger_disk_scan(self.movie.id):
+                raise RuntimeError("Failed to trigger Radarr disk scan")
 
-        @retry(timeout=30.0, interval=1.0, log_interval=2.0)
-        def wait_for_import() -> None:
-            assert self.movie is not None
-            movie_data = self.radarr.get_movie(self.movie.id)
-            assert movie_data.get("hasFile"), "Radarr scan has not imported movie file"
+            @retry(timeout=30.0, interval=1.0, log_interval=2.0)
+            def wait_for_import() -> None:
+                assert self.movie is not None
+                movie_data = self.radarr.get_movie(self.movie.id)
+                assert movie_data.get("hasFile"), (
+                    "Radarr scan has not imported movie file"
+                )
 
-        wait_for_import()
-        nfo_file = (
-            self.movie.directory / "movie.nfo"
-            if self.use_movie_nfo
-            else movie_file.with_suffix(".nfo")
-        )
-        image_files = [
-            self.movie.directory / "poster.jpg",
-        ]
-        # Radarr's current TMDB metadata output creates poster/fanart but not
-        # clearlogo. Movie clearlogo rewriting remains covered by unit tests.
+            wait_for_import()
+            nfo_file = (
+                self.movie.directory / "movie.nfo"
+                if self.use_movie_nfo
+                else movie_file.with_suffix(".nfo")
+            )
+            image_files = [
+                self.movie.directory / "poster.jpg",
+            ]
+            # Radarr's current TMDB metadata output creates poster/fanart but not
+            # clearlogo. Movie clearlogo rewriting remains covered by unit tests.
 
-        @retry(timeout=30.0, interval=0.5, log_interval=2.0)
-        def wait_for_radarr_assets() -> None:
-            assert nfo_file.exists(), f"Radarr did not create NFO: {nfo_file}"
-            for image_file in image_files:
-                assert image_file.exists(), f"Radarr did not create image: {image_file}"
+            @retry(timeout=30.0, interval=0.5, log_interval=2.0)
+            def wait_for_radarr_assets() -> None:
+                assert nfo_file.exists(), f"Radarr did not create NFO: {nfo_file}"
+                for image_file in image_files:
+                    assert image_file.exists(), (
+                        f"Radarr did not create image: {image_file}"
+                    )
 
-        wait_for_radarr_assets()
-        return nfo_file, image_files
+            wait_for_radarr_assets()
+            self._stack = stack.pop_all()
+            return nfo_file, image_files
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Remove Radarr movie and generated files."""
-        if self.movie:
-            self.movie.__exit__(exc_type, exc_val, exc_tb)
+        if self._stack:
+            self._stack.__exit__(exc_type, exc_val, exc_tb)
 
 
 class ServiceRunner:
