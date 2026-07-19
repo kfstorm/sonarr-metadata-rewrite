@@ -1858,3 +1858,61 @@ def test_write_translated_episode_entries_requires_xml_tree(
             test_data_dir / "out.nfo",
             {},
         )
+
+
+def test_process_file_no_translation_backup_matches_current(
+    test_data_dir: Path,
+) -> None:
+    """Test early return when backup exists and NFO matches backup."""
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="zh-CN",
+    )
+    mock_translator = Mock(spec=Translator)
+    processor = MetadataProcessor(settings, mock_translator)
+
+    # Create backup with original content
+    nfo_path = test_data_dir / "tvshow.nfo"
+    backup_root = test_data_dir / "backups"
+    backup_path = backup_root / nfo_path.relative_to("/")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    create_custom_nfo(backup_path, "Original Title", "Original plot")
+
+    # Create current NFO with same content as backup (never rewritten)
+    create_custom_nfo(nfo_path, "Original Title", "Original plot")
+
+    # Mock translator returns no preferred language translations
+    mock_translator.get_translations.return_value = {
+        "en": TranslatedContent(
+            title=TranslatedString(content="English Title", language="en"),
+            description=TranslatedString(content="English plot", language="en"),
+        )
+    }
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=False,
+        expected_file_modified=False,
+        expected_message_contains="content already matches original",
+    )
+
+
+def test_write_translated_metadata_with_tree_xml_root_none(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+) -> None:
+    """Test _write_translated_metadata_with_tree rejects XML tree with no root."""
+    mock_tree = Mock(spec=ET.ElementTree)
+    mock_tree.getroot.return_value = None
+
+    with pytest.raises(ValueError, match="XML root cannot be None"):
+        processor._write_translated_metadata_with_tree(
+            mock_tree,
+            test_data_dir / "out.nfo",
+            TranslatedContent(
+                title=TranslatedString(content="Title", language="en"),
+                description=TranslatedString(content="Plot", language="en"),
+            ),
+        )

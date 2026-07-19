@@ -356,6 +356,37 @@ def test_get_translations_filters_empty_data(
     assert "zh-CN" not in translations
 
 
+@patch("httpx.Client.get")
+def test_get_translations_skips_entry_without_language_code(
+    mock_get: Mock, translator: Translator
+) -> None:
+    """Test that translation entries with empty language code are skipped (line 150)."""
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "id": 12345,
+        "translations": [
+            {
+                "iso_639_1": "",
+                "iso_3166_1": "CN",
+                "data": {"name": "Some Title", "overview": "Some overview"},
+            },
+            {
+                "iso_639_1": "en",
+                "iso_3166_1": "US",
+                "data": {"name": "Valid Title", "overview": "Valid overview"},
+            },
+        ],
+    }
+    mock_get.return_value = mock_response
+
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
+    translations = translator.get_translations(tmdb_ids)
+
+    assert len(translations) == 1
+    assert "en-US" in translations
+
+
 def test_cache_functionality(
     translator: Translator, mock_series_response: dict[str, Any]
 ) -> None:
