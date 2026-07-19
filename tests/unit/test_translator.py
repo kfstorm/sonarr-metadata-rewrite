@@ -387,19 +387,23 @@ def test_get_translations_skips_entry_without_language_code(
     assert "en-US" in translations
 
 
-def test_response_cache_key_canonicalizes_query_params(translator: Translator) -> None:
-    """Test equivalent query parameters generate the same response-cache key."""
-    first_key = translator._response_cache_key(
-        "/find/tt0286112",
-        {"z": "2", "a": "1", "ignored": None},
-    )
-    second_key = translator._response_cache_key(
-        "/find/tt0286112",
-        {"ignored": None, "a": "1", "z": "2"},
-    )
+def test_response_cache_key_uses_httpx_serialized_url(translator: Translator) -> None:
+    """Test cache keys use the same URL serialization as HTTPX requests."""
+    endpoint = "/find/tt0286112"
+    params = {"empty": None, "enabled": True, "query": "A+B"}
+    request = translator.client.build_request("GET", endpoint, params=params)
 
-    assert first_key == second_key
-    assert first_key == ("tmdb:v3:response:v1:GET:/find/tt0286112?a=1&z=2")
+    cache_key = translator._response_cache_key(endpoint, params)
+
+    assert cache_key == (
+        f"{translator._RESPONSE_CACHE_NAMESPACE}:{request.method}:{request.url}"
+    )
+    assert translator._response_cache_key(endpoint, {"empty": None}) != (
+        translator._response_cache_key(endpoint)
+    )
+    assert translator._response_cache_key(endpoint, {"enabled": True}) != (
+        translator._response_cache_key(endpoint, {"enabled": "True"})
+    )
 
 
 @patch("httpx.Client.get")

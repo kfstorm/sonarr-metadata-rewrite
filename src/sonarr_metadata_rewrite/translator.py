@@ -2,7 +2,6 @@
 
 import time
 from typing import Any, cast
-from urllib.parse import urlencode
 
 import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -19,7 +18,7 @@ from sonarr_metadata_rewrite.models import (
 class Translator:
     """TMDB API client with caching and rate limiting."""
 
-    _RESPONSE_CACHE_NAMESPACE = "tmdb:v3:response:v1"
+    _RESPONSE_CACHE_NAMESPACE = "tmdb:v3:response:v2"
 
     def __init__(self, settings: Settings, cache: Cache):
         """Initialize client and cache settings."""
@@ -128,23 +127,9 @@ class Translator:
     def _response_cache_key(
         self, endpoint: str, params: dict[str, Any] | None = None
     ) -> str:
-        """Build a stable cache key for one TMDB GET request."""
-        query = self._canonical_query_params(params)
-        query_suffix = f"?{query}" if query else ""
-        return f"{self._RESPONSE_CACHE_NAMESPACE}:GET:{endpoint}{query_suffix}"
-
-    @staticmethod
-    def _canonical_query_params(params: dict[str, Any] | None) -> str:
-        """Return canonical URL query parameters for a cache key."""
-        if not params:
-            return ""
-
-        query_items: list[tuple[str, str]] = []
-        for name, value in sorted(params.items()):
-            values = value if isinstance(value, (list, tuple)) else [value]
-            query_items.extend((name, str(item)) for item in values if item is not None)
-
-        return urlencode(query_items)
+        """Build a cache key from HTTPX's serialized GET request URL."""
+        request = self.client.build_request("GET", endpoint, params=params)
+        return f"{self._RESPONSE_CACHE_NAMESPACE}:{request.method}:{request.url}"
 
     def _parse_api_translations(
         self, api_data: dict[str, Any], media_type: str
