@@ -65,12 +65,13 @@ the processing branch:
 
 | Root | Behavior |
 | --- | --- |
-| `<tvshow>` | Existing series title and plot rewrite. |
-| `<episodedetails>` | Episode rewrite; supports multi-episode NFO. |
-| `<movie>` | New movie title and plot rewrite. |
+| `<tvshow>` | Existing series title, plot, and tagline rewrite. |
+| `<episodedetails>` | Episode title, plot, tagline; multi-episode support. |
+| `<movie>` | New movie title, plot, and tagline rewrite. |
 | Other | Unsupported NFO result. |
 
-Movie rewriting updates only `<title>` and `<plot>`. It must preserve
+Movie rewriting updates `<title>`, `<plot>`, and a non-empty translated
+`<tagline>`. It must preserve
 `<originaltitle>`, `<sorttitle>`, all identifiers, ratings, watched state, and
 all other Radarr-generated XML.
 
@@ -98,8 +99,8 @@ TV requests remain unchanged. Movie requests use TMDB movie resources:
 | Images | `/tv/{id}/images` | `/movie/{id}/images` |
 
 Translation parsing uses `data.name` for TV and `data.title` for movies. Both
-use `data.overview` for plots. Original-title fallback uses `original_name` for
-TV and `original_title` for movies.
+use `data.overview` for plots and `data.tagline` for taglines. Original-title
+fallback uses `original_name` for TV and `original_title` for movies.
 
 The existing TV external-ID lookup remains TV-only. Movie processing does not
 call it because a Radarr movie without a TMDB ID is skipped.

@@ -84,6 +84,7 @@ class MetadataProcessor:
                 if (
                     metadata_info.title != original_metadata.title
                     or metadata_info.description != original_metadata.description
+                    or metadata_info.tagline != original_metadata.tagline
                 ):
                     selected_translation = TranslatedContent(
                         title=TranslatedString(
@@ -91,6 +92,10 @@ class MetadataProcessor:
                         ),
                         description=TranslatedString(
                             content=original_metadata.description,
+                            language="original",
+                        ),
+                        tagline=TranslatedString(
+                            content=original_metadata.tagline,
                             language="original",
                         ),
                     )
@@ -116,6 +121,7 @@ class MetadataProcessor:
         if (
             metadata_info.title == selected_translation.title.content
             and metadata_info.description == selected_translation.description.content
+            and self._tagline_matches(metadata_info.tagline, selected_translation)
         ):
             return MetadataProcessResult(
                 success=True,
@@ -222,6 +228,7 @@ class MetadataProcessor:
                 if backup_entry and (
                     entry.title != backup_entry.title
                     or entry.description != backup_entry.description
+                    or entry.tagline != backup_entry.tagline
                 ):
                     entry_translation = TranslatedContent(
                         title=TranslatedString(
@@ -229,6 +236,10 @@ class MetadataProcessor:
                         ),
                         description=TranslatedString(
                             content=backup_entry.description,
+                            language="original",
+                        ),
+                        tagline=TranslatedString(
+                            content=backup_entry.tagline,
                             language="original",
                         ),
                     )
@@ -245,6 +256,7 @@ class MetadataProcessor:
             if (
                 entry.title == entry_translation.title.content
                 and entry.description == entry_translation.description.content
+                and self._tagline_matches(entry.tagline, entry_translation)
             ):
                 unchanged_count += 1
                 translated_count += 1
@@ -481,7 +493,19 @@ class MetadataProcessor:
         Returns:
             TranslatedContent with empty fields replaced by original content
         """
-        # If both title and description are present, no fallback needed
+        # A tagline-only translation must leave title and description unchanged.
+        if not translation.title.content and not translation.description.content:
+            return TranslatedContent(
+                title=TranslatedString(
+                    content=metadata_info.title, language="original"
+                ),
+                description=TranslatedString(
+                    content=metadata_info.description, language="original"
+                ),
+                tagline=translation.tagline,
+            )
+
+        # If both title and description are present, no fallback needed.
         if translation.title.content and translation.description.content:
             return translation
 
@@ -509,6 +533,7 @@ class MetadataProcessor:
                             content=metadata_info.description, language="original"
                         )
                     ),
+                    tagline=translation.tagline,
                 )
 
         # Apply fallback using cached original content
@@ -529,6 +554,7 @@ class MetadataProcessor:
         return TranslatedContent(
             title=final_title,
             description=final_description,
+            tagline=translation.tagline,
         )
 
     def _get_original_title_if_language_matches(
@@ -589,6 +615,7 @@ class MetadataProcessor:
             episode=entry.episode,
             title=entry.title,
             description=entry.description,
+            tagline=entry.tagline,
             xml_tree=entry.xml_tree,
         )
 
@@ -628,16 +655,20 @@ class MetadataProcessor:
             raise ValueError("XML tree cannot be None")
 
         root = xml_tree.getroot()
+        if root is None:
+            raise ValueError("XML root cannot be None")
 
         # Update title element
-        title_element = root.find("title")  # type: ignore[union-attr]
+        title_element = root.find("title")
         if title_element is not None:
             title_element.text = translation.title.content
 
         # Update plot/description element
-        plot_element = root.find("plot")  # type: ignore[union-attr]
+        plot_element = root.find("plot")
         if plot_element is not None:
             plot_element.text = translation.description.content
+
+        self._write_tagline(root, translation)
 
         # Write the updated XML back to file atomically
         temp_path = nfo_path.with_suffix(".nfo.tmp")
@@ -683,6 +714,7 @@ class MetadataProcessor:
                     plot_element = root.find("plot")
                     if plot_element is not None:
                         plot_element.text = translation.description.content
+                    self._write_tagline(root, translation)
 
                 ET.indent(xml_tree, space="  ", level=0)
                 serialized_documents.append(ET.tostring(root, encoding="unicode"))
@@ -712,8 +744,9 @@ class MetadataProcessor:
         """
         title_string = None
         description_string = None
+        tagline_string = None
 
-        # Find best title and description from preferred languages
+        # Find best title, description, and tagline from preferred languages.
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
                 translation = all_translations[preferred_lang]
@@ -726,23 +759,28 @@ class MetadataProcessor:
                 if not description_string and translation.description.content:
                     description_string = translation.description
 
-                # Stop if we have both title and description
-                if title_string and description_string:
+                if not tagline_string and translation.tagline.content:
+                    tagline_string = translation.tagline
+
+                # Stop if we have all fields.
+                if title_string and description_string and tagline_string:
                     break
 
-        # Return merged translation if we found at least one field
-        if title_string or description_string:
-            # Use empty TranslatedString with "unknown" language for missing fields
+        # Return merged translation if we found at least one field.
+        if title_string or description_string or tagline_string:
+            # Use empty TranslatedString with "unknown" language for missing fields.
             return TranslatedContent(
                 title=title_string or TranslatedString(content="", language="unknown"),
                 description=description_string
+                or TranslatedString(content="", language="unknown"),
+                tagline=tagline_string
                 or TranslatedString(content="", language="unknown"),
             )
 
         return None
 
     def _build_success_message(self, translation: TranslatedContent) -> str:
-        """Build success message showing language sources for title and description.
+        """Build success message showing source languages for translated fields.
 
         Args:
             translation: The selected translation content
@@ -750,15 +788,53 @@ class MetadataProcessor:
         Returns:
             Formatted success message
         """
-        if translation.title.language == translation.description.language:
+        if (
+            translation.title.content
+            and translation.description.content
+            and translation.title.language == translation.description.language
+            and (
+                not translation.tagline.content
+                or translation.tagline.language == translation.title.language
+            )
+        ):
             return f"Successfully translated to {translation.title.language}"
+
+        fields = (
+            ("title", translation.title),
+            ("description", translation.description),
+            ("tagline", translation.tagline),
+        )
+        selected_fields = [(name, value) for name, value in fields if value.content]
+        parts = [f"{name}: {value.language}" for name, value in selected_fields]
+        return f"Successfully translated ({', '.join(parts)})"
+
+    def _tagline_matches(self, tagline: str, translation: TranslatedContent) -> bool:
+        """Return whether a tagline requires no update."""
+        if translation.tagline.content or translation.tagline.language == "original":
+            return tagline == translation.tagline.content
+        return True
+
+    def _write_tagline(self, root: ET.Element, translation: TranslatedContent) -> None:
+        """Replace tagline only when TMDB supplies one or backup restores it."""
+        if (
+            not translation.tagline.content
+            and translation.tagline.language != "original"
+        ):
+            return
+
+        for tagline_element in root.findall("tagline"):
+            root.remove(tagline_element)
+
+        if not translation.tagline.content:
+            return
+
+        tagline_element = ET.Element("tagline")
+        tagline_element.text = translation.tagline.content
+        plot_element = root.find("plot")
+        if plot_element is None:
+            root.append(tagline_element)
         else:
-            parts = []
-            if translation.title.content:
-                parts.append(f"title: {translation.title.language}")
-            if translation.description.content:
-                parts.append(f"description: {translation.description.language}")
-            return f"Successfully translated ({', '.join(parts)})"
+            root.insert(list(root).index(plot_element) + 1, tagline_element)
 
     def _build_multi_episode_message(
         self,

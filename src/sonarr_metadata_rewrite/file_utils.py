@@ -222,6 +222,7 @@ def _extract_episode_metadata(root: ET.Element) -> MetadataInfo:
         episode=first_entry.episode,
         title=first_entry.title,
         description=first_entry.description,
+        tagline=first_entry.tagline,
         xml_tree=first_entry.xml_tree,
         episode_entries=episode_entries,
     )
@@ -281,3 +282,7 @@ def _populate_common_metadata(
     plot_element = root.find("plot")
     if plot_element is not None and plot_element.text:
         info.description = plot_element.text.strip()
+
+    tagline_element = root.find("tagline")
+    if tagline_element is not None and tagline_element.text:
+        info.tagline = tagline_element.text.strip()

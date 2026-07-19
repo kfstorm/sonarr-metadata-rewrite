@@ -29,8 +29,8 @@ The tool runs as a background service that:
 - Watches your media folders for when Sonarr or Radarr creates or updates `.nfo`
   files
 - Grabs the TMDB ID from those files and fetches translations from TMDB's API
-- Applies preferred languages in order, falling back when a title, plot, or
-  image is unavailable in a higher-priority language
+- Applies preferred languages in order, falling back when a title, plot,
+  tagline, or image is unavailable in a higher-priority language
 - Rewrites poster and clearlogo images based on your preferred language-country
   codes (e.g., `en-US`, `ja-JP`) when such variants exist on TMDB
 - Does this fast enough that you barely notice it happening
@@ -39,7 +39,7 @@ The tool runs as a background service that:
 
 You can configure multiple languages with fallback priority, such as Chinese
 first and Japanese second. Metadata fields may use different fallback languages
-when TMDB has only a title or plot in the higher-priority language.
+when TMDB has only a title, plot, or tagline in the higher-priority language.
 
 ## Installation
 
