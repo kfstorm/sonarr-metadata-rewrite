@@ -40,7 +40,11 @@ class RadarrClient(ArrClient):
         )
         response = self._make_request("POST", "/api/v3/movie", json=movie_data)
         response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+        added_movie = cast(dict[str, Any], response.json())
+        self._wait_for_queued_command(
+            "RefreshMovie", "movieIds", cast(int, added_movie["id"])
+        )
+        return added_movie
 
     def ensure_root_folder(self, root_folder: str) -> None:
         """Register mounted movie root when Radarr has not seen it yet."""
@@ -58,7 +62,12 @@ class RadarrClient(ArrClient):
         response = self._make_request(
             "POST", "/api/v3/command", json={"name": "RescanMovie", "movieId": movie_id}
         )
-        return response.status_code in (200, 201)
+        if response.status_code not in (200, 201):
+            return False
+
+        command = cast(dict[str, Any], response.json())
+        self._wait_for_command(cast(int, command["id"]))
+        return True
 
     def get_movie(self, movie_id: int) -> dict[str, Any]:
         """Get movie details, including imported file state."""
@@ -68,46 +77,14 @@ class RadarrClient(ArrClient):
 
     def configure_metadata_settings(self, use_movie_nfo: bool) -> bool:
         """Enable Kodi/Emby movie metadata and images for selected NFO mode."""
-        response = self._make_request("GET", "/api/v3/metadata")
-        response.raise_for_status()
-        metadata_configs = response.json()
-        field_values = {
-            "moviemetadata": True,
-            "movieimages": True,
-            "usemovienfo": use_movie_nfo,
-        }
-        provider = next(
-            (
-                config
-                for config in metadata_configs
-                if any(
-                    name in config.get("name", "").lower()
-                    for name in ("kodi", "xbmc", "emby")
-                )
-                and set(field_values).issubset(
-                    {
-                        field.get("name", "").lower()
-                        for field in config.get("fields", [])
-                    }
-                )
-            ),
-            None,
+        return self._configure_metadata_settings(
+            provider_names=("kodi", "xbmc", "emby"),
+            field_values={
+                "moviemetadata": True,
+                "movieimages": True,
+                "usemovienfo": use_movie_nfo,
+            },
         )
-        if provider is None:
-            raise ValueError(
-                "No Kodi/XBMC/Emby metadata provider supports movieMetadata, "
-                "movieImages, and UseMovieNfo"
-            )
-        provider["enable"] = True
-        for field in provider["fields"]:
-            field_name = field.get("name", "").lower()
-            if field_name in field_values:
-                field["value"] = field_values[field_name]
-
-        response = self._make_request(
-            "PUT", f"/api/v3/metadata/{provider['id']}", json=provider
-        )
-        return response.is_success
 
     def remove_movie(
         self,

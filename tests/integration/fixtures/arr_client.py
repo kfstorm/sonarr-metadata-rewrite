@@ -80,6 +80,112 @@ class ArrClient:
             )
         return True
 
+    def _wait_for_queued_command(
+        self,
+        command_name: str,
+        resource_id_field: str,
+        resource_id: int,
+        timeout: float = 30.0,
+    ) -> None:
+        """Wait for an Arr command queued automatically for one resource."""
+
+        @retry(
+            timeout=timeout,
+            interval=0.5,
+            log_interval=2.0,
+            exceptions=(AssertionError, httpx.RequestError),
+        )
+        def check_command() -> None:
+            response = self._make_request("GET", "/api/v3/command")
+            response.raise_for_status()
+            matching_commands = [
+                command
+                for command in response.json()
+                if command.get("name", "").lower() == command_name.lower()
+                and resource_id in command.get("body", {}).get(resource_id_field, [])
+            ]
+            assert matching_commands, (
+                f"{command_name} command for {resource_id} not queued yet"
+            )
+            command = max(matching_commands, key=lambda item: item["id"])
+            self._assert_command_completed(command)
+
+        check_command()
+
+    def _wait_for_command(self, command_id: int, timeout: float = 30.0) -> None:
+        """Wait for one Arr command to complete successfully."""
+
+        @retry(
+            timeout=timeout,
+            interval=0.5,
+            log_interval=2.0,
+            exceptions=(AssertionError, httpx.RequestError),
+        )
+        def check_command() -> None:
+            response = self._make_request("GET", f"/api/v3/command/{command_id}")
+            response.raise_for_status()
+            self._assert_command_completed(response.json())
+
+        check_command()
+
+    def _configure_metadata_settings(
+        self, provider_names: tuple[str, ...], field_values: dict[str, bool]
+    ) -> bool:
+        """Enable one metadata provider after Arr finishes registering it."""
+
+        @retry(timeout=30.0, interval=0.5, log_interval=2.0)
+        def get_provider() -> dict[str, Any]:
+            response = self._make_request("GET", "/api/v3/metadata")
+            response.raise_for_status()
+            provider = next(
+                (
+                    config
+                    for config in response.json()
+                    if any(
+                        name in config.get("name", "").lower()
+                        for name in provider_names
+                    )
+                    and set(field_values).issubset(
+                        {
+                            field.get("name", "").lower()
+                            for field in config.get("fields", [])
+                        }
+                    )
+                ),
+                None,
+            )
+            assert provider is not None, (
+                f"{self.service_name} metadata providers are not initialized yet"
+            )
+            return cast(dict[str, Any], provider)
+
+        provider = get_provider()
+        provider["enable"] = True
+        for field in provider.get("fields", []):
+            field_name = field.get("name", "").lower()
+            if field_name in field_values:
+                field["value"] = field_values[field_name]
+
+        response = self._make_request(
+            "PUT", f"/api/v3/metadata/{provider['id']}", json=provider
+        )
+        return response.is_success
+
+    def _assert_command_completed(self, command: dict[str, Any]) -> None:
+        """Validate command state, retrying active commands via AssertionError."""
+        status = str(command.get("status", "")).lower()
+        if status == "completed":
+            return
+        if status in {"failed", "aborted"}:
+            raise RuntimeError(
+                f"{self.service_name} command {command.get('id')} ended with status "
+                f"{status}: {command.get('message', '')}"
+            )
+        raise AssertionError(
+            f"{self.service_name} command {command.get('id')} still has status "
+            f"{status or 'unknown'}"
+        )
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()
