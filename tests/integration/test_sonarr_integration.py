@@ -10,6 +10,7 @@ from tests.integration.test_helpers import (
     SeriesWithNfos,
     ServiceRunner,
     create_fake_multi_episode_file,
+    parse_nfo_content,
     verify_images,
     verify_translations,
     wait_for_nfo_files,
@@ -51,6 +52,8 @@ EVERY_TREASURE_TELLS_A_STORY_TVDB_ID = 364698
 EVERY_TREASURE_TELLS_A_STORY_IMAGES = [
     "poster.jpg",
 ]  # Sonarr only generates series poster image
+CAPE_FEAR_TVDB_ID = 456813
+CAPE_FEAR_EPISODE_TVDB_ID = 11593814
 GEN_V_TVDB_ID = 417909
 GEN_V_IMAGES = [
     "poster.jpg",
@@ -267,6 +270,52 @@ def test_advanced_translation_scenarios(
             possible_languages=list(possible_languages),
             require_tagline=require_tagline,
         )
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_episode_tvdb_external_id_lookup(
+    temp_sonarr_media_root: Path,
+    configured_sonarr_container: SonarrClient,
+) -> None:
+    """Translate a Sonarr episode NFO with only an episode TVDB ID (issue #105)."""
+    with SeriesWithNfos(
+        configured_sonarr_container,
+        temp_sonarr_media_root,
+        CAPE_FEAR_TVDB_ID,
+        [],
+        episodes=[("Episode 8", 1, 8)],
+    ) as (nfo_files, _):
+        nfo_metadata = {nfo_path: parse_nfo_content(nfo_path) for nfo_path in nfo_files}
+        parent_nfos = [
+            nfo_path
+            for nfo_path in nfo_files
+            if nfo_metadata[nfo_path]["root_tag"] == "tvshow"
+        ]
+        assert len(parent_nfos) == 1
+        episode_nfos = [
+            nfo_path
+            for nfo_path in nfo_files
+            if nfo_metadata[nfo_path]["tvdb_id"] == CAPE_FEAR_EPISODE_TVDB_ID
+        ]
+        assert len(episode_nfos) == 1
+        assert nfo_metadata[episode_nfos[0]]["tmdb_id"] is None
+        parent_nfos[0].unlink()
+
+        with ServiceRunner(
+            temp_sonarr_media_root,
+            {
+                "ENABLE_FILE_MONITOR": "false",
+                "ENABLE_IMAGE_REWRITE": "false",
+                "PREFERRED_LANGUAGES": "fr-FR",
+            },
+        ):
+            verify_translations(
+                episode_nfos,
+                expected_language="fr",
+                possible_languages=["en", "fr"],
+                require_tagline=False,
+            )
 
 
 @pytest.mark.integration

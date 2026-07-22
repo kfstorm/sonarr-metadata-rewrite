@@ -814,6 +814,39 @@ def test_find_tmdb_id_by_external_id_tvdb_success(
         )
 
 
+def test_find_tmdb_id_by_external_id_tvdb_episode_success(
+    translator: Translator,
+) -> None:
+    """Resolve an episode TVDB ID through its parent TMDB show ID."""
+    episode_response: dict[str, Any] = {
+        "movie_results": [],
+        "person_results": [],
+        "tv_results": [],
+        "tv_episode_results": [
+            {
+                "id": 5454819,
+                "season_number": 1,
+                "episode_number": 8,
+                "show_id": 277439,
+            }
+        ],
+        "tv_season_results": [],
+    }
+
+    with patch.object(translator.client, "get") as mock_get:
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = episode_response
+        mock_get.return_value = mock_response
+
+        result = translator.find_tmdb_id_by_external_id("11593814", "tvdb_id")
+
+        assert result == 277439
+        mock_get.assert_called_once_with(
+            "/find/11593814", params={"external_source": "tvdb_id"}
+        )
+
+
 def test_find_tmdb_id_by_external_id_imdb_success(
     translator: Translator, mock_find_imdb_response: dict[str, Any]
 ) -> None:
