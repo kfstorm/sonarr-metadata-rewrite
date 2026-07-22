@@ -237,6 +237,12 @@ class Translator:
             if tmdb_id:
                 return int(tmdb_id)
 
+        tv_episode_results = api_data.get("tv_episode_results", [])
+        if tv_episode_results:
+            show_id = tv_episode_results[0].get("show_id")
+            if show_id:
+                return int(show_id)
+
         return None
 
     def select_best_image(
