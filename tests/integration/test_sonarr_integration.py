@@ -300,6 +300,7 @@ def test_episode_tvdb_external_id_lookup(
         ]
         assert len(episode_nfos) == 1
         assert nfo_metadata[episode_nfos[0]]["tmdb_id"] is None
+        # Simulate Sonarr writing tvshow.nfo after the episode NFO is processed.
         parent_nfos[0].unlink()
 
         with ServiceRunner(
