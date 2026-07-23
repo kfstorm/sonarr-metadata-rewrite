@@ -839,12 +839,61 @@ def test_find_tmdb_id_by_external_id_tvdb_episode_success(
         mock_response.json.return_value = episode_response
         mock_get.return_value = mock_response
 
-        result = translator.find_tmdb_id_by_external_id("11593814", "tvdb_id")
+        result = translator.find_tmdb_id_by_external_id(
+            "11593814", "tvdb_id", resource_type="episode"
+        )
 
         assert result == 277439
         mock_get.assert_called_once_with(
             "/find/11593814", params={"external_source": "tvdb_id"}
         )
+
+
+@pytest.fixture
+def mock_find_tvdb_collision_response() -> dict[str, Any]:
+    """Mock TMDB response containing colliding series and episode results."""
+    return {
+        "movie_results": [],
+        "person_results": [],
+        "tv_results": [{"id": 23747}],
+        "tv_episode_results": [{"show_id": 35935}],
+        "tv_season_results": [],
+    }
+
+
+def test_find_tmdb_id_by_external_id_prefers_episode_result_on_collision(
+    translator: Translator, mock_find_tvdb_collision_response: dict[str, Any]
+) -> None:
+    """Prefer the episode's parent when TVDB IDs collide across resource types."""
+    with patch.object(translator.client, "get") as mock_get:
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = mock_find_tvdb_collision_response
+        mock_get.return_value = mock_response
+
+        result = translator.find_tmdb_id_by_external_id(
+            "127401", "tvdb_id", resource_type="episode"
+        )
+
+        assert result == 35935
+        mock_get.assert_called_once_with(
+            "/find/127401", params={"external_source": "tvdb_id"}
+        )
+
+
+def test_find_tmdb_id_by_external_id_uses_tv_result_for_series_collision(
+    translator: Translator, mock_find_tvdb_collision_response: dict[str, Any]
+) -> None:
+    """Use the TV result when resolving a series NFO with a colliding ID."""
+    with patch.object(translator.client, "get") as mock_get:
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = mock_find_tvdb_collision_response
+        mock_get.return_value = mock_response
+
+        result = translator.find_tmdb_id_by_external_id("127401", "tvdb_id")
+
+        assert result == 23747
 
 
 def test_find_tmdb_id_by_external_id_imdb_success(

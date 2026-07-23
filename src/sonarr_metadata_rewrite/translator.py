@@ -1,7 +1,7 @@
 """TMDB API client with translation caching."""
 
 import time
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 from diskcache import Cache  # type: ignore[import-untyped]
@@ -214,13 +214,18 @@ class Translator:
         return None
 
     def find_tmdb_id_by_external_id(
-        self, external_id: str, external_source: str
+        self,
+        external_id: str,
+        external_source: str,
+        *,
+        resource_type: Literal["series", "episode"] = "series",
     ) -> int | None:
         """Find TMDB ID using external ID (TVDB or IMDB).
 
         Args:
             external_id: The external ID (e.g., TVDB or IMDB ID)
             external_source: Source type ('tvdb_id' or 'imdb_id')
+            resource_type: Resource type being resolved.
 
         Returns:
             TMDB series ID if found, None otherwise
@@ -230,18 +235,19 @@ class Translator:
         if api_data is None:
             return None
 
-        # Look for TV results.
-        tv_results = api_data.get("tv_results", [])
-        if tv_results:
-            tmdb_id = tv_results[0].get("id")
-            if tmdb_id:
-                return int(tmdb_id)
-
-        tv_episode_results = api_data.get("tv_episode_results", [])
-        if tv_episode_results:
-            show_id = tv_episode_results[0].get("show_id")
-            if show_id:
-                return int(show_id)
+        if resource_type == "episode":
+            results = api_data.get("tv_episode_results", [])
+        else:
+            results = api_data.get("tv_results", [])
+        if results:
+            result = results[0]
+            result_id = (
+                result.get("show_id")
+                if resource_type == "episode"
+                else result.get("id")
+            )
+            if result_id:
+                return int(result_id)
 
         return None
 
