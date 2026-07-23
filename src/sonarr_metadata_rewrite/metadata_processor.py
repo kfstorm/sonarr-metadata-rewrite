@@ -3,6 +3,7 @@
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Literal
 
 from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
@@ -427,10 +428,14 @@ class MetadataProcessor:
         Returns:
             TMDB series ID if found, None otherwise
         """
+        resource_type: Literal["series", "episode"] = (
+            "episode" if info.file_type == "episodedetails" else "series"
+        )
+
         # Try TVDB ID first
         if info.tvdb_id:
             tmdb_id = self.translator.find_tmdb_id_by_external_id(
-                str(info.tvdb_id), "tvdb_id"
+                str(info.tvdb_id), "tvdb_id", resource_type=resource_type
             )
             if tmdb_id:
                 return tmdb_id
@@ -438,7 +443,7 @@ class MetadataProcessor:
         # Try IMDB ID
         if info.imdb_id:
             tmdb_id = self.translator.find_tmdb_id_by_external_id(
-                info.imdb_id, "imdb_id"
+                info.imdb_id, "imdb_id", resource_type=resource_type
             )
             if tmdb_id:
                 return tmdb_id

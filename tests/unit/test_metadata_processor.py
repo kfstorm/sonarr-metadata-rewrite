@@ -1354,7 +1354,7 @@ def test_process_file_tvdb_id_only_success(
 
     # Verify external ID lookup was called with correct parameters
     processor.translator.find_tmdb_id_by_external_id.assert_called_with(
-        "123456", "tvdb_id"
+        "123456", "tvdb_id", resource_type="series"
     )
 
 
@@ -1388,7 +1388,7 @@ def test_process_file_imdb_id_only_success(
 
     # Verify external ID lookup was called with correct IMDB ID
     mock_translator.find_tmdb_id_by_external_id.assert_called_with(
-        "tt1234567", "imdb_id"
+        "tt1234567", "imdb_id", resource_type="series"
     )
 
 
@@ -1441,7 +1441,9 @@ def test_process_file_episode_inherits_parent_tvdb_id(
     )
 
     # Verify external ID lookup was called for parent's TVDB ID
-    mock_translator.find_tmdb_id_by_external_id.assert_called_with("123456", "tvdb_id")
+    mock_translator.find_tmdb_id_by_external_id.assert_called_with(
+        "123456", "tvdb_id", resource_type="series"
+    )
 
 
 def test_process_file_external_id_lookup_fails(
@@ -1558,7 +1560,9 @@ def test_process_file_episode_external_id_priority_over_parent_external_id(
 
     # Verify external ID lookup was called for episode's TVDB ID (4499792)
     # Should NOT be called for parent's IDs since episode has its own
-    mock_translator.find_tmdb_id_by_external_id.assert_called_with("4499792", "tvdb_id")
+    mock_translator.find_tmdb_id_by_external_id.assert_called_with(
+        "4499792", "tvdb_id", resource_type="episode"
+    )
 
 
 def test_content_matches_after_fallback_skips_processing(
