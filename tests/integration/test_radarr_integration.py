@@ -86,6 +86,57 @@ def test_radarr_movie_metadata_and_images(
 
 @pytest.mark.integration
 @pytest.mark.slow
+def test_movie_metadata_url_nfo_rewrite(
+    temp_radarr_media_root: Path,
+    radarr_container: RadarrClient,
+) -> None:
+    """Rewrite a real Radarr combination NFO without losing scraper URLs."""
+    assert radarr_container.configure_metadata_settings(
+        use_movie_nfo=True, movie_metadata_url=True
+    ), "Failed to enable Radarr movie metadata URL"
+
+    expected_urls = [
+        "https://www.themoviedb.org/movie/550",
+        "https://www.imdb.com/title/tt0137523",
+    ]
+    try:
+        with MovieWithNfos(
+            radarr_container,
+            temp_radarr_media_root,
+            FIGHT_CLUB_TMDB_ID,
+            use_movie_nfo=True,
+        ) as (nfo_file, _):
+            original_content = nfo_file.read_text(encoding="utf-8")
+            original_xml, closing_tag, original_suffix = original_content.partition(
+                "</movie>"
+            )
+            assert closing_tag == "</movie>"
+            assert "<movie>" in original_xml
+            assert original_suffix.splitlines() == ["", *expected_urls]
+
+            with ServiceRunner(
+                temp_radarr_media_root,
+                {
+                    "ENABLE_FILE_MONITOR": "false",
+                    "ENABLE_IMAGE_REWRITE": "false",
+                },
+            ):
+                verify_translations([nfo_file], "zh", ["zh", "en"])
+
+            _, closing_tag, rewritten_suffix = nfo_file.read_text(
+                encoding="utf-8"
+            ).partition("</movie>")
+            assert closing_tag == "</movie>"
+            assert rewritten_suffix == original_suffix
+            assert rewritten_suffix.splitlines() == ["", *expected_urls]
+    finally:
+        assert radarr_container.configure_metadata_settings(
+            use_movie_nfo=True, movie_metadata_url=False
+        ), "Failed to reset Radarr movie metadata URL"
+
+
+@pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "use_movie_nfo",
     [True, False],

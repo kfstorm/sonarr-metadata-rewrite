@@ -321,6 +321,61 @@ def test_episode_tvdb_external_id_lookup(
 
 @pytest.mark.integration
 @pytest.mark.slow
+def test_series_metadata_url_nfo_rewrite(
+    temp_sonarr_media_root: Path,
+    configured_sonarr_container: SonarrClient,
+) -> None:
+    """Rewrite a real Sonarr combination NFO without losing its scraper URL."""
+    assert configured_sonarr_container.configure_metadata_settings(
+        series_metadata_url=True
+    ), "Failed to enable Sonarr series metadata URL"
+
+    try:
+        with SeriesWithNfos(
+            configured_sonarr_container,
+            temp_sonarr_media_root,
+            BREAKING_BAD_TVDB_ID,
+            [],
+        ) as (nfo_files, _):
+            tvshow_nfo = next(
+                nfo_path for nfo_path in nfo_files if nfo_path.name == "tvshow.nfo"
+            )
+            original_content = tvshow_nfo.read_text(encoding="utf-8")
+            original_xml, closing_tag, original_suffix = original_content.partition(
+                "</tvshow>"
+            )
+            assert closing_tag == "</tvshow>"
+            assert "<tvshow>" in original_xml
+            assert original_suffix == (
+                f"\nhttps://www.thetvdb.com/?tab=series&id={BREAKING_BAD_TVDB_ID}"
+            )
+
+            with ServiceRunner(
+                temp_sonarr_media_root,
+                {
+                    "ENABLE_FILE_MONITOR": "false",
+                    "ENABLE_IMAGE_REWRITE": "false",
+                },
+            ):
+                verify_translations(
+                    [tvshow_nfo],
+                    expected_language="zh",
+                    possible_languages=["zh", "en"],
+                )
+
+            _, closing_tag, rewritten_suffix = tvshow_nfo.read_text(
+                encoding="utf-8"
+            ).partition("</tvshow>")
+            assert closing_tag == "</tvshow>"
+            assert rewritten_suffix == original_suffix
+    finally:
+        assert configured_sonarr_container.configure_metadata_settings(
+            series_metadata_url=False
+        ), "Failed to reset Sonarr series metadata URL"
+
+
+@pytest.mark.integration
+@pytest.mark.slow
 def test_multi_episode_nfo_rewrite_and_rollback(
     temp_sonarr_media_root: Path,
     configured_sonarr_container: SonarrClient,

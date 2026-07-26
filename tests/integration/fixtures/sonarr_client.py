@@ -106,7 +106,7 @@ class SonarrClient(ArrClient):
             print(f"Response: {response.text}")
             return []
 
-    def configure_metadata_settings(self) -> bool:
+    def configure_metadata_settings(self, series_metadata_url: bool = False) -> bool:
         """Configure Sonarr to enable NFO metadata generation.
 
         Returns:
@@ -116,6 +116,7 @@ class SonarrClient(ArrClient):
             provider_names=("kodi", "xbmc"),
             field_values={
                 "seriesmetadata": True,
+                "seriesmetadataurl": series_metadata_url,
                 "episodemetadata": True,
                 "episodeimages": True,
                 "seriesimages": True,

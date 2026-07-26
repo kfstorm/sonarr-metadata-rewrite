@@ -14,6 +14,10 @@ from sonarr_metadata_rewrite.retry_utils import retry
 
 # Supported image extensions (lowercase with leading dot)
 IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png"}
+TRAILING_SCRAPER_URLS_RE = re.compile(
+    r"(?P<suffix>(?:[ \t]*\r?\n)+[ \t]*https?://[^\s<>]+"
+    r"(?:[ \t]*\r?\n[ \t]*https?://[^\s<>]+)*(?:[ \t]*\r?\n)*)\Z"
+)
 
 
 def parse_image_info(basename: str) -> tuple[str, int | None]:
@@ -167,26 +171,45 @@ def extract_metadata_info(nfo_path: Path) -> MetadataInfo:
 
 def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
     """Parse one or more adjacent XML documents from an NFO file."""
-    raw_content = nfo_path.read_text(encoding="utf-8")
-    normalized_content = raw_content.strip()
+    raw_content = nfo_path.read_bytes().decode("utf-8")
+    xml_content, scraper_urls = _split_trailing_scraper_urls(raw_content)
+    normalized_content = xml_content.strip()
     normalized_content = re.sub(r"<\?xml[^>]*\?>", "", normalized_content).strip()
     wrapped_content = f"<nfo-root>{normalized_content}</nfo-root>"
     wrapped_root = ET.fromstring(wrapped_content)
 
     if not list(wrapped_root):
         raise ET.ParseError("No XML document found")
+    if wrapped_root.text and not wrapped_root.text.isspace():
+        raise ET.ParseError("Invalid text outside NFO XML document")
+    if any(child.tail and not child.tail.isspace() for child in wrapped_root):
+        raise ET.ParseError("Invalid text outside NFO XML document")
 
     if len(wrapped_root) == 1:
         root = wrapped_root[0]
         if root.tag == "tvshow":
-            return _extract_tvshow_metadata(root)
+            metadata = _extract_tvshow_metadata(root)
+            metadata.trailing_scraper_urls = scraper_urls
+            return metadata
         if root.tag == "movie":
-            return _extract_movie_metadata(root)
+            metadata = _extract_movie_metadata(root)
+            metadata.trailing_scraper_urls = scraper_urls
+            return metadata
 
     if all(child.tag == "episodedetails" for child in wrapped_root):
-        return _extract_episode_metadata(wrapped_root)
+        metadata = _extract_episode_metadata(wrapped_root)
+        metadata.trailing_scraper_urls = scraper_urls
+        return metadata
 
     raise ET.ParseError("Unsupported NFO root structure")
+
+
+def _split_trailing_scraper_urls(content: str) -> tuple[str, str]:
+    """Separate Kodi combination-NFO scraper URLs from XML content."""
+    match = TRAILING_SCRAPER_URLS_RE.search(content)
+    if match is None:
+        return content, ""
+    return content[: match.start()], match.group("suffix")
 
 
 def _extract_tvshow_metadata(root: ET.Element) -> MetadataInfo:

@@ -148,6 +148,47 @@ def test_process_file_movie_parses_and_preserves_other_xml_fields(
     assert root.findtext("watched") == "false"
 
 
+@pytest.mark.parametrize(
+    ("sample_name", "tmdb_id", "suffix"),
+    [
+        (
+            "tvshow.nfo",
+            1396,
+            "\nhttps://www.thetvdb.com/?tab=series&id=81189",
+        ),
+        (
+            "movie.nfo",
+            550,
+            "\nhttps://www.themoviedb.org/movie/550"
+            "\nhttps://www.imdb.com/title/tt0137523",
+        ),
+    ],
+    ids=["sonarr-tvshow", "radarr-movie"],
+)
+def test_process_file_preserves_scraper_url_suffix(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+    sample_name: str,
+    tmdb_id: int,
+    suffix: str,
+) -> None:
+    """Rewrite combination NFOs without dropping their trailing scraper URLs."""
+    nfo_path = create_test_files(sample_name, test_data_dir / sample_name)
+    nfo_path.write_text(nfo_path.read_text(encoding="utf-8") + suffix, encoding="utf-8")
+
+    result = processor.process_file(nfo_path)
+
+    assert_process_result(
+        result,
+        expected_success=True,
+        expected_tmdb_id=tmdb_id,
+        expected_file_modified=True,
+        expected_language="zh-CN",
+    )
+    assert nfo_path.read_bytes().endswith(suffix.encode("utf-8"))
+
+
 def test_process_file_movie_without_tmdb_id_skips_external_resolution(
     processor: MetadataProcessor,
     test_data_dir: Path,
@@ -1622,6 +1663,8 @@ def test_process_file_multi_episode_partial_update(
         test_data_dir, create_test_files
     )
     nfo_path = create_test_files("multi_episode.nfo", series_dir / "episodes.nfo")
+    suffix = "\nhttps://www.thetvdb.com/?tab=series&id=81189"
+    nfo_path.write_text(nfo_path.read_text(encoding="utf-8") + suffix, encoding="utf-8")
 
     def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
         if tmdb_ids.episode == 1:
@@ -1651,6 +1694,7 @@ def test_process_file_multi_episode_partial_update(
     assert "沃尔特开始了犯罪生涯。" in content
     assert "Cat's in the Bag..." in content
     assert "Walt and Jesse deal with the aftermath." in content
+    assert content.endswith(suffix)
 
 
 def test_process_file_multi_episode_restore_from_backup_when_translation_missing(

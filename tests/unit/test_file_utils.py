@@ -378,6 +378,73 @@ class TestExtractMetadataInfo:
         assert metadata.imdb_id == "tt0959621"
         assert metadata.tmdb_id is None
 
+    def test_extract_tvshow_metadata_with_scraper_url(
+        self, test_data_dir: Path
+    ) -> None:
+        """Extract Sonarr metadata without parsing its trailing scraper URL as XML."""
+        suffix = "\nhttps://www.thetvdb.com/?tab=series&id=456813"
+        nfo_path = test_data_dir / "tvshow.nfo"
+        nfo_path.write_text(
+            """<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>Cape Fear</title>
+  <plot>A modern retelling.</plot>
+  <uniqueid type="tmdb">123</uniqueid>
+</tvshow>"""
+            + suffix,
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.file_type == "tvshow"
+        assert metadata.tmdb_id == 123
+        assert metadata.trailing_scraper_urls == suffix
+
+    def test_extract_movie_metadata_with_scraper_urls(
+        self, test_data_dir: Path
+    ) -> None:
+        """Extract Radarr metadata with its two trailing scraper URLs."""
+        suffix = (
+            "\nhttps://www.themoviedb.org/movie/550"
+            "\nhttps://www.imdb.com/title/tt0137523"
+        )
+        nfo_path = test_data_dir / "movie.nfo"
+        nfo_path.write_text(
+            """<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>Fight Club</title>
+  <plot>Rules are made to be broken.</plot>
+  <uniqueid type="tmdb">550</uniqueid>
+</movie>"""
+            + suffix,
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.file_type == "movie"
+        assert metadata.tmdb_id == 550
+        assert metadata.trailing_scraper_urls == suffix
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "Unexpected text\n<tvshow><title>Series</title></tvshow>",
+            "<tvshow><title>Series</title></tvshow>\nUnexpected text",
+        ],
+        ids=["before-xml", "after-xml"],
+    )
+    def test_extract_metadata_rejects_non_url_text_outside_xml(
+        self, test_data_dir: Path, content: str
+    ) -> None:
+        """Reject text outside XML unless it is a trailing scraper URL."""
+        nfo_path = test_data_dir / "invalid.nfo"
+        nfo_path.write_text(content, encoding="utf-8")
+
+        with pytest.raises(ET.ParseError, match="Invalid text outside NFO XML"):
+            extract_metadata_info(nfo_path)
+
     def test_extract_metadata_info_rejects_unsupported_multi_root_content(
         self, test_data_dir: Path
     ) -> None:
