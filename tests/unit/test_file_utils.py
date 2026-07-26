@@ -427,6 +427,24 @@ class TestExtractMetadataInfo:
         assert metadata.tmdb_id == 550
         assert metadata.trailing_scraper_urls == suffix
 
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "Unexpected text\n<tvshow><title>Series</title></tvshow>",
+            "<tvshow><title>Series</title></tvshow>\nUnexpected text",
+        ],
+        ids=["before-xml", "after-xml"],
+    )
+    def test_extract_metadata_rejects_non_url_text_outside_xml(
+        self, test_data_dir: Path, content: str
+    ) -> None:
+        """Reject text outside XML unless it is a trailing scraper URL."""
+        nfo_path = test_data_dir / "invalid.nfo"
+        nfo_path.write_text(content, encoding="utf-8")
+
+        with pytest.raises(ET.ParseError, match="Invalid text outside NFO XML"):
+            extract_metadata_info(nfo_path)
+
     def test_extract_metadata_info_rejects_unsupported_multi_root_content(
         self, test_data_dir: Path
     ) -> None:
