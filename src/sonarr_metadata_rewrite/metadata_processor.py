@@ -143,7 +143,7 @@ class MetadataProcessor:
             metadata_info.xml_tree,
             nfo_path,
             selected_translation,
-            metadata_info.trailing_scraper_url_suffix,
+            metadata_info.trailing_scraper_urls,
         )
 
         return MetadataProcessResult(
@@ -309,7 +309,7 @@ class MetadataProcessor:
             episode_entries,
             nfo_path,
             updated_translations,
-            metadata_info.trailing_scraper_url_suffix,
+            metadata_info.trailing_scraper_urls,
         )
 
         message = self._build_multi_episode_message(
@@ -651,7 +651,7 @@ class MetadataProcessor:
         xml_tree: ET.ElementTree | None,
         nfo_path: Path,
         translation: TranslatedContent,
-        trailing_scraper_url_suffix: str = "",
+        trailing_scraper_urls: str = "",
     ) -> None:
         """Write translated metadata using cached XML tree.
 
@@ -659,7 +659,7 @@ class MetadataProcessor:
             xml_tree: Cached XML tree from metadata extraction
             nfo_path: Path to .nfo file to update
             translation: Translated content
-            trailing_scraper_url_suffix: Raw scraper URLs after XML content
+            trailing_scraper_urls: Raw scraper URLs after XML content
 
         Raises:
             Exception: If write operation fails
@@ -692,7 +692,7 @@ class MetadataProcessor:
                 temp_path, encoding="utf-8", xml_declaration=True, method="xml"
             )
             with temp_path.open("ab") as temp_file:
-                temp_file.write(trailing_scraper_url_suffix.encode("utf-8"))
+                temp_file.write(trailing_scraper_urls.encode("utf-8"))
 
             # Atomic replacement
             temp_path.replace(nfo_path)
@@ -708,7 +708,7 @@ class MetadataProcessor:
         episode_entries: list[EpisodeMetadataInfo],
         nfo_path: Path,
         updated_translations: dict[int, TranslatedContent],
-        trailing_scraper_url_suffix: str = "",
+        trailing_scraper_urls: str = "",
     ) -> None:
         """Write translated content for one or more episode XML documents."""
         temp_path = nfo_path.with_suffix(".nfo.tmp")
@@ -741,7 +741,7 @@ class MetadataProcessor:
                 + "\n"
             )
             temp_path.write_bytes(
-                content.encode("utf-8") + trailing_scraper_url_suffix.encode("utf-8")
+                content.encode("utf-8") + trailing_scraper_urls.encode("utf-8")
             )
             temp_path.replace(nfo_path)
         except Exception:

@@ -399,7 +399,7 @@ class TestExtractMetadataInfo:
 
         assert metadata.file_type == "tvshow"
         assert metadata.tmdb_id == 123
-        assert metadata.trailing_scraper_url_suffix == suffix
+        assert metadata.trailing_scraper_urls == suffix
 
     def test_extract_movie_metadata_with_scraper_urls(
         self, test_data_dir: Path
@@ -425,7 +425,7 @@ class TestExtractMetadataInfo:
 
         assert metadata.file_type == "movie"
         assert metadata.tmdb_id == 550
-        assert metadata.trailing_scraper_url_suffix == suffix
+        assert metadata.trailing_scraper_urls == suffix
 
     def test_extract_metadata_info_rejects_unsupported_multi_root_content(
         self, test_data_dir: Path

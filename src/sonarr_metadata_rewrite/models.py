@@ -74,7 +74,8 @@ class MetadataInfo:
     # Raw XML for writing
     xml_tree: ET.ElementTree | None = None
     episode_entries: list[EpisodeMetadataInfo] | None = None
-    trailing_scraper_url_suffix: str = ""
+    # Raw HTTP(S) URL block after XML, including original newlines and multiple URLs.
+    trailing_scraper_urls: str = ""
 
 
 @dataclass

@@ -53,6 +53,7 @@ def test_arr_command_failure_is_not_retried(
                 "name": "Kodi (XMBC) / Emby",
                 "fields": [
                     {"name": "movieMetadata", "value": False},
+                    {"name": "movieMetadataUrl", "value": False},
                     {"name": "movieImages", "value": False},
                     {"name": "UseMovieNfo", "value": False},
                 ],
@@ -100,7 +101,9 @@ def test_arr_metadata_configuration_waits_for_provider(
         ):
             if is_radarr:
                 assert isinstance(client, RadarrClient)
-                assert client.configure_metadata_settings(use_movie_nfo=True)
+                assert client.configure_metadata_settings(
+                    use_movie_nfo=True, movie_metadata_url=True
+                )
             else:
                 assert isinstance(client, SonarrClient)
                 assert client.configure_metadata_settings(series_metadata_url=True)

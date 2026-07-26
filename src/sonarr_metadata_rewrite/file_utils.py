@@ -172,7 +172,7 @@ def extract_metadata_info(nfo_path: Path) -> MetadataInfo:
 def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
     """Parse one or more adjacent XML documents from an NFO file."""
     raw_content = nfo_path.read_bytes().decode("utf-8")
-    xml_content, scraper_url_suffix = _split_trailing_scraper_url_suffix(raw_content)
+    xml_content, scraper_urls = _split_trailing_scraper_urls(raw_content)
     normalized_content = xml_content.strip()
     normalized_content = re.sub(r"<\?xml[^>]*\?>", "", normalized_content).strip()
     wrapped_content = f"<nfo-root>{normalized_content}</nfo-root>"
@@ -189,22 +189,22 @@ def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
         root = wrapped_root[0]
         if root.tag == "tvshow":
             metadata = _extract_tvshow_metadata(root)
-            metadata.trailing_scraper_url_suffix = scraper_url_suffix
+            metadata.trailing_scraper_urls = scraper_urls
             return metadata
         if root.tag == "movie":
             metadata = _extract_movie_metadata(root)
-            metadata.trailing_scraper_url_suffix = scraper_url_suffix
+            metadata.trailing_scraper_urls = scraper_urls
             return metadata
 
     if all(child.tag == "episodedetails" for child in wrapped_root):
         metadata = _extract_episode_metadata(wrapped_root)
-        metadata.trailing_scraper_url_suffix = scraper_url_suffix
+        metadata.trailing_scraper_urls = scraper_urls
         return metadata
 
     raise ET.ParseError("Unsupported NFO root structure")
 
 
-def _split_trailing_scraper_url_suffix(content: str) -> tuple[str, str]:
+def _split_trailing_scraper_urls(content: str) -> tuple[str, str]:
     """Separate Kodi combination-NFO scraper URLs from XML content."""
     match = TRAILING_SCRAPER_URLS_RE.search(content)
     if match is None:
