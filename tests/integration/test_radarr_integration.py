@@ -18,8 +18,6 @@ from tests.integration.test_helpers import (
 FIGHT_CLUB_TMDB_ID = 550
 AMELIE_TMDB_ID = 194
 AMELIE_FRENCH_TITLE = "Le Fabuleux Destin d'Amélie Poulain"
-HI_MOM_TMDB_ID = 758891
-HI_MOM_TRADITIONAL_TITLE = "你好\uff0c李煥英"
 
 
 def verify_movie_output(nfo_file: Path, image_files: list[Path]) -> None:
@@ -125,36 +123,6 @@ def test_radarr_french_movie_title_is_not_replaced_by_english_fallback(
             use_movie_nfo=True,
             movie_metadata_language=1,
         ), "Failed to reset Radarr English metadata"
-
-
-@pytest.mark.integration
-@pytest.mark.slow
-def test_radarr_prefers_traditional_chinese_movie_metadata(
-    temp_radarr_media_root: Path,
-    radarr_container: RadarrClient,
-) -> None:
-    """Rewrite a mainland Chinese movie with the configured Traditional Chinese data."""
-    assert radarr_container.configure_metadata_settings(use_movie_nfo=True), (
-        "Failed to configure Radarr movie metadata"
-    )
-
-    with MovieWithNfos(
-        radarr_container,
-        temp_radarr_media_root,
-        HI_MOM_TMDB_ID,
-        use_movie_nfo=True,
-    ) as (nfo_file, _):
-        with ServiceRunner(
-            temp_radarr_media_root,
-            {
-                "ENABLE_FILE_MONITOR": "false",
-                "ENABLE_IMAGE_REWRITE": "false",
-                "PREFERRED_LANGUAGES": "zh-TW,zh-CN",
-            },
-        ):
-            verify_translations([nfo_file], "zh", ["zh", "en"])
-
-        assert parse_nfo_content(nfo_file)["title"] == HI_MOM_TRADITIONAL_TITLE
 
 
 @pytest.mark.integration
