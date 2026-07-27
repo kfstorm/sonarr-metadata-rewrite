@@ -43,7 +43,13 @@ class RewriteService:
         logger.info("Starting Sonarr and Radarr Metadata Rewrite Service")
         for root_dir in self.settings.rewrite_root_dirs:
             logger.info(f"Monitoring directory: {root_dir}")
-        logger.info(f"Preferred languages: {self.settings.preferred_languages}")
+        logger.info(
+            f"Configured preferred languages: {self.settings.preferred_languages}"
+        )
+        logger.info(
+            "Runtime preferred languages: "
+            f"{self.metadata_processor.effective_preferred_languages}"
+        )
 
         # Start real-time file monitoring if enabled
         if self.settings.enable_file_monitor:

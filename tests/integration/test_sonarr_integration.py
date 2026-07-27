@@ -205,7 +205,12 @@ def test_nfo_rewrite_disabled(
         # Translation fallback when preferred language has empty titles (issue #26).
         # Tests Chinese series "大明王朝1566" where some Chinese translations have
         # empty titles but valid descriptions, requiring fallback to complete.
-        (MING_DYNASTY_TVDB_ID, MING_DYNASTY_IMAGES, {}, "zh"),
+        (
+            MING_DYNASTY_TVDB_ID,
+            MING_DYNASTY_IMAGES,
+            {"PREFERRED_LANGUAGES": "zh-CN,en-US"},
+            "zh",
+        ),
         # External ID lookup workflow using TVDB ID to find TMDB ID (issue #29).
         # Tests "Every Treasure Tells a Story" series (TVDB: 364698 -> TMDB: 86965)
         # to verify TMDB ID resolution from TVDB ID when direct TMDB ID unavailable.

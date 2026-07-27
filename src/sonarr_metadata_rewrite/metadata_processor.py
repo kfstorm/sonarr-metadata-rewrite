@@ -28,6 +28,9 @@ class MetadataProcessor:
         """Initialize processor with settings and TMDB translator."""
         self.settings = settings
         self.translator = translator
+        self.effective_preferred_languages = self._build_effective_preferred_languages(
+            settings.preferred_languages
+        )
 
     def process_file(self, nfo_path: Path) -> MetadataProcessResult:
         """Process a single .nfo file with complete translation workflow.
@@ -77,7 +80,9 @@ class MetadataProcessor:
             )
 
         all_translations = self.translator.get_translations(tmdb_ids)
-        selected_translation = self._select_preferred_translation(all_translations)
+        selected_translation = self._select_translation_with_original_content(
+            all_translations, tmdb_ids
+        )
 
         if not selected_translation:
             original_metadata = self._get_backup_metadata_info(nfo_path)
@@ -222,7 +227,9 @@ class MetadataProcessor:
                 first_tmdb_ids = entry_tmdb_ids
 
             all_translations = self.translator.get_translations(entry_tmdb_ids)
-            entry_translation = self._select_preferred_translation(all_translations)
+            entry_translation = self._select_translation_with_original_content(
+                all_translations, entry_tmdb_ids
+            )
 
             entry_metadata = self._build_episode_metadata_info(entry, series_tmdb_id)
             if not entry_translation:
@@ -765,7 +772,7 @@ class MetadataProcessor:
         tagline_string = None
 
         # Find best title, description, and tagline from preferred languages.
-        for preferred_lang in self.settings.preferred_languages:
+        for preferred_lang in self._expanded_preferred_languages():
             if preferred_lang in all_translations:
                 translation = all_translations[preferred_lang]
 
@@ -796,6 +803,82 @@ class MetadataProcessor:
             )
 
         return None
+
+    def _select_translation_with_original_content(
+        self,
+        all_translations: dict[str, TranslatedContent],
+        tmdb_ids: TmdbIds,
+    ) -> TranslatedContent | None:
+        """Select translations with original-language content as a fallback."""
+        try:
+            original_details = self.translator.get_original_details(tmdb_ids)
+            if not isinstance(original_details, tuple):
+                return self._select_preferred_translation(all_translations)
+            original_language, _ = original_details
+            if original_language not in self._expanded_preferred_languages():
+                return self._select_preferred_translation(all_translations)
+            original_translation = self.translator.get_original_translation(
+                tmdb_ids, original_language
+            )
+            if not isinstance(original_translation, TranslatedContent):
+                return self._select_preferred_translation(all_translations)
+        except Exception:
+            return self._select_preferred_translation(all_translations)
+
+        existing_translation = all_translations.get(original_language)
+        translations_with_original_content = dict(all_translations)
+        translations_with_original_content[original_language] = TranslatedContent(
+            title=(
+                existing_translation.title
+                if existing_translation is not None
+                and existing_translation.title.content
+                else original_translation.title
+            ),
+            description=(
+                existing_translation.description
+                if existing_translation is not None
+                and existing_translation.description.content
+                else original_translation.description
+            ),
+            tagline=(
+                existing_translation.tagline
+                if existing_translation is not None
+                and existing_translation.tagline.content
+                else original_translation.tagline
+            ),
+        )
+        return self._select_preferred_translation(translations_with_original_content)
+
+    def _expanded_preferred_languages(self) -> list[str]:
+        """Return the NFO fallback candidates calculated during initialization."""
+        return self.effective_preferred_languages
+
+    @staticmethod
+    def _build_effective_preferred_languages(
+        configured_languages: list[str],
+    ) -> list[str]:
+        """Add a base-language candidate after its final configured locale.
+
+        Exact duplicate locales are removed while preserving their first priority.
+        This lets original-language metadata follow every configured regional
+        translation for the same language.
+        """
+        languages: list[str] = []
+        preferred_languages = list(dict.fromkeys(configured_languages))
+        last_index_by_base_language = {
+            language.split("-", 1)[0]: index
+            for index, language in enumerate(preferred_languages)
+        }
+        for index, preferred_language in enumerate(preferred_languages):
+            languages.append(preferred_language)
+            base_language = preferred_language.split("-", 1)[0]
+            if (
+                last_index_by_base_language[base_language] == index
+                and base_language not in languages
+            ):
+                languages.append(base_language)
+
+        return languages
 
     def _build_success_message(self, translation: TranslatedContent) -> str:
         """Build success message showing source languages for translated fields.

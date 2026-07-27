@@ -61,6 +61,10 @@ def test_service_start_stop(mock_logger: Mock, rewrite_service: RewriteService) 
         rewrite_service.start()
         mock_monitor_start.assert_called_once()
         mock_scanner_start.assert_called_once()
+        mock_logger.info.assert_any_call(
+            "Runtime preferred languages: "
+            f"{rewrite_service.metadata_processor.effective_preferred_languages}"
+        )
 
         # Test stop
         rewrite_service.stop()

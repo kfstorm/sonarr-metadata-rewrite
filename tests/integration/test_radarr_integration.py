@@ -16,6 +16,8 @@ from tests.integration.test_helpers import (
 # Verified against TMDB /movie/550/images during test development: zh-CN has
 # poster and logo candidates. Missing upstream assets must fail this test.
 FIGHT_CLUB_TMDB_ID = 550
+AMELIE_TMDB_ID = 194
+AMELIE_FRENCH_TITLE = "Le Fabuleux Destin d'Amélie Poulain"
 
 
 def verify_movie_output(nfo_file: Path, image_files: list[Path]) -> None:
@@ -82,6 +84,45 @@ def test_radarr_movie_metadata_and_images(
             ServiceRunner(temp_radarr_media_root, service_config),
         ):
             verify_movie_output(nfo_file, image_files)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_radarr_french_movie_title_is_not_replaced_by_english_fallback(
+    temp_radarr_media_root: Path,
+    radarr_container: RadarrClient,
+) -> None:
+    """Keep Radarr's French original title when English is a fallback language."""
+    assert radarr_container.configure_metadata_settings(
+        use_movie_nfo=True,
+        movie_metadata_language=2,
+    ), "Failed to configure Radarr French metadata"
+
+    try:
+        with MovieWithNfos(
+            radarr_container,
+            temp_radarr_media_root,
+            AMELIE_TMDB_ID,
+            use_movie_nfo=True,
+        ) as (nfo_file, _):
+            assert parse_nfo_content(nfo_file)["title"] == AMELIE_FRENCH_TITLE
+
+            with ServiceRunner(
+                temp_radarr_media_root,
+                {
+                    "ENABLE_FILE_MONITOR": "false",
+                    "ENABLE_IMAGE_REWRITE": "false",
+                    "PREFERRED_LANGUAGES": "fr-FR,en-US",
+                },
+            ):
+                verify_translations([nfo_file], "fr", ["fr", "en"])
+
+            assert parse_nfo_content(nfo_file)["title"] == AMELIE_FRENCH_TITLE
+    finally:
+        assert radarr_container.configure_metadata_settings(
+            use_movie_nfo=True,
+            movie_metadata_language=1,
+        ), "Failed to reset Radarr English metadata"
 
 
 @pytest.mark.integration

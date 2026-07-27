@@ -588,6 +588,102 @@ def test_select_preferred_translation_partial_with_fallback(
     assert result.description.language == "fr-FR"
 
 
+def test_select_translation_uses_original_content_before_english_fallback(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Use original-language fields before lower-priority language fallbacks."""
+    settings = create_test_settings(test_data_dir, preferred_languages="fr-FR,en-US")
+    processor = MetadataProcessor(settings, mock_translator)
+    mock_translator.get_original_details.return_value = (
+        "fr",
+        "Le Fabuleux Destin d'Amélie Poulain",
+    )
+    mock_translator.get_original_translation.return_value = translated_content(
+        "Le Fabuleux Destin d'Amélie Poulain",
+        "Description originale",
+        "original",
+        "Une personne peut changer votre vie pour toujours.",
+    )
+
+    result = processor._select_translation_with_original_content(
+        {
+            "fr-FR": translated_content("", "Description française", "fr-FR"),
+            "en-US": translated_content(
+                "Amélie", "English description", "en-US", "English tagline"
+            ),
+        },
+        TmdbIds(tmdb_id=194, media_type="movie"),
+    )
+
+    assert result is not None
+    assert result.title.content == "Le Fabuleux Destin d'Amélie Poulain"
+    assert result.description.content == "Description française"
+    assert (
+        result.tagline.content == "Une personne peut changer votre vie pour toujours."
+    )
+
+
+def test_select_translation_skips_original_content_when_not_preferred(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Avoid an original-content request when its language cannot be selected."""
+    settings = create_test_settings(test_data_dir, preferred_languages="fr-FR,en-US")
+    processor = MetadataProcessor(settings, mock_translator)
+    mock_translator.get_original_details.return_value = ("ja", "千と千尋の神隠し")
+
+    result = processor._select_translation_with_original_content(
+        {
+            "fr-FR": translated_content(
+                "Le Voyage de Chihiro", "Description française", "fr-FR"
+            )
+        },
+        TmdbIds(tmdb_id=129, media_type="movie"),
+    )
+
+    assert result is not None
+    assert result.title.content == "Le Voyage de Chihiro"
+    mock_translator.get_original_translation.assert_not_called()
+
+
+def test_expanded_preferred_languages_adds_base_after_locale_variants(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Place an original-language candidate after its configured locales."""
+    settings = create_test_settings(
+        test_data_dir, preferred_languages="de-DE,fr-FR,fr-CA,en-US"
+    )
+    processor = MetadataProcessor(settings, mock_translator)
+
+    assert processor._expanded_preferred_languages() == [
+        "de-DE",
+        "de",
+        "fr-FR",
+        "fr-CA",
+        "fr",
+        "en-US",
+        "en",
+    ]
+
+
+def test_expanded_preferred_languages_deduplicates_non_adjacent_locales(
+    test_data_dir: Path, mock_translator: Mock
+) -> None:
+    """Keep each configured locale once before adding its base-language fallback."""
+    settings = create_test_settings(
+        test_data_dir,
+        preferred_languages="fr-FR,en-US,fr-FR,fr-CA,en-US",
+    )
+    processor = MetadataProcessor(settings, mock_translator)
+
+    assert processor._expanded_preferred_languages() == [
+        "fr-FR",
+        "en-US",
+        "en",
+        "fr-CA",
+        "fr",
+    ]
+
+
 def test_build_success_message_single_language(
     processor: MetadataProcessor,
 ) -> None:

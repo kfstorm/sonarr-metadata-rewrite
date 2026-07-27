@@ -164,6 +164,12 @@ SERVICE_MODE=rewrite                  # Service mode: 'rewrite' or 'rollback'
 You can list multiple languages separated by commas - it'll try them in
 order.
 
+At startup, the service logs both your configured list and its runtime list.
+The runtime list removes duplicate codes and adds each base language after its
+last configured locale variant. For example, `de-DE,fr-FR,fr-CA,en-US` becomes
+`de-DE,de,fr-FR,fr-CA,fr,en-US,en`. Images still use only the configured
+language-country codes.
+
 ### Which images are rewritten?
 
 If image rewriting is enabled, the service recognizes these filenames:
@@ -263,7 +269,8 @@ You'll see something like:
 ✅ TMDB API key loaded (ending in ...xyz)
 📁 Monitoring directory: /tv
 📁 Monitoring directory: /anime
-🌍 Preferred languages: ['zh-CN', 'ja-JP']
+🌍 Configured preferred languages: ['zh-CN', 'ja-JP']
+🌍 Runtime preferred languages: ['zh-CN', 'zh', 'ja-JP', 'ja']
 ✅ Service started successfully
 ```
 

@@ -213,6 +213,36 @@ class Translator:
 
         return None
 
+    def get_original_translation(
+        self, tmdb_ids: TmdbIds, language: str
+    ) -> TranslatedContent | None:
+        """Get original-language metadata localized with its base language code."""
+        endpoint = f"/{tmdb_ids}"
+        api_data = self._get_cached_json(endpoint, {"language": language})
+        if api_data is None:
+            return None
+
+        if tmdb_ids.media_type == "movie":
+            title = api_data.get("original_title", "").strip()
+            if not title:
+                title = api_data.get("title", "").strip()
+        elif tmdb_ids.season is not None and tmdb_ids.episode is not None:
+            title = api_data.get("name", "").strip()
+        else:
+            title = api_data.get("original_name", "").strip()
+            if not title:
+                title = api_data.get("name", "").strip()
+
+        return TranslatedContent(
+            title=TranslatedString(content=title, language="original"),
+            description=TranslatedString(
+                content=api_data.get("overview", "").strip(), language="original"
+            ),
+            tagline=TranslatedString(
+                content=api_data.get("tagline", "").strip(), language="original"
+            ),
+        )
+
     def find_tmdb_id_by_external_id(
         self,
         external_id: str,
