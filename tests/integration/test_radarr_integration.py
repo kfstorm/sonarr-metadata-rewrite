@@ -18,6 +18,8 @@ from tests.integration.test_helpers import (
 FIGHT_CLUB_TMDB_ID = 550
 AMELIE_TMDB_ID = 194
 AMELIE_FRENCH_TITLE = "Le Fabuleux Destin d'Amélie Poulain"
+SHADOWS_EDGE_TMDB_ID = 1419406
+SHADOWS_EDGE_SIMPLIFIED_TITLE = "捕风追影"
 
 
 def verify_movie_output(nfo_file: Path, image_files: list[Path]) -> None:
@@ -88,36 +90,57 @@ def test_radarr_movie_metadata_and_images(
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_radarr_french_movie_title_is_not_replaced_by_english_fallback(
+@pytest.mark.parametrize(
+    ("tmdb_id", "metadata_language", "preferred_languages", "expected_title"),
+    [
+        (AMELIE_TMDB_ID, 2, "fr-FR,en-US", AMELIE_FRENCH_TITLE),
+        (
+            SHADOWS_EDGE_TMDB_ID,
+            10,
+            "zh-CN,zh-TW,en-US",
+            SHADOWS_EDGE_SIMPLIFIED_TITLE,
+        ),
+    ],
+    ids=["french-original", "mainland-chinese-original"],
+)
+def test_radarr_original_language_title_is_not_replaced_by_fallback(
     temp_radarr_media_root: Path,
     radarr_container: RadarrClient,
+    tmdb_id: int,
+    metadata_language: int,
+    preferred_languages: str,
+    expected_title: str,
 ) -> None:
-    """Keep Radarr's French original title when English is a fallback language."""
+    """Keep Radarr's original title when later fallbacks have another title."""
     assert radarr_container.configure_metadata_settings(
         use_movie_nfo=True,
-        movie_metadata_language=2,
-    ), "Failed to configure Radarr French metadata"
+        movie_metadata_language=metadata_language,
+    ), "Failed to configure Radarr localized metadata"
 
     try:
         with MovieWithNfos(
             radarr_container,
             temp_radarr_media_root,
-            AMELIE_TMDB_ID,
+            tmdb_id,
             use_movie_nfo=True,
         ) as (nfo_file, _):
-            assert parse_nfo_content(nfo_file)["title"] == AMELIE_FRENCH_TITLE
+            assert parse_nfo_content(nfo_file)["title"] == expected_title
 
             with ServiceRunner(
                 temp_radarr_media_root,
                 {
                     "ENABLE_FILE_MONITOR": "false",
                     "ENABLE_IMAGE_REWRITE": "false",
-                    "PREFERRED_LANGUAGES": "fr-FR,en-US",
+                    "PREFERRED_LANGUAGES": preferred_languages,
                 },
             ):
-                verify_translations([nfo_file], "fr", ["fr", "en"])
+                verify_translations(
+                    [nfo_file],
+                    preferred_languages.split("-", 1)[0],
+                    ["en", "fr", "zh"],
+                )
 
-            assert parse_nfo_content(nfo_file)["title"] == AMELIE_FRENCH_TITLE
+            assert parse_nfo_content(nfo_file)["title"] == expected_title
     finally:
         assert radarr_container.configure_metadata_settings(
             use_movie_nfo=True,
