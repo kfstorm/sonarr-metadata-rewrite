@@ -76,17 +76,24 @@ class RadarrClient(ArrClient):
         return cast(dict[str, Any], response.json())
 
     def configure_metadata_settings(
-        self, use_movie_nfo: bool, movie_metadata_url: bool = False
+        self,
+        use_movie_nfo: bool,
+        movie_metadata_url: bool = False,
+        movie_metadata_language: int | None = None,
     ) -> bool:
         """Enable Kodi/Emby movie metadata and images for selected NFO mode."""
+        field_values: dict[str, bool | int] = {
+            "moviemetadata": True,
+            "moviemetadataurl": movie_metadata_url,
+            "movieimages": True,
+            "usemovienfo": use_movie_nfo,
+        }
+        if movie_metadata_language is not None:
+            field_values["moviemetadatalanguage"] = movie_metadata_language
+
         return self._configure_metadata_settings(
             provider_names=("kodi", "xbmc", "emby"),
-            field_values={
-                "moviemetadata": True,
-                "moviemetadataurl": movie_metadata_url,
-                "movieimages": True,
-                "usemovienfo": use_movie_nfo,
-            },
+            field_values=field_values,
         )
 
     def remove_movie(

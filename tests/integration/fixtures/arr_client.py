@@ -129,7 +129,7 @@ class ArrClient:
         check_command()
 
     def _configure_metadata_settings(
-        self, provider_names: tuple[str, ...], field_values: dict[str, bool]
+        self, provider_names: tuple[str, ...], field_values: dict[str, bool | int]
     ) -> bool:
         """Enable one metadata provider after Arr finishes registering it."""
 
