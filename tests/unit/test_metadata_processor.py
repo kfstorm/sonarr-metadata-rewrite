@@ -412,6 +412,26 @@ def test_process_file_nonexistent_file(
     )
 
 
+def test_process_file_skips_unsupported_nfo_root(
+    processor: MetadataProcessor,
+    mock_translator: Mock,
+    test_data_dir: Path,
+) -> None:
+    """Skip valid NFO files whose root tag has no translation support."""
+    nfo_path = test_data_dir / "season.nfo"
+    content = "<season><title>Season 1</title><seasonnumber>1</seasonnumber></season>"
+    nfo_path.write_text(content, encoding="utf-8")
+
+    result = processor.process_file(nfo_path)
+
+    assert result.success is True
+    assert result.message == "Unsupported NFO root tag: season; skipped"
+    assert result.exception is None
+    assert result.file_modified is False
+    assert nfo_path.read_text(encoding="utf-8") == content
+    mock_translator.get_translations.assert_not_called()
+
+
 def test_process_file_no_preferred_translation(
     processor: MetadataProcessor,
     mock_translator: Mock,
