@@ -63,16 +63,23 @@ class TestCli:
             assert "🔧 Service mode: rewrite" in result.output
 
     def test_cli_missing_api_key(self) -> None:
-        """Test CLI with missing TMDB API key."""
+        """Test rewrite mode with only the TMDB API key missing."""
         runner = CliRunner()
+        env_vars = {
+            "REWRITE_ROOT_DIR": "/tmp/test",
+            "PREFERRED_LANGUAGES": "zh-CN",
+            "SERVICE_MODE": "rewrite",
+        }
 
-        with patch.dict(os.environ, {}, clear=True):
+        with (
+            runner.isolated_filesystem(),
+            patch.dict(os.environ, env_vars, clear=True),
+        ):
             result = runner.invoke(cli)
 
         assert result.exit_code == 1
-        # Check for the actual pydantic validation error message
         assert "❌ Configuration error:" in result.output
-        assert "Field required" in result.output
+        assert "TMDB_API_KEY is required when SERVICE_MODE=rewrite" in result.output
 
     def test_cli_version(self) -> None:
         """Test CLI version option."""
