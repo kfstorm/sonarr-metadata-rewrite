@@ -30,13 +30,18 @@ def test_rewrite_mode_rejects_empty_tmdb_api_key(
         )
 
 
-def test_rewrite_mode_rejects_missing_tmdb_api_key(tmp_path: Path) -> None:
+def test_rewrite_mode_rejects_missing_tmdb_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Rewrite mode rejects an omitted TMDB API key."""
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+
     with pytest.raises(
         ValidationError,
         match="TMDB_API_KEY is required when SERVICE_MODE=rewrite",
     ):
         Settings(
+            _env_file=None,
             rewrite_root_dirs=[tmp_path],
             preferred_languages=["zh-CN"],
             service_mode="rewrite",
@@ -59,9 +64,14 @@ def test_rollback_mode_allows_empty_tmdb_api_key(
     assert settings.tmdb_api_key == ""
 
 
-def test_rollback_mode_allows_missing_tmdb_api_key(tmp_path: Path) -> None:
+def test_rollback_mode_allows_missing_tmdb_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Rollback mode allows the TMDB API key to be omitted."""
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+
     settings = Settings(
+        _env_file=None,
         rewrite_root_dirs=[tmp_path],
         preferred_languages=["zh-CN"],
         service_mode="rollback",
@@ -101,6 +111,7 @@ def test_cli_rollback_mode_runs_without_tmdb_api_key(tmp_path: Path) -> None:
     }
 
     with (
+        runner.isolated_filesystem(),
         patch.dict(os.environ, env_vars, clear=True),
         patch("sonarr_metadata_rewrite.main.RollbackService") as rollback_service,
     ):

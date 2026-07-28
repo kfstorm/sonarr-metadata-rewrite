@@ -71,7 +71,10 @@ class TestCli:
             "SERVICE_MODE": "rewrite",
         }
 
-        with patch.dict(os.environ, env_vars, clear=True):
+        with (
+            runner.isolated_filesystem(),
+            patch.dict(os.environ, env_vars, clear=True),
+        ):
             result = runner.invoke(cli)
 
         assert result.exit_code == 1
