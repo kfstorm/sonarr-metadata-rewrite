@@ -48,6 +48,33 @@ def test_rewrite_mode_rejects_missing_tmdb_api_key(
         )
 
 
+def test_rollback_mode_normalizes_none_tmdb_api_key(tmp_path: Path) -> None:
+    """Rollback mode treats a None TMDB API key as empty."""
+    settings = Settings.model_validate(
+        {
+            "tmdb_api_key": None,
+            "rewrite_root_dirs": [tmp_path],
+            "preferred_languages": ["zh-CN"],
+            "service_mode": "rollback",
+        }
+    )
+
+    assert settings.tmdb_api_key == ""
+
+
+def test_rewrite_mode_rejects_non_string_tmdb_api_key(tmp_path: Path) -> None:
+    """TMDB API keys must be strings."""
+    with pytest.raises(ValidationError, match="tmdb_api_key must be a string"):
+        Settings.model_validate(
+            {
+                "tmdb_api_key": 123,
+                "rewrite_root_dirs": [tmp_path],
+                "preferred_languages": ["zh-CN"],
+                "service_mode": "rewrite",
+            }
+        )
+
+
 @pytest.mark.parametrize("api_key", ["", " ", "\t"])
 def test_rollback_mode_allows_empty_tmdb_api_key(
     api_key: str,
