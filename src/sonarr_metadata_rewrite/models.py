@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+ContentSource = Literal["translation", "original_title", "existing_nfo", "backup_nfo"]
+
 
 @dataclass
 class TmdbIds:
@@ -35,10 +37,20 @@ class TmdbIds:
 
 @dataclass
 class TranslatedString:
-    """A translated string with its source language."""
+    """A resolved metadata string and its provider provenance."""
 
     content: str
-    language: str
+    source: ContentSource | None = None
+    source_tag: str | None = None
+    selection_tag: str | None = None
+
+
+@dataclass(frozen=True)
+class OriginalTitleDetails:
+    """Explicit Original Title facts returned by TMDB Details."""
+
+    original_language: str
+    original_title: str
 
 
 @dataclass
@@ -48,7 +60,7 @@ class TranslatedContent:
     title: TranslatedString
     description: TranslatedString
     tagline: TranslatedString = field(
-        default_factory=lambda: TranslatedString(content="", language="unknown")
+        default_factory=lambda: TranslatedString(content="")
     )
 
 

@@ -9,6 +9,7 @@ from diskcache import Cache  # type: ignore[import-untyped]
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import (
     ImageCandidate,
+    OriginalTitleDetails,
     TmdbIds,
     TranslatedContent,
     TranslatedString,
@@ -140,10 +141,10 @@ class Translator:
         for translation in api_data.get("translations", []):
             language_code = translation.get("iso_639_1", "")
             country_code = translation.get("iso_3166_1", "")
-            data = translation.get("data", {})
+            data = translation.get("data") or {}
 
-            # Skip if no language code or no translated data
-            if not language_code or not data:
+            # A returned empty record is distinct from an absent record.
+            if not language_code:
                 continue
 
             # Use language-country format if country is available
@@ -152,34 +153,35 @@ class Translator:
             )
 
             title_key = "title" if media_type == "movie" else "name"
-            title = data.get(title_key, "").strip()
-            description = data.get("overview", "").strip()
-            tagline = data.get("tagline", "").strip()
-
-            # Skip records without any localizable metadata.
-            if not title and not description and not tagline:
-                continue
+            title = str(data.get(title_key) or "").strip()
+            description = str(data.get("overview") or "").strip()
+            tagline = str(data.get("tagline") or "").strip()
 
             translations[full_language_code] = TranslatedContent(
-                title=TranslatedString(content=title, language=full_language_code),
-                description=TranslatedString(
-                    content=description, language=full_language_code
+                title=TranslatedString(
+                    content=title, source="translation", source_tag=full_language_code
                 ),
-                tagline=TranslatedString(content=tagline, language=full_language_code),
+                description=TranslatedString(
+                    content=description,
+                    source="translation",
+                    source_tag=full_language_code,
+                ),
+                tagline=TranslatedString(
+                    content=tagline, source="translation", source_tag=full_language_code
+                ),
             )
 
         return translations
 
-    def get_original_details(self, tmdb_ids: TmdbIds) -> tuple[str, str] | None:
+    def get_original_details(self, tmdb_ids: TmdbIds) -> OriginalTitleDetails | None:
         """Get original language and title for TV, episode, or movie resources.
 
         Args:
             tmdb_ids: TMDB identifiers containing media type and optional TV episode
 
         Returns:
-            Tuple of (original_language, original_title) if found, None otherwise
+            Explicit Original Title facts if found, None otherwise
         """
-        # For episodes, we need both episode name and series original language.
         if tmdb_ids.media_type == "movie":
             api_data = self._get_cached_json(f"/movie/{tmdb_ids.tmdb_id}")
             if api_data is None:
@@ -187,20 +189,7 @@ class Translator:
             original_language = api_data.get("original_language", "")
             original_title = api_data.get("original_title", "")
         elif tmdb_ids.season is not None and tmdb_ids.episode is not None:
-            episode_endpoint = (
-                f"/tv/{tmdb_ids.tmdb_id}/season/{tmdb_ids.season}"
-                f"/episode/{tmdb_ids.episode}"
-            )
-            episode_data = self._get_cached_json(episode_endpoint)
-            if episode_data is None:
-                return None
-
-            series_data = self._get_cached_json(f"/tv/{tmdb_ids.tmdb_id}")
-            if series_data is None:
-                return None
-
-            original_language = series_data.get("original_language", "")
-            original_title = episode_data.get("name", "")
+            return None
         else:
             api_data = self._get_cached_json(f"/tv/{tmdb_ids.tmdb_id}")
             if api_data is None:
@@ -208,8 +197,10 @@ class Translator:
             original_language = api_data.get("original_language", "")
             original_title = api_data.get("original_name", "")
 
+        original_language = str(original_language or "").strip()
+        original_title = str(original_title or "").strip()
         if original_language and original_title:
-            return (original_language, original_title.strip())
+            return OriginalTitleDetails(original_language, original_title)
 
         return None
 

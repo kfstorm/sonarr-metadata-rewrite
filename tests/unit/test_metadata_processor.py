@@ -12,9 +12,12 @@ from sonarr_metadata_rewrite.metadata_processor import MetadataProcessor
 from sonarr_metadata_rewrite.models import (
     EpisodeMetadataInfo,
     MetadataInfo,
+    OriginalTitleDetails,
     TmdbIds,
     TranslatedContent,
-    TranslatedString,
+)
+from sonarr_metadata_rewrite.models import (
+    TranslatedString as ModelTranslatedString,
 )
 from sonarr_metadata_rewrite.translator import Translator
 from tests.conftest import (
@@ -22,6 +25,7 @@ from tests.conftest import (
     assert_process_result,
     create_test_settings,
 )
+from tests.test_translated_string import TranslatedString
 
 
 def translated_content(
@@ -466,8 +470,8 @@ def test_apply_fallback_to_translation_no_fallback_needed(
     # Should return the same translation since both fields are present
     assert result.title.content == "完整标题"
     assert result.description.content == "完整描述"
-    assert result.title.language == "zh-CN"
-    assert result.description.language == "zh-CN"
+    assert result.title.source_tag == "zh-CN"
+    assert result.description.source_tag == "zh-CN"
 
 
 def test_apply_fallback_to_translation_empty_title(
@@ -484,8 +488,8 @@ def test_apply_fallback_to_translation_empty_title(
     # Should use original title but keep translated description
     assert result.title.content == "Breaking Bad"  # Original title from test data
     assert result.description.content == "翻译描述"  # Translated description
-    assert result.title.language == "original"
-    assert result.description.language == "zh-CN"
+    assert result.title.source == "existing_nfo"
+    assert result.description.source_tag == "zh-CN"
 
 
 def test_apply_fallback_to_translation_empty_description(
@@ -504,8 +508,8 @@ def test_apply_fallback_to_translation_empty_description(
     assert (
         "high school chemistry teacher" in result.description.content
     )  # Original description from test data
-    assert result.title.language == "zh-CN"
-    assert result.description.language == "original"
+    assert result.title.source_tag == "zh-CN"
+    assert result.description.source == "existing_nfo"
 
 
 def test_apply_fallback_to_translation_both_empty(
@@ -524,8 +528,8 @@ def test_apply_fallback_to_translation_both_empty(
     assert (
         "high school chemistry teacher" in result.description.content
     )  # Original description from test data
-    assert result.title.language == "original"
-    assert result.description.language == "original"
+    assert result.title.source == "existing_nfo"
+    assert result.description.source == "existing_nfo"
 
 
 def test_select_preferred_translation_single_language_complete(
@@ -546,9 +550,9 @@ def test_select_preferred_translation_single_language_complete(
     # Should select complete zh-CN translation without merging
     assert result is not None
     assert result.title.content == "中文标题"
-    assert result.title.language == "zh-CN"
+    assert result.title.source_tag == "zh-CN"
     assert result.description.content == "中文描述"
-    assert result.description.language == "zh-CN"
+    assert result.description.source_tag == "zh-CN"
 
 
 def test_select_preferred_translation_partial_with_fallback(
@@ -583,9 +587,9 @@ def test_select_preferred_translation_partial_with_fallback(
     # Should merge fr-CA title with fr-FR description, not use es
     assert result is not None
     assert result.title.content == "Titre français-canadien"
-    assert result.title.language == "fr-CA"
+    assert result.title.source_tag == "fr-CA"
     assert result.description.content == "Description française"
-    assert result.description.language == "fr-FR"
+    assert result.description.source_tag == "fr-FR"
 
 
 def test_build_success_message_single_language(
@@ -614,6 +618,24 @@ def test_build_success_message_mixed_languages(
     message = processor._build_success_message(translation)
 
     assert message == "Successfully translated (title: fr-CA, description: fr-FR)"
+
+
+def test_build_success_message_reports_existing_nfo_content(
+    processor: MetadataProcessor,
+) -> None:
+    """Test mixed source messages do not render an absent source tag."""
+    translation = TranslatedContent(
+        title=ModelTranslatedString(content="Original", source="existing_nfo"),
+        description=ModelTranslatedString(
+            content="Translated", source="translation", source_tag="zh-CN"
+        ),
+    )
+
+    message = processor._build_success_message(translation)
+
+    assert message == (
+        "Successfully translated (title: Existing NFO Content, description: zh-CN)"
+    )
 
 
 def test_build_success_message_partial_translation(
@@ -878,6 +900,7 @@ def test_process_file_tagline_only_preserves_title_and_plot(
     processor.translator.get_translations.return_value = {
         "zh-CN": translated_content("", "", "zh-CN", "命运由你掌握。")
     }
+    processor.translator.get_original_details.return_value = None
     nfo_path = test_data_dir / "tvshow.nfo"
     create_custom_nfo(
         nfo_path, "Original Title", "Original plot", tagline="Old tagline"
@@ -994,6 +1017,7 @@ def test_process_file_appends_tagline_when_plot_is_missing(
     processor.translator.get_translations.return_value = {
         "zh-CN": translated_content("", "", "zh-CN", "命运由你掌握。")
     }
+    processor.translator.get_original_details.return_value = None
     nfo_path = test_data_dir / "tvshow.nfo"
     nfo_path.write_text(
         """<tvshow>
@@ -1292,7 +1316,9 @@ def test_original_language_fallback_selects_original_title(
     }
 
     # Mock the original details API call to return Chinese original language
-    mock_translator.get_original_details.return_value = ("zh", "大明王朝1566")
+    mock_translator.get_original_details.return_value = OriginalTitleDetails(
+        "zh", "大明王朝1566"
+    )
 
     result = processor.process_file(nfo_path)
 
@@ -1301,7 +1327,6 @@ def test_original_language_fallback_selects_original_title(
         result,
         expected_success=True,
         expected_file_modified=True,
-        expected_language="zh-CN",  # Should still report zh-CN as selected
         expected_message_contains="Successfully translated",
     )
 
@@ -1347,7 +1372,9 @@ def test_original_language_fallback_does_not_apply_for_different_family(
     }
 
     # Mock original details to return English original language (different family)
-    mock_translator.get_original_details.return_value = ("en", "Breaking Bad")
+    mock_translator.get_original_details.return_value = OriginalTitleDetails(
+        "en", "Breaking Bad"
+    )
 
     result = processor.process_file(nfo_path)
 
@@ -1362,11 +1389,11 @@ def test_original_language_fallback_does_not_apply_for_different_family(
     assert (
         result.translated_content.title.content == "Breaking Bad"
     )  # Original from .nfo
-    assert result.translated_content.title.language == "original"
+    assert result.translated_content.title.source == "existing_nfo"
     assert (
         result.translated_content.description.content == "中文描述"
     )  # Chinese description
-    assert result.translated_content.description.language == "zh-CN"
+    assert result.translated_content.description.source_tag == "zh-CN"
 
 
 def test_process_file_tvdb_id_only_success(
@@ -1633,6 +1660,7 @@ def test_content_matches_after_fallback_skips_processing(
             description=TranslatedString(content="这是一个示例描述", language="zh-CN"),
         )
     }
+    mock_translator.get_original_details.return_value = None
 
     result = processor.process_file(nfo_path)
 
@@ -1649,9 +1677,9 @@ def test_content_matches_after_fallback_skips_processing(
     assert (
         result.translated_content.title.content == "示例剧集"
     )  # From fallback (original)
-    assert result.translated_content.title.language == "original"  # Fallback language
+    assert result.translated_content.title.source == "existing_nfo"
     assert result.translated_content.description.content == "这是一个示例描述"
-    assert result.translated_content.description.language == "zh-CN"  # From translation
+    assert result.translated_content.description.source_tag == "zh-CN"
 
 
 def test_process_file_multi_episode_partial_update(

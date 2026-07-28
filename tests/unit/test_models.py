@@ -11,8 +11,8 @@ from sonarr_metadata_rewrite.models import (
     ProcessResult,
     TmdbIds,
     TranslatedContent,
-    TranslatedString,
 )
+from tests.test_translated_string import TranslatedString
 
 
 def test_tmdb_ids_tv() -> None:
@@ -50,8 +50,8 @@ def test_translated_content() -> None:
     )
     assert content.title.content == "示例剧集"
     assert content.description.content == "这是一个示例描述"
-    assert content.title.language == "zh-CN"
-    assert content.description.language == "zh-CN"
+    assert content.title.source_tag == "zh-CN"
+    assert content.description.source_tag == "zh-CN"
     assert content.tagline.content == "命运由你掌握。"
 
 

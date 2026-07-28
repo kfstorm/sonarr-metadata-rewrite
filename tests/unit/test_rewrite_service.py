@@ -12,9 +12,9 @@ from sonarr_metadata_rewrite.models import (
     ImageProcessResult,
     ProcessResult,
     TranslatedContent,
-    TranslatedString,
 )
 from sonarr_metadata_rewrite.rewrite_service import RewriteService
+from tests.test_translated_string import TranslatedString
 
 
 def assert_cache_initialization_error(settings: Settings, cache_dir: Path) -> None:

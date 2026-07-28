@@ -284,11 +284,12 @@ def assert_process_result(
     if expected_language is not None:
         # Check if translated_content has the expected language
         assert result.translated_content is not None
-        # Check if both title and description are in the expected language
+        # Original and backup NFO content deliberately have no source tag.
         assert (
-            result.translated_content.title.language == expected_language
-            and result.translated_content.description.language == expected_language
-        )
+            result.translated_content.title.source_tag or "original"
+        ) == expected_language and (
+            result.translated_content.description.source_tag or "original"
+        ) == expected_language
 
     if expected_message_contains is not None:
         assert expected_message_contains in result.message
