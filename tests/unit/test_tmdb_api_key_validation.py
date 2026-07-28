@@ -30,14 +30,38 @@ def test_rewrite_mode_rejects_empty_tmdb_api_key(
         )
 
 
-@pytest.mark.parametrize("api_key", [None, "", " ", "\t"])
-def test_rollback_mode_allows_missing_tmdb_api_key(
-    api_key: str | None,
+def test_rewrite_mode_rejects_missing_tmdb_api_key(tmp_path: Path) -> None:
+    """Rewrite mode rejects an omitted TMDB API key."""
+    with pytest.raises(
+        ValidationError,
+        match="TMDB_API_KEY is required when SERVICE_MODE=rewrite",
+    ):
+        Settings(
+            rewrite_root_dirs=[tmp_path],
+            preferred_languages=["zh-CN"],
+            service_mode="rewrite",
+        )
+
+
+@pytest.mark.parametrize("api_key", ["", " ", "\t"])
+def test_rollback_mode_allows_empty_tmdb_api_key(
+    api_key: str,
     tmp_path: Path,
 ) -> None:
-    """Rollback mode does not access TMDB and must not require its API key."""
+    """Rollback mode does not access TMDB and allows an empty API key."""
     settings = Settings(
         tmdb_api_key=api_key,
+        rewrite_root_dirs=[tmp_path],
+        preferred_languages=["zh-CN"],
+        service_mode="rollback",
+    )
+
+    assert settings.tmdb_api_key == ""
+
+
+def test_rollback_mode_allows_missing_tmdb_api_key(tmp_path: Path) -> None:
+    """Rollback mode allows the TMDB API key to be omitted."""
+    settings = Settings(
         rewrite_root_dirs=[tmp_path],
         preferred_languages=["zh-CN"],
         service_mode="rollback",
