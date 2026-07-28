@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted design. Implementation has not started.
+Implemented. Radarr movie metadata and artwork rewriting are supported.
 
 ## Goal
 
@@ -186,8 +186,11 @@ Run:
 ./scripts/lint.sh --check
 ```
 
-The baseline combined coverage measured before this work is 95%. Combined
-coverage must not decrease.
+Verification completed:
+
+- Unit and integration test suites: passed.
+- Combined coverage: 96%, above the 95% baseline.
+- Lint and duplication checks: passed.
 
 ## Rejected or Superseded Options
 

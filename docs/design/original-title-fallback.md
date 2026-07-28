@@ -2,8 +2,7 @@
 
 ## Status
 
-Accepted design. Reproduction tests exist; production implementation has not
-started.
+Implemented and awaiting review in [PR 114](https://github.com/kfstorm/sonarr-metadata-rewrite/pull/114).
 
 This design implements [ADR 0002](../adr/0002-original-title-fallback.md) and
 uses the canonical language from the project [context](../../CONTEXT.md).
@@ -316,8 +315,12 @@ Run:
 npx jscpd
 ```
 
-All existing unit tests must pass. The three current integration reproductions
-must change from failing to passing without weakening their title assertions.
+Verification completed:
+
+- Unit tests: 347 passed.
+- Integration tests: 22 passed, including all three title reproductions.
+- Combined coverage: 96%.
+- Lint and duplication checks: passed.
 
 ## Rejected Options
 
