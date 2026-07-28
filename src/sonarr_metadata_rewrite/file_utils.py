@@ -20,6 +20,14 @@ TRAILING_SCRAPER_URLS_RE = re.compile(
 )
 
 
+class UnsupportedNfoRootError(ValueError):
+    """Raised when a valid NFO has a root tag the service does not translate."""
+
+    def __init__(self, root_tag: str) -> None:
+        """Initialize the error for the unsupported root tag."""
+        super().__init__(f"Unsupported NFO root tag: {root_tag}")
+
+
 def parse_image_info(basename: str) -> tuple[str, int | None]:
     """Parse image basename to determine kind and season number.
 
@@ -200,6 +208,9 @@ def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
         metadata = _extract_episode_metadata(wrapped_root)
         metadata.trailing_scraper_urls = scraper_urls
         return metadata
+
+    if len(wrapped_root) == 1:
+        raise UnsupportedNfoRootError(wrapped_root[0].tag)
 
     raise ET.ParseError("Unsupported NFO root structure")
 

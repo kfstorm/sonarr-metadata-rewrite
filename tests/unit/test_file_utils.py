@@ -3,15 +3,18 @@
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
 
 from sonarr_metadata_rewrite.file_utils import (
+    UnsupportedNfoRootError,
     extract_metadata_info,
     find_root_dir_for_file,
     find_target_files,
     is_nfo_file,
     is_rewritable_image,
+    parse_nfo_with_retry,
 )
 
 
@@ -464,6 +467,37 @@ class TestExtractMetadataInfo:
 
         with pytest.raises(ET.ParseError, match="Unsupported NFO root structure"):
             extract_metadata_info(nfo_path)
+
+    def test_extract_metadata_info_rejects_unsupported_single_root_tag(
+        self, test_data_dir: Path
+    ) -> None:
+        """Reject a valid NFO root tag the service does not translate."""
+        nfo_path = test_data_dir / "season.nfo"
+        nfo_path.write_text(
+            "<season><title>Season 1</title><seasonnumber>1</seasonnumber></season>",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UnsupportedNfoRootError, match="root tag: season"):
+            extract_metadata_info(nfo_path)
+
+    def test_parse_nfo_does_not_retry_unsupported_root_tag(
+        self, test_data_dir: Path
+    ) -> None:
+        """Do not retry valid XML that uses an unsupported root tag."""
+        nfo_path = test_data_dir / "season.nfo"
+        parse_documents = Mock(side_effect=UnsupportedNfoRootError("season"))
+
+        with (
+            patch(
+                "sonarr_metadata_rewrite.file_utils._parse_nfo_documents",
+                parse_documents,
+            ),
+            pytest.raises(UnsupportedNfoRootError, match="root tag: season"),
+        ):
+            parse_nfo_with_retry(nfo_path)
+
+        parse_documents.assert_called_once_with(nfo_path)
 
 
 class TestFindRootDirForFile:

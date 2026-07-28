@@ -7,7 +7,11 @@ from typing import Literal
 
 from sonarr_metadata_rewrite.backup_utils import create_backup, get_backup_path
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.file_utils import extract_metadata_info, is_nfo_file
+from sonarr_metadata_rewrite.file_utils import (
+    UnsupportedNfoRootError,
+    extract_metadata_info,
+    is_nfo_file,
+)
 from sonarr_metadata_rewrite.models import (
     EpisodeMetadataInfo,
     MetadataInfo,
@@ -48,6 +52,14 @@ class MetadataProcessor:
 
             return self._process_single_metadata_file(nfo_path, metadata_info)
 
+        except UnsupportedNfoRootError as e:
+            return MetadataProcessResult(
+                success=True,
+                file_path=nfo_path,
+                message=f"{e}; skipped",
+                file_modified=False,
+                translated_content=None,
+            )
         except Exception as e:
             return MetadataProcessResult(
                 success=False,
