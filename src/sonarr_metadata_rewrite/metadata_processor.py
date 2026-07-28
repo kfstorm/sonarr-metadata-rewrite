@@ -812,6 +812,10 @@ class MetadataProcessor:
                 f'{name}: Original Title "{value.content}" [{value.source_tag}], '
                 f"fallback for {value.selection_tag}"
             )
+        if value.source == "existing_nfo":
+            return f"{name}: Existing NFO Content"
+        if value.source == "backup_nfo":
+            return f"{name}: Backup NFO Content"
         return f"{name}: {value.source_tag}"
 
     def _tagline_matches(self, tagline: str, translation: TranslatedContent) -> bool:

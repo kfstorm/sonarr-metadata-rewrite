@@ -16,6 +16,9 @@ from sonarr_metadata_rewrite.models import (
     TmdbIds,
     TranslatedContent,
 )
+from sonarr_metadata_rewrite.models import (
+    TranslatedString as ModelTranslatedString,
+)
 from sonarr_metadata_rewrite.translator import Translator
 from tests.conftest import (
     SAMPLE_MULTI_EPISODE_NFO,
@@ -615,6 +618,24 @@ def test_build_success_message_mixed_languages(
     message = processor._build_success_message(translation)
 
     assert message == "Successfully translated (title: fr-CA, description: fr-FR)"
+
+
+def test_build_success_message_reports_existing_nfo_content(
+    processor: MetadataProcessor,
+) -> None:
+    """Test mixed source messages do not render an absent source tag."""
+    translation = TranslatedContent(
+        title=ModelTranslatedString(content="Original", source="existing_nfo"),
+        description=ModelTranslatedString(
+            content="Translated", source="translation", source_tag="zh-CN"
+        ),
+    )
+
+    message = processor._build_success_message(translation)
+
+    assert message == (
+        "Successfully translated (title: Existing NFO Content, description: zh-CN)"
+    )
 
 
 def test_build_success_message_partial_translation(
