@@ -4,15 +4,16 @@ import json
 from collections.abc import Generator
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 import httpx
 import pytest
 from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
-from sonarr_metadata_rewrite.models import TmdbIds, TranslatedString
+from sonarr_metadata_rewrite.models import TmdbIds
 from sonarr_metadata_rewrite.translator import Translator
+from tests.test_translated_string import TranslatedString
 
 
 def mock_not_found_error() -> httpx.HTTPStatusError:
@@ -171,24 +172,24 @@ def test_get_translations_series_success(
     assert zh_cn.title.content == "测试剧集"
     assert zh_cn.description.content == "这是一个测试剧集的描述"
     assert zh_cn.tagline.content == "命运由你掌握。"
-    assert zh_cn.title.language == "zh-CN"
-    assert zh_cn.description.language == "zh-CN"
+    assert zh_cn.title.source_tag == "zh-CN"
+    assert zh_cn.description.source_tag == "zh-CN"
 
     # Check English translation
     assert "en-US" in translations
     en_us = translations["en-US"]
     assert en_us.title.content == "Test Series"
     assert en_us.description.content == "This is a test series description"
-    assert en_us.title.language == "en-US"
-    assert en_us.description.language == "en-US"
+    assert en_us.title.source_tag == "en-US"
+    assert en_us.description.source_tag == "en-US"
 
     # Check Japanese translation (no country code)
     assert "ja" in translations
     ja = translations["ja"]
     assert ja.title.content == "テストシリーズ"
     assert ja.description.content == "これはテストシリーズの説明です"
-    assert ja.title.language == "ja"
-    assert ja.description.language == "ja"
+    assert ja.title.source_tag == "ja"
+    assert ja.description.source_tag == "ja"
 
 
 @patch("httpx.Client.get")
@@ -218,8 +219,8 @@ def test_get_translations_episode_success(
     zh_cn = translations["zh-CN"]
     assert zh_cn.title.content == "测试剧集"
     assert zh_cn.description.content == "这是一个测试剧集的描述"
-    assert zh_cn.title.language == "zh-CN"
-    assert zh_cn.description.language == "zh-CN"
+    assert zh_cn.title.source_tag == "zh-CN"
+    assert zh_cn.description.source_tag == "zh-CN"
 
 
 @patch("httpx.Client.get")
@@ -350,10 +351,10 @@ def test_get_translations_filters_empty_data(
     tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
     translations = translator.get_translations(tmdb_ids)
 
-    # Should only include translations with content
-    assert len(translations) == 1
+    # Returned empty records remain eligible for Original Title fallback.
+    assert len(translations) == 2
     assert "en-US" in translations
-    assert "zh-CN" not in translations
+    assert "zh-CN" in translations
 
 
 @patch("httpx.Client.get")
@@ -473,9 +474,8 @@ def test_get_original_details_series_success(
 
     # Verify result
     assert result is not None
-    original_language, original_title = result
-    assert original_language == "zh"
-    assert original_title == "大明王朝1566"
+    assert result.original_language == "zh"
+    assert result.original_title == "大明王朝1566"
 
 
 @patch("httpx.Client.get")
@@ -494,7 +494,9 @@ def test_get_original_details_movie_uses_movie_title_fields(
     result = translator.get_original_details(TmdbIds(tmdb_id=550, media_type="movie"))
 
     mock_get.assert_called_once_with("/movie/550", params=None)
-    assert result == ("en", "Fight Club")
+    assert result is not None
+    assert result.original_language == "en"
+    assert result.original_title == "Fight Club"
 
 
 @patch("httpx.Client.get")
@@ -522,20 +524,9 @@ def test_get_original_details_episode_success(
     tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv", season=1, episode=1)
     result = translator.get_original_details(tmdb_ids)
 
-    # Verify both API calls were made
-    assert mock_get.call_count == 2
-    mock_get.assert_any_call(
-        "/tv/12345/season/1/episode/1", params=None
-    )  # Episode details
-    mock_get.assert_any_call(
-        "/tv/12345", params=None
-    )  # Series details for original_language
-
-    # Verify result combines episode name with series original language
-    assert result is not None
-    original_language, original_title = result
-    assert original_language == "zh"  # From series
-    assert original_title == "Episode 1"  # From episode
+    # Episodes lack an explicit Original Title and do not request Details.
+    assert mock_get.call_count == 0
+    assert result is None
 
 
 @patch("httpx.Client.get")
@@ -591,12 +582,14 @@ def test_get_original_details_caching(
     # First call should hit API and cache result
     result1 = translator.get_original_details(tmdb_ids)
     assert mock_get.call_count == 1
-    assert result1 == ("zh", "大明王朝1566")
+    assert result1 is not None
+    assert result1.original_title == "大明王朝1566"
 
     # Second call should use cache (no additional API calls)
     result2 = translator.get_original_details(tmdb_ids)
     assert mock_get.call_count == 1  # Still only 1 call
-    assert result2 == ("zh", "大明王朝1566")
+    assert result2 is not None
+    assert result2.original_title == "大明王朝1566"
     assert result1 == result2
 
 
@@ -1144,7 +1137,10 @@ def test_get_original_details_returns_none_when_resource_not_found(
     mock_get.side_effect = mock_not_found_error()
 
     assert translator.get_original_details(tmdb_ids) is None
-    mock_get.assert_called_once_with(endpoint, params=None)
+    if tmdb_ids.episode is None:
+        mock_get.assert_called_once_with(endpoint, params=None)
+    else:
+        mock_get.assert_not_called()
 
 
 @patch("httpx.Client.get")
@@ -1162,10 +1158,7 @@ def test_get_original_details_episode_returns_none_when_series_not_found(
     tmdb_ids = TmdbIds(tmdb_id=99999, media_type="tv", season=1, episode=1)
 
     assert translator.get_original_details(tmdb_ids) is None
-    assert mock_get.call_args_list == [
-        call("/tv/99999/season/1/episode/1", params=None),
-        call("/tv/99999", params=None),
-    ]
+    assert mock_get.call_args_list == []
 
 
 @patch("httpx.Client.get")

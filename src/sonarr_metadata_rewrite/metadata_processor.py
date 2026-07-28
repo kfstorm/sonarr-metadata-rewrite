@@ -77,7 +77,9 @@ class MetadataProcessor:
             )
 
         all_translations = self.translator.get_translations(tmdb_ids)
-        selected_translation = self._select_preferred_translation(all_translations)
+        selected_translation = self._select_preferred_translation(
+            all_translations, tmdb_ids
+        )
 
         if not selected_translation:
             original_metadata = self._get_backup_metadata_info(nfo_path)
@@ -89,15 +91,14 @@ class MetadataProcessor:
                 ):
                     selected_translation = TranslatedContent(
                         title=TranslatedString(
-                            content=original_metadata.title, language="original"
+                            content=original_metadata.title, source="backup_nfo"
                         ),
                         description=TranslatedString(
                             content=original_metadata.description,
-                            language="original",
+                            source="backup_nfo",
                         ),
                         tagline=TranslatedString(
-                            content=original_metadata.tagline,
-                            language="original",
+                            content=original_metadata.tagline, source="backup_nfo"
                         ),
                     )
                 else:
@@ -127,7 +128,7 @@ class MetadataProcessor:
             return MetadataProcessResult(
                 success=True,
                 file_path=nfo_path,
-                message="Content already matches preferred translation",
+                message=self._build_unchanged_message(selected_translation),
                 tmdb_ids=tmdb_ids,
                 file_modified=False,
                 translated_content=selected_translation,
@@ -222,7 +223,9 @@ class MetadataProcessor:
                 first_tmdb_ids = entry_tmdb_ids
 
             all_translations = self.translator.get_translations(entry_tmdb_ids)
-            entry_translation = self._select_preferred_translation(all_translations)
+            entry_translation = self._select_preferred_translation(
+                all_translations, entry_tmdb_ids
+            )
 
             entry_metadata = self._build_episode_metadata_info(entry, series_tmdb_id)
             if not entry_translation:
@@ -236,15 +239,14 @@ class MetadataProcessor:
                 ):
                     entry_translation = TranslatedContent(
                         title=TranslatedString(
-                            content=backup_entry.title, language="original"
+                            content=backup_entry.title, source="backup_nfo"
                         ),
                         description=TranslatedString(
                             content=backup_entry.description,
-                            language="original",
+                            source="backup_nfo",
                         ),
                         tagline=TranslatedString(
-                            content=backup_entry.tagline,
-                            language="original",
+                            content=backup_entry.tagline, source="backup_nfo"
                         ),
                     )
                 else:
@@ -508,10 +510,10 @@ class MetadataProcessor:
         if not translation.title.content and not translation.description.content:
             return TranslatedContent(
                 title=TranslatedString(
-                    content=metadata_info.title, language="original"
+                    content=metadata_info.title, source="existing_nfo"
                 ),
                 description=TranslatedString(
-                    content=metadata_info.description, language="original"
+                    content=metadata_info.description, source="existing_nfo"
                 ),
                 tagline=translation.tagline,
             )
@@ -520,44 +522,17 @@ class MetadataProcessor:
         if translation.title.content and translation.description.content:
             return translation
 
-        # If title is empty, try original language title if language family matches
-        if not translation.title.content:
-            # Get the language from either field (prefer title, fallback to description)
-            preferred_language = (
-                translation.title.language
-                if translation.title.language != "unknown"
-                else translation.description.language
-            )
-            original_title = self._get_original_title_if_language_matches(
-                metadata_info, preferred_language
-            )
-            if original_title:
-                # Use original title but keep the preferred language for reporting
-                return TranslatedContent(
-                    title=TranslatedString(
-                        content=original_title, language=preferred_language
-                    ),
-                    description=(
-                        translation.description
-                        if translation.description.content
-                        else TranslatedString(
-                            content=metadata_info.description, language="original"
-                        )
-                    ),
-                    tagline=translation.tagline,
-                )
-
         # Apply fallback using cached original content
         final_title = (
             translation.title
             if translation.title.content
-            else TranslatedString(content=metadata_info.title, language="original")
+            else TranslatedString(content=metadata_info.title, source="existing_nfo")
         )
         final_description = (
             translation.description
             if translation.description.content
             else TranslatedString(
-                content=metadata_info.description, language="original"
+                content=metadata_info.description, source="existing_nfo"
             )
         )
 
@@ -567,51 +542,6 @@ class MetadataProcessor:
             description=final_description,
             tagline=translation.tagline,
         )
-
-    def _get_original_title_if_language_matches(
-        self, metadata_info: MetadataInfo, preferred_language: str
-    ) -> str | None:
-        """Get original title if original language matches preferred language family.
-
-        Args:
-            metadata_info: Cached metadata information containing TMDB IDs
-            preferred_language: The preferred language code (e.g., "zh-CN")
-
-        Returns:
-            Original title if language families match, None otherwise
-        """
-        try:
-            # Need TMDB ID for API call
-            if not metadata_info.tmdb_id:
-                return None
-
-            # Build TmdbIds object for API call
-            tmdb_ids = TmdbIds(
-                tmdb_id=metadata_info.tmdb_id,
-                media_type="movie" if metadata_info.file_type == "movie" else "tv",
-                season=metadata_info.season,
-                episode=metadata_info.episode,
-            )
-
-            # Get original language and title from TMDB Details API
-            original_details = self.translator.get_original_details(tmdb_ids)
-            if not original_details:
-                return None
-
-            original_language, original_title = original_details
-
-            # Check if language families match
-            preferred_base = preferred_language.split("-", 1)[0]
-            original_base = original_language.split("-", 1)[0]
-
-            if preferred_base == original_base:
-                return original_title
-
-        except Exception:
-            # If anything fails, return None to use standard fallback
-            pass
-
-        return None
 
     def _build_episode_metadata_info(
         self, entry: EpisodeMetadataInfo, series_tmdb_id: int
@@ -750,35 +680,65 @@ class MetadataProcessor:
             raise
 
     def _select_preferred_translation(
-        self, all_translations: dict[str, TranslatedContent]
+        self,
+        all_translations: dict[str, TranslatedContent],
+        tmdb_ids: TmdbIds | None = None,
     ) -> TranslatedContent | None:
         """Select best translation based on language preferences with smart merging.
 
         Args:
             all_translations: Dictionary of all available translations
+            tmdb_ids: TMDB resource whose Original Title may be selected
 
         Returns:
             Merged translation from preferred languages or None if no match found
         """
-        title_string = None
-        description_string = None
-        tagline_string = None
+        title_string: TranslatedString | None = None
+        description_string: TranslatedString | None = None
+        tagline_string: TranslatedString | None = None
+        original_details = None
+        details_read = False
 
         # Find best title, description, and tagline from preferred languages.
         for preferred_lang in self.settings.preferred_languages:
             if preferred_lang in all_translations:
                 translation = all_translations[preferred_lang]
 
-                # Take title if we don't have one yet and this translation has content
+                # An empty present record gives the Original Title its priority slot.
                 if not title_string and translation.title.content:
-                    title_string = translation.title
+                    title_string = self._select_translation_field(
+                        translation.title, preferred_lang
+                    )
+                elif not title_string and not translation.title.content:
+                    if not details_read and tmdb_ids is not None:
+                        original_details = self.translator.get_original_details(
+                            tmdb_ids
+                        )
+                        details_read = True
+                    if (
+                        original_details
+                        and preferred_lang.split("-", 1)[0].casefold()
+                        == original_details.original_language.split("-", 1)[
+                            0
+                        ].casefold()
+                    ):
+                        title_string = TranslatedString(
+                            content=original_details.original_title,
+                            source="original_title",
+                            source_tag=original_details.original_language,
+                            selection_tag=preferred_lang,
+                        )
 
                 # Take description if missing and this translation has content
                 if not description_string and translation.description.content:
-                    description_string = translation.description
+                    description_string = self._select_translation_field(
+                        translation.description, preferred_lang
+                    )
 
                 if not tagline_string and translation.tagline.content:
-                    tagline_string = translation.tagline
+                    tagline_string = self._select_translation_field(
+                        translation.tagline, preferred_lang
+                    )
 
                 # Stop if we have all fields.
                 if title_string and description_string and tagline_string:
@@ -786,16 +746,24 @@ class MetadataProcessor:
 
         # Return merged translation if we found at least one field.
         if title_string or description_string or tagline_string:
-            # Use empty TranslatedString with "unknown" language for missing fields.
             return TranslatedContent(
-                title=title_string or TranslatedString(content="", language="unknown"),
-                description=description_string
-                or TranslatedString(content="", language="unknown"),
-                tagline=tagline_string
-                or TranslatedString(content="", language="unknown"),
+                title=title_string or TranslatedString(content=""),
+                description=description_string or TranslatedString(content=""),
+                tagline=tagline_string or TranslatedString(content=""),
             )
 
         return None
+
+    def _select_translation_field(
+        self, value: TranslatedString, selection_tag: str
+    ) -> TranslatedString:
+        """Create a resolved value without mutating parsed provider data."""
+        return TranslatedString(
+            content=value.content,
+            source=value.source,
+            source_tag=value.source_tag,
+            selection_tag=selection_tag,
+        )
 
     def _build_success_message(self, translation: TranslatedContent) -> str:
         """Build success message showing source languages for translated fields.
@@ -809,13 +777,14 @@ class MetadataProcessor:
         if (
             translation.title.content
             and translation.description.content
-            and translation.title.language == translation.description.language
+            and translation.title.source == "translation"
+            and translation.title.source_tag == translation.description.source_tag
             and (
                 not translation.tagline.content
-                or translation.tagline.language == translation.title.language
+                or translation.tagline.source_tag == translation.title.source_tag
             )
         ):
-            return f"Successfully translated to {translation.title.language}"
+            return f"Successfully translated to {translation.title.source_tag}"
 
         fields = (
             ("title", translation.title),
@@ -823,12 +792,31 @@ class MetadataProcessor:
             ("tagline", translation.tagline),
         )
         selected_fields = [(name, value) for name, value in fields if value.content]
-        parts = [f"{name}: {value.language}" for name, value in selected_fields]
+        parts = [
+            self._format_field_provenance(name, value)
+            for name, value in selected_fields
+        ]
         return f"Successfully translated ({', '.join(parts)})"
+
+    def _build_unchanged_message(self, translation: TranslatedContent) -> str:
+        """Build an unchanged result with Original Title fallback provenance."""
+        if translation.title.source != "original_title":
+            return "Content already matches preferred translation"
+        title = self._format_field_provenance("title", translation.title)
+        return f"Content already matches preferred translation ({title})"
+
+    def _format_field_provenance(self, name: str, value: TranslatedString) -> str:
+        """Format one selected field's provenance for a process result."""
+        if value.source == "original_title":
+            return (
+                f'{name}: Original Title "{value.content}" [{value.source_tag}], '
+                f"fallback for {value.selection_tag}"
+            )
+        return f"{name}: {value.source_tag}"
 
     def _tagline_matches(self, tagline: str, translation: TranslatedContent) -> bool:
         """Return whether a tagline requires no update."""
-        if translation.tagline.content or translation.tagline.language == "original":
+        if translation.tagline.content or translation.tagline.source == "backup_nfo":
             return tagline == translation.tagline.content
         return True
 
@@ -836,7 +824,7 @@ class MetadataProcessor:
         """Replace tagline only when TMDB supplies one or backup restores it."""
         if (
             not translation.tagline.content
-            and translation.tagline.language != "original"
+            and translation.tagline.source != "backup_nfo"
         ):
             return
 
