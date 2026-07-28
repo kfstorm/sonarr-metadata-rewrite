@@ -2,9 +2,9 @@
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -93,7 +93,20 @@ class Settings(BaseSettings):
         )
 
     # TMDB API
-    tmdb_api_key: str = Field(description="TMDB API key for translation requests")
+    tmdb_api_key: str = Field(
+        default="",
+        description="TMDB API key for translation requests",
+    )
+
+    @field_validator("tmdb_api_key", mode="before")
+    @classmethod
+    def normalize_tmdb_api_key(cls, v: object) -> str:
+        """Normalize an omitted, empty, or whitespace-only TMDB API key."""
+        if v is None:
+            return ""
+        if not isinstance(v, str):
+            raise ValueError("tmdb_api_key must be a string")
+        return v.strip()
 
     # Directory monitoring
     rewrite_root_dirs: list[Path] = Field(
@@ -188,6 +201,13 @@ class Settings(BaseSettings):
         if v not in ["rewrite", "rollback"]:
             raise ValueError("service_mode must be either 'rewrite' or 'rollback'")
         return v
+
+    @model_validator(mode="after")
+    def validate_mode_requirements(self) -> Self:
+        """Validate configuration requirements that depend on service mode."""
+        if self.service_mode == "rewrite" and not self.tmdb_api_key:
+            raise ValueError("TMDB_API_KEY is required when SERVICE_MODE=rewrite")
+        return self
 
 
 def get_settings() -> Settings:
