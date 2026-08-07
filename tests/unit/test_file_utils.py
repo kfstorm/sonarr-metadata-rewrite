@@ -499,6 +499,20 @@ class TestExtractMetadataInfo:
 
         parse_documents.assert_called_once_with(nfo_path)
 
+    def test_extract_metadata_info_handles_utf8_bom(self, test_data_dir: Path) -> None:
+        """Parse NFO content that starts with a UTF-8 BOM."""
+        nfo_path = test_data_dir / "bom.nfo"
+        nfo_path.write_bytes(
+            b"\xef\xbb\xbf"
+            b'<?xml version="1.0" encoding="utf-8"?>\n'
+            b"<tvshow>\n  <title>Breaking Bad</title>\n</tvshow>\n"
+        )
+
+        info = extract_metadata_info(nfo_path)
+
+        assert info.file_type == "tvshow"
+        assert info.title == "Breaking Bad"
+
 
 class TestFindRootDirForFile:
     """Tests for find_root_dir_for_file."""

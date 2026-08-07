@@ -179,7 +179,7 @@ def extract_metadata_info(nfo_path: Path) -> MetadataInfo:
 
 def _parse_nfo_documents(nfo_path: Path) -> MetadataInfo:
     """Parse one or more adjacent XML documents from an NFO file."""
-    raw_content = nfo_path.read_bytes().decode("utf-8")
+    raw_content = nfo_path.read_bytes().decode("utf-8").replace("\ufeff", "")
     xml_content, scraper_urls = _split_trailing_scraper_urls(raw_content)
     normalized_content = xml_content.strip()
     normalized_content = re.sub(r"<\?xml[^>]*\?>", "", normalized_content).strip()
