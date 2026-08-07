@@ -273,6 +273,39 @@ def test_get_translations_keeps_tagline_only_record(translator: Translator) -> N
     assert translations["zh-CN"].tagline.content == "命运由你掌握。"
 
 
+def test_parse_api_translations_normalizes_carriage_returns(
+    translator: Translator,
+) -> None:
+    """Test that CR and CRLF in TMDB content are normalized to LF.
+
+    Without this, a written .nfo would contain normalized LF after XML round-trip
+    while the in-memory translation kept CR, triggering endless rewrites.
+    """
+    translations = translator._parse_api_translations(
+        {
+            "translations": [
+                {
+                    "iso_639_1": "de",
+                    "iso_3166_1": "DE",
+                    "data": {
+                        "name": "Sachen.\r Wendy",
+                        "overview": "Zeile eins.\r\nZeile zwei.\rZeile drei.",
+                        "tagline": "Ein\rTag.",
+                    },
+                }
+            ]
+        },
+        "tv",
+    )
+
+    assert translations["de-DE"].title.content == "Sachen.\n Wendy"
+    assert (
+        translations["de-DE"].description.content
+        == "Zeile eins.\nZeile zwei.\nZeile drei."
+    )
+    assert translations["de-DE"].tagline.content == "Ein\nTag."
+
+
 @patch("httpx.Client.get")
 def test_get_translations_http_error(mock_get: Mock, translator: Translator) -> None:
     """Test HTTP error handling."""

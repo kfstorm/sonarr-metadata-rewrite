@@ -16,6 +16,15 @@ from sonarr_metadata_rewrite.models import (
 )
 
 
+def _normalize_line_endings(value: str) -> str:
+    """Normalize CRLF and lone CR to LF.
+
+    TMDB content can contain carriage returns; XML parsing normalizes CR to LF,
+    so without this the written file would never match the in-memory translation.
+    """
+    return value.replace("\r\n", "\n").replace("\r", "\n")
+
+
 class Translator:
     """TMDB API client with caching and rate limiting."""
 
@@ -153,9 +162,11 @@ class Translator:
             )
 
             title_key = "title" if media_type == "movie" else "name"
-            title = str(data.get(title_key) or "").strip()
-            description = str(data.get("overview") or "").strip()
-            tagline = str(data.get("tagline") or "").strip()
+            title = _normalize_line_endings(str(data.get(title_key) or "").strip())
+            description = _normalize_line_endings(
+                str(data.get("overview") or "").strip()
+            )
+            tagline = _normalize_line_endings(str(data.get("tagline") or "").strip())
 
             translations[full_language_code] = TranslatedContent(
                 title=TranslatedString(
