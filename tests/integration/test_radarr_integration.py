@@ -8,6 +8,7 @@ from tests.integration.fixtures.radarr_client import RadarrClient
 from tests.integration.test_helpers import (
     MovieWithNfos,
     ServiceRunner,
+    assert_nfo_date,
     parse_nfo_content,
     verify_images,
     verify_translations,
@@ -30,6 +31,7 @@ def verify_movie_output(nfo_file: Path, image_files: list[Path]) -> None:
     assert metadata["root_tag"] == "movie"
     assert metadata["title"].strip(), "Movie NFO has no translated title"
     assert metadata["plot"].strip(), "Movie NFO has no translated plot"
+    assert_nfo_date(nfo_file, "premiered")
 
 
 @pytest.mark.integration
