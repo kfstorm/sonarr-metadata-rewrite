@@ -1,6 +1,7 @@
 """TMDB API client with translation caching."""
 
 import time
+from datetime import date
 from typing import Any, Literal, cast
 
 import httpx
@@ -25,6 +26,23 @@ def _normalize_line_endings(value: str) -> str:
     return value.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _calculate_translation_cache_ttl(
+    cache_duration_hours: int,
+    release_date: date | None,
+    *,
+    today: date | None = None,
+) -> float:
+    """Calculate a translation response TTL from its release date."""
+    maximum = cache_duration_hours * 3600
+    if release_date is None:
+        return maximum
+
+    minimum = maximum * 0.01
+    days = abs(((today or date.today()) - release_date).days)
+    days_squared = days**2
+    return minimum + (maximum - minimum) * days_squared / (days_squared + 60**2)
+
+
 class Translator:
     """TMDB API client with caching and rate limiting."""
 
@@ -42,17 +60,23 @@ class Translator:
             timeout=30.0,
         )
 
-    def get_translations(self, tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
+    def get_translations(
+        self, tmdb_ids: TmdbIds, release_date: date | None = None
+    ) -> dict[str, TranslatedContent]:
         """Get all translations for TV, episode, or movie resources.
 
         Args:
             tmdb_ids: TMDB identifiers containing media type and optional TV episode
+            release_date: Optional NFO release date used for translation cache TTL
 
         Returns:
             Dictionary mapping language codes to TranslatedContent objects
         """
         endpoint = f"/{tmdb_ids}/translations"
-        api_data = self._get_cached_json(endpoint)
+        cache_expire_seconds = _calculate_translation_cache_ttl(
+            self.settings.cache_duration_hours, release_date
+        )
+        api_data = self._get_cached_json(endpoint, expire=cache_expire_seconds)
         if api_data is None:
             return {}
 
@@ -105,11 +129,23 @@ class Translator:
             return error.response, error
 
     def _get_cached_json(
-        self, endpoint: str, params: dict[str, Any] | None = None
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        *,
+        expire: float | None = None,
     ) -> dict[str, Any] | None:
         """Get one TMDB JSON response, caching only 200 and 404 outcomes."""
         cache_key = self._response_cache_key(endpoint, params)
-        cached_outcome = self.cache.get(cache_key)
+        if expire is None:
+            cached_outcome = self.cache.get(cache_key)
+        else:
+            cached_outcome, expire_time = self.cache.get(cache_key, expire_time=True)
+            if cached_outcome is not None and (
+                expire_time is None or expire_time > time.time() + expire
+            ):
+                self.cache.touch(cache_key, expire=expire)
+
         if cached_outcome is not None:
             if cached_outcome["status"] == httpx.codes.NOT_FOUND:
                 return None
@@ -123,14 +159,14 @@ class Translator:
             self.cache.set(
                 cache_key,
                 {"status": httpx.codes.NOT_FOUND},
-                expire=self.cache_expire_seconds,
+                expire=(self.cache_expire_seconds if expire is None else expire),
             )
             return None
 
         self.cache.set(
             cache_key,
             {"status": httpx.codes.OK, "body": api_data},
-            expire=self.cache_expire_seconds,
+            expire=(self.cache_expire_seconds if expire is None else expire),
         )
         return api_data
 

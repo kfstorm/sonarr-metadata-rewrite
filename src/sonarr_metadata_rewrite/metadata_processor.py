@@ -88,7 +88,9 @@ class MetadataProcessor:
                 translated_content=None,
             )
 
-        all_translations = self.translator.get_translations(tmdb_ids)
+        all_translations = self.translator.get_translations(
+            tmdb_ids, release_date=metadata_info.release_date
+        )
         selected_translation = self._select_preferred_translation(
             all_translations, tmdb_ids
         )
@@ -234,7 +236,9 @@ class MetadataProcessor:
             if first_tmdb_ids is None:
                 first_tmdb_ids = entry_tmdb_ids
 
-            all_translations = self.translator.get_translations(entry_tmdb_ids)
+            all_translations = self.translator.get_translations(
+                entry_tmdb_ids, release_date=entry.release_date
+            )
             entry_translation = self._select_preferred_translation(
                 all_translations, entry_tmdb_ids
             )
@@ -566,6 +570,7 @@ class MetadataProcessor:
             file_type="episodedetails",
             season=entry.season,
             episode=entry.episode,
+            release_date=entry.release_date,
             title=entry.title,
             description=entry.description,
             tagline=entry.tagline,

@@ -131,8 +131,10 @@ _Avoid_: Cached client error, cached rate-limit response, cached server error
 
 **TMDB Cache Lifetime**:
 Period during which a Cacheable TMDB Outcome is authoritative locally. It
-applies uniformly to all cacheable outcomes.
-_Avoid_: Endpoint-specific cache lifetime
+uses the configured lifetime for non-translation outcomes. Translation
+responses may use a release-date-aware lifetime bounded by that configured
+maximum.
+_Avoid_: Endpoint-specific cache lifetimes outside translation responses
 
 **TMDB Response Cache Namespace Version**:
 Version identifying a TMDB Response Cache contract. It changes only when the

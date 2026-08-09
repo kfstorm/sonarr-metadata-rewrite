@@ -1,7 +1,10 @@
 """Unit tests for translator."""
 
 import json
+import time
 from collections.abc import Generator
+from datetime import date, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, patch
@@ -12,7 +15,10 @@ from diskcache import Cache  # type: ignore[import-untyped]
 
 from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.models import TmdbIds
-from sonarr_metadata_rewrite.translator import Translator
+from sonarr_metadata_rewrite.translator import (
+    Translator,
+    _calculate_translation_cache_ttl,
+)
 from tests.test_translated_string import TranslatedString
 
 
@@ -468,6 +474,111 @@ def test_caching_integration(
     assert mock_get.call_count == 1  # Still only 1 call
     assert len(translations2) == 3
     assert translations1 == translations2
+
+
+def test_translation_cache_ttl_is_symmetric_and_adaptive() -> None:
+    """Release dates equally far in the past and future have equal TTLs."""
+    today = date(2026, 8, 9)
+    past = today - timedelta(days=30)
+    future = today + timedelta(days=30)
+
+    past_ttl = _calculate_translation_cache_ttl(720, past, today=today)
+    future_ttl = _calculate_translation_cache_ttl(720, future, today=today)
+
+    assert past_ttl == pytest.approx(future_ttl)
+    assert _calculate_translation_cache_ttl(720, today, today=today) == pytest.approx(
+        720 * 3600 * 0.01
+    )
+    assert _calculate_translation_cache_ttl(720, None, today=today) == 720 * 3600
+
+
+def test_translation_cache_ttl_respects_custom_duration_and_maximum(
+    test_data_dir: Path,
+) -> None:
+    """The configured maximum controls both the minimum and asymptote."""
+    settings = Settings(
+        tmdb_api_key="test_key",
+        rewrite_root_dirs=[test_data_dir],
+        preferred_languages=["en"],
+        cache_duration_hours=168,
+    )
+    today = date(2026, 8, 9)
+    maximum = 168 * 3600
+
+    minimum = _calculate_translation_cache_ttl(
+        settings.cache_duration_hours, today, today=today
+    )
+    far_away = _calculate_translation_cache_ttl(
+        settings.cache_duration_hours, today + timedelta(days=1_000_000), today=today
+    )
+
+    assert minimum == pytest.approx(maximum * 0.01)
+    assert far_away < maximum
+    assert far_away > maximum * 0.999999
+
+
+@patch("time.time", return_value=1_000_000.0)
+def test_translation_cache_uses_adaptive_ttl_only_for_translations(
+    mock_time: Mock, translator: Translator, mock_series_response: dict[str, Any]
+) -> None:
+    """Translation responses use adaptive expiry while other responses keep Tmax."""
+    today = date(2026, 8, 9)
+    translation_key = translator._response_cache_key("/tv/12345/translations")
+    details_key = translator._response_cache_key("/movie/550")
+    translator.cache.set(
+        translation_key,
+        {"status": 200, "body": mock_series_response},
+        expire=translator.cache_expire_seconds,
+    )
+    translator.cache.set(
+        details_key,
+        {"status": 200, "body": {"id": 550}},
+        expire=translator.cache_expire_seconds,
+    )
+
+    with patch("sonarr_metadata_rewrite.translator.date") as mock_date:
+        mock_date.today.return_value = today
+        translator.get_translations(
+            TmdbIds(tmdb_id=12345, media_type="tv"), release_date=today
+        )
+
+    _, translation_expire_time = translator.cache.get(translation_key, expire_time=True)
+    _, details_expire_time = translator.cache.get(details_key, expire_time=True)
+    assert translation_expire_time is not None
+    assert details_expire_time is not None
+    assert translation_expire_time - mock_time.return_value == pytest.approx(
+        translator.cache_expire_seconds * 0.01
+    )
+    assert details_expire_time - mock_time.return_value == pytest.approx(
+        translator.cache_expire_seconds
+    )
+
+
+@patch("httpx.Client.get")
+def test_existing_translation_cache_entry_is_shortened(
+    mock_get: Mock, translator: Translator, mock_series_response: dict[str, Any]
+) -> None:
+    """Existing v2 translation entries cannot outlive the adaptive TTL."""
+    today = date(2026, 8, 9)
+    tmdb_ids = TmdbIds(tmdb_id=12345, media_type="tv")
+    cache_key = translator._response_cache_key("/tv/12345/translations")
+    translator.cache.set(
+        cache_key,
+        {"status": 200, "body": mock_series_response},
+        expire=translator.cache_expire_seconds,
+    )
+    expected_ttl = _calculate_translation_cache_ttl(
+        translator.settings.cache_duration_hours, today, today=today
+    )
+
+    with patch("sonarr_metadata_rewrite.translator.date") as mock_date:
+        mock_date.today.return_value = today
+        assert translator.get_translations(tmdb_ids, release_date=today)
+
+    _, expire_time = translator.cache.get(cache_key, expire_time=True)
+    assert expire_time is not None
+    assert expire_time - time.time() <= expected_ttl + 1
+    mock_get.assert_not_called()
 
 
 def test_translator_configuration(translator: Translator) -> None:

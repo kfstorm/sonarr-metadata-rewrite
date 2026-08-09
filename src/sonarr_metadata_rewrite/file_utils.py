@@ -6,6 +6,7 @@ extensions so other modules can reuse the same logic consistently.
 
 import re
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 from typing import cast
 
@@ -254,6 +255,7 @@ def _extract_episode_metadata(root: ET.Element) -> MetadataInfo:
         file_type="episodedetails",
         season=first_entry.season,
         episode=first_entry.episode,
+        release_date=first_entry.release_date,
         title=first_entry.title,
         description=first_entry.description,
         tagline=first_entry.tagline,
@@ -320,3 +322,27 @@ def _populate_common_metadata(
     tagline_element = root.find("tagline")
     if tagline_element is not None and tagline_element.text:
         info.tagline = tagline_element.text.strip()
+
+    if isinstance(info, EpisodeMetadataInfo):
+        info.release_date = _parse_nfo_date(root.findtext("aired"))
+    elif info.file_type == "movie":
+        info.release_date = _parse_nfo_date(root.findtext("premiered"))
+    elif info.file_type == "tvshow":
+        release_dates = [
+            parsed_date
+            for tag in ("premiered", "enddate")
+            for element in root.findall(tag)
+            if (parsed_date := _parse_nfo_date(element.text)) is not None
+        ]
+        info.release_date = max(release_dates, default=None)
+
+
+def _parse_nfo_date(value: str | None) -> date | None:
+    """Parse an optional NFO date without rejecting the whole document."""
+    if not value or not value.strip():
+        return None
+
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
