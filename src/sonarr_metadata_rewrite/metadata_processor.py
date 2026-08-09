@@ -825,11 +825,11 @@ class MetadataProcessor:
         )
         selected_fields = [(name, value) for name, value in fields if value.content]
         translation_tag = selected_fields[0][1].source_tag if selected_fields else None
-        all_translation = bool(selected_fields) and all(
+        all_selected_fields_are_translations = bool(selected_fields) and all(
             value.source == "translation" for _, value in selected_fields
         )
         if (
-            all_translation
+            all_selected_fields_are_translations
             and translation_tag is not None
             and all(value.source_tag == translation_tag for _, value in selected_fields)
         ):
@@ -839,7 +839,9 @@ class MetadataProcessor:
             self._format_field_provenance(name, value)
             for name, value in selected_fields
         ]
-        selection_kind = "translation" if all_translation else "metadata"
+        selection_kind = (
+            "translation" if all_selected_fields_are_translations else "metadata"
+        )
         return f"Content already matches selected {selection_kind} ({', '.join(parts)})"
 
     def _format_field_provenance(self, name: str, value: TranslatedString) -> str:
