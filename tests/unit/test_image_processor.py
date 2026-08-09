@@ -986,7 +986,7 @@ class TestAdditionalCoverageScenarios:
         with Image.open(clearlogo_path) as img:
             assert img.format == "PNG"
             assert img.mode == "RGBA"
-            assert img.getchannel("A").getextrema()[1] > 0
+            assert img.getpixel((0, 0)) == (255, 0, 0, 128)
         assert read_embedded_marker(clearlogo_path) == candidate
 
     def test_close_http_client(self, image_processor: ImageProcessor) -> None:
