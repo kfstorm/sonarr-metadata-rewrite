@@ -703,6 +703,21 @@ def test_build_unchanged_message_mixed_languages(
     )
 
 
+def test_build_multi_episode_message_single_episode_without_translation(
+    processor: MetadataProcessor,
+) -> None:
+    """Test the generic unchanged message for a single episode."""
+    message = processor._build_multi_episode_message(
+        updated_count=0,
+        translated_count=0,
+        unchanged_count=0,
+        unavailable_count=0,
+        episode_count=1,
+    )
+
+    assert message == "Content already matches preferred translation"
+
+
 def test_build_success_message_reports_existing_nfo_content(
     processor: MetadataProcessor,
 ) -> None:
