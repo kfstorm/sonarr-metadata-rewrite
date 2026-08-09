@@ -792,17 +792,9 @@ class MetadataProcessor:
         Returns:
             Formatted success message
         """
-        if (
-            translation.title.content
-            and translation.description.content
-            and translation.title.source == "translation"
-            and translation.title.source_tag == translation.description.source_tag
-            and (
-                not translation.tagline.content
-                or translation.tagline.source_tag == translation.title.source_tag
-            )
-        ):
-            return f"Successfully translated to {translation.title.source_tag}"
+        translation_tag = self._get_single_translation_language(translation)
+        if translation_tag is not None:
+            return f"Successfully translated to {translation_tag}"
 
         fields = (
             ("title", translation.title),
@@ -816,6 +808,31 @@ class MetadataProcessor:
         ]
         return f"Successfully translated ({', '.join(parts)})"
 
+    def _get_single_translation_language(
+        self, translation: TranslatedContent
+    ) -> str | None:
+        """Return the language for a complete single-language translation."""
+        title = translation.title
+        description = translation.description
+        tagline = translation.tagline
+        if (
+            not title.content
+            or not description.content
+            or title.source != "translation"
+            or description.source != "translation"
+            or title.source_tag is None
+            or title.source_tag != description.source_tag
+            or (
+                tagline.content
+                and (
+                    tagline.source != "translation"
+                    or tagline.source_tag != title.source_tag
+                )
+            )
+        ):
+            return None
+        return title.source_tag
+
     def _build_unchanged_message(self, translation: TranslatedContent) -> str:
         """Build an unchanged result with selected content provenance."""
         fields = (
@@ -824,15 +841,11 @@ class MetadataProcessor:
             ("tagline", translation.tagline),
         )
         selected_fields = [(name, value) for name, value in fields if value.content]
-        translation_tag = selected_fields[0][1].source_tag if selected_fields else None
+        translation_tag = self._get_single_translation_language(translation)
         all_selected_fields_are_translations = bool(selected_fields) and all(
             value.source == "translation" for _, value in selected_fields
         )
-        if (
-            all_selected_fields_are_translations
-            and translation_tag is not None
-            and all(value.source_tag == translation_tag for _, value in selected_fields)
-        ):
+        if translation_tag is not None:
             return f"Content already matches {translation_tag} translation"
 
         parts = [

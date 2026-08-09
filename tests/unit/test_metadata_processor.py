@@ -672,6 +672,20 @@ def test_build_unchanged_message_single_language(
     assert message == "Content already matches fr-FR translation"
 
 
+def test_build_unchanged_message_incomplete_translation_uses_provenance(
+    processor: MetadataProcessor,
+) -> None:
+    """Test an incomplete translation uses detailed provenance."""
+    translation = TranslatedContent(
+        title=TranslatedString(content="Titre français", language="fr-FR"),
+        description=TranslatedString(content="", language="fr-FR"),
+    )
+
+    message = processor._build_unchanged_message(translation)
+
+    assert message == "Content already matches selected translation (title: fr-FR)"
+
+
 def test_build_unchanged_message_mixed_languages(
     processor: MetadataProcessor,
 ) -> None:
