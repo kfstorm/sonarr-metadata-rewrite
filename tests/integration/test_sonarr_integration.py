@@ -24,7 +24,6 @@ def verify_real_nfo_dates(nfo_files: list[Path]) -> None:
         root_tag = parse_nfo_content(nfo_file)["root_tag"]
         if root_tag == "tvshow":
             assert_nfo_date(nfo_file, "premiered")
-            assert_nfo_date(nfo_file, "enddate", required=False)
         elif root_tag == "episodedetails":
             assert_nfo_date(nfo_file, "aired")
 

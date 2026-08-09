@@ -320,17 +320,26 @@ class TestExtractMetadataInfo:
     @pytest.mark.parametrize(
         ("root_tag", "date_fields", "expected_date"),
         [
-            ("episodedetails", "<aired>2024-02-03</aired>", date(2024, 2, 3)),
-            ("movie", "<premiered>2021-03-04</premiered>", date(2021, 3, 4)),
+            (
+                "episodedetails",
+                "<aired>2024-02-03</aired><premiered>2024-02-04</premiered>",
+                date(2024, 2, 4),
+            ),
+            (
+                "movie",
+                "<premiered>2021-03-04</premiered><aired>2021-03-05</aired>",
+                date(2021, 3, 5),
+            ),
             (
                 "tvshow",
-                "<premiered>2020-01-01</premiered><enddate>2024-05-06</enddate>",
+                "<premiered>2020-01-01</premiered><aired>2024-05-06</aired>"
+                "<enddate>2099-01-01</enddate>",
                 date(2024, 5, 6),
             ),
         ],
-        ids=["episode-aired", "movie-premiered", "tvshow-newest-date"],
+        ids=["aired", "premiered", "tvshow-latest-of-both"],
     )
-    def test_extracts_release_date_by_nfo_type(
+    def test_extracts_latest_release_date_from_premiered_or_aired(
         self,
         test_data_dir: Path,
         root_tag: str,
@@ -359,11 +368,11 @@ class TestExtractMetadataInfo:
             ("movie", "<premiered>2024-02-30</premiered>"),
             (
                 "tvshow",
-                "<premiered>invalid</premiered><enddate>"
-                "</enddate><dateadded>2099-01-01</dateadded>",
+                "<premiered>invalid</premiered><aired>not-a-date</aired>"
+                "<enddate>2099-01-01</enddate><dateadded>2099-01-01</dateadded>",
             ),
         ],
-        ids=["episode-invalid", "movie-invalid", "tvshow-missing-valid-date"],
+        ids=["episode-invalid", "movie-invalid", "tvshow-invalid-premiered"],
     )
     def test_missing_or_invalid_release_dates_are_ignored(
         self, test_data_dir: Path, root_tag: str, date_fields: str

@@ -323,18 +323,13 @@ def _populate_common_metadata(
     if tagline_element is not None and tagline_element.text:
         info.tagline = tagline_element.text.strip()
 
-    if isinstance(info, EpisodeMetadataInfo):
-        info.release_date = _parse_nfo_date(root.findtext("aired"))
-    elif info.file_type == "movie":
-        info.release_date = _parse_nfo_date(root.findtext("premiered"))
-    elif info.file_type == "tvshow":
-        release_dates = [
-            parsed_date
-            for tag in ("premiered", "enddate")
-            for element in root.findall(tag)
-            if (parsed_date := _parse_nfo_date(element.text)) is not None
-        ]
-        info.release_date = max(release_dates, default=None)
+    release_dates = [
+        parsed_date
+        for tag in ("premiered", "aired")
+        for element in root.findall(tag)
+        if (parsed_date := _parse_nfo_date(element.text)) is not None
+    ]
+    info.release_date = max(release_dates, default=None)
 
 
 def _parse_nfo_date(value: str | None) -> date | None:
