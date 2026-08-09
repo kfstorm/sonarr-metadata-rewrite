@@ -127,7 +127,7 @@ ENABLE_NFO_REWRITE=true               # Translate NFO files (default: true)
 ENABLE_IMAGE_REWRITE=true             # Rewrite posters/clearlogos (default: true)
 
 # Caching & Storage
-CACHE_DURATION_HOURS=720              # Cache translations (default: 30 days)
+CACHE_DURATION_HOURS=720              # Max TMDB TTL (default: 30 days)
 CACHE_DIR=./cache                     # Cache directory (default: ./cache)
 
 # TMDB API Rate Limiting
@@ -286,8 +286,9 @@ The service has a few main parts:
 **TMDB integration** - Extracts TMDB IDs from Sonarr and Radarr XML files and
 fetches translations via their API
 
-**Smart caching** - Stores translations locally so it doesn't hit the API
-repeatedly for the same content
+**Smart caching** - Stores TMDB responses locally so it doesn't hit the API
+repeatedly for the same content. Translation responses for recently released
+media refresh sooner, while older media can use the configured maximum lifetime.
 
 **Batch processing** - Also scans your existing files periodically to catch
 anything it might have missed (both .nfo and image files)

@@ -2,6 +2,7 @@
 
 import tempfile
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -315,6 +316,78 @@ class TestExtractMetadataInfo:
         assert metadata.title == "Pilot"
         assert metadata.episode_entries is not None
         assert len(metadata.episode_entries) == 1
+
+    @pytest.mark.parametrize(
+        ("root_tag", "date_fields", "expected_date"),
+        [
+            (
+                "episodedetails",
+                "<aired>2024-02-03</aired><premiered>2024-02-04</premiered>",
+                date(2024, 2, 4),
+            ),
+            (
+                "movie",
+                "<premiered>2021-03-04</premiered><aired>2021-03-05</aired>",
+                date(2021, 3, 5),
+            ),
+            (
+                "tvshow",
+                "<premiered>2020-01-01</premiered><aired>2024-05-06</aired>"
+                "<enddate>2099-01-01</enddate>",
+                date(2024, 5, 6),
+            ),
+        ],
+        ids=["aired", "premiered", "tvshow-latest-of-both"],
+    )
+    def test_extracts_latest_release_date_from_premiered_or_aired(
+        self,
+        test_data_dir: Path,
+        root_tag: str,
+        date_fields: str,
+        expected_date: date,
+    ) -> None:
+        """Extract the release date used for translation cache expiry."""
+        nfo_path = test_data_dir / "metadata.nfo"
+        nfo_path.write_text(
+            f'<{root_tag}><uniqueid type="tmdb">123</uniqueid>'
+            f"{date_fields}</{root_tag}>",
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.release_date == expected_date
+        if root_tag == "episodedetails":
+            assert metadata.episode_entries is not None
+            assert metadata.episode_entries[0].release_date == expected_date
+
+    @pytest.mark.parametrize(
+        ("root_tag", "date_fields"),
+        [
+            ("episodedetails", "<aired>not-a-date</aired>"),
+            ("movie", "<premiered>2024-02-30</premiered>"),
+            (
+                "tvshow",
+                "<premiered>invalid</premiered><aired>not-a-date</aired>"
+                "<enddate>2099-01-01</enddate><dateadded>2099-01-01</dateadded>",
+            ),
+        ],
+        ids=["episode-invalid", "movie-invalid", "tvshow-invalid-premiered"],
+    )
+    def test_missing_or_invalid_release_dates_are_ignored(
+        self, test_data_dir: Path, root_tag: str, date_fields: str
+    ) -> None:
+        """Ignore invalid dates and never use dateadded as a fallback."""
+        nfo_path = test_data_dir / "metadata.nfo"
+        nfo_path.write_text(
+            f'<{root_tag}><uniqueid type="tmdb">123</uniqueid>'
+            f"{date_fields}</{root_tag}>",
+            encoding="utf-8",
+        )
+
+        metadata = extract_metadata_info(nfo_path)
+
+        assert metadata.release_date is None
 
     def test_extract_multi_episode_metadata(self, test_data_dir: Path) -> None:
         """Extract per-episode fields from multiple documents."""

@@ -10,8 +10,10 @@ parser-only releases.
 
 ## Consequences
 
-- Cache only 200 responses and 404 outcomes, using one configured lifetime.
-  Other HTTP outcomes and network failures are never cached.
+- Cache only 200 responses and 404 outcomes. Non-translation reads use the
+  configured lifetime; translation responses may use a release-date-aware
+  lifetime bounded by that maximum. Other HTTP outcomes and network failures
+  are never cached.
 - Request identity uses the HTTP method and fully serialized URL built by HTTPX
   before dispatch. Query-parameter ordering remains part of URL identity.
   Headers are outside the initial cache contract.

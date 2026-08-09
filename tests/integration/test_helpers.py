@@ -1,7 +1,9 @@
 """Helper functions for integration tests."""
 
 import shutil
+import xml.etree.ElementTree as ET
 from contextlib import ExitStack
+from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
@@ -184,6 +186,31 @@ def parse_nfo_content(nfo_path: Path) -> dict[str, Any]:
         ]
 
     return metadata
+
+
+def assert_nfo_date(nfo_path: Path, tag: str, *, required: bool = True) -> None:
+    """Assert that an NFO tag contains an ISO calendar date.
+
+    Args:
+        nfo_path: Path to the NFO file.
+        tag: XML tag whose value should be checked.
+        required: Whether the tag must be present and non-empty.
+
+    Raises:
+        AssertionError: If a required tag is missing or the value is invalid.
+    """
+    value = ET.parse(nfo_path).getroot().findtext(tag)
+    if not value or not value.strip():
+        if required:
+            raise AssertionError(f"NFO is missing required <{tag}>: {nfo_path}")
+        return
+
+    try:
+        date.fromisoformat(value.strip())
+    except ValueError as error:
+        raise AssertionError(
+            f"NFO <{tag}> is not an ISO date: {value!r} ({nfo_path})"
+        ) from error
 
 
 class SeriesWithNfos:

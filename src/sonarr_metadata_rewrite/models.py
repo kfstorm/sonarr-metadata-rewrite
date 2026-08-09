@@ -2,6 +2,7 @@
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -77,6 +78,7 @@ class MetadataInfo:
     file_type: str = "unknown"  # "tvshow", "movie", "episodedetails", or "unknown"
     season: int | None = None
     episode: int | None = None
+    release_date: date | None = None
 
     # Content
     title: str = ""
@@ -99,6 +101,7 @@ class EpisodeMetadataInfo:
     imdb_id: str | None = None
     season: int | None = None
     episode: int | None = None
+    release_date: date | None = None
     title: str = ""
     description: str = ""
     tagline: str = ""

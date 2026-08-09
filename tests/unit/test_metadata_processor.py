@@ -2,6 +2,7 @@
 
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -120,6 +121,23 @@ def test_process_file_episode_success(
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
     )
+
+
+def test_process_file_passes_episode_release_date_to_translator(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Pass the parsed episode date to the translation cache."""
+    test_path = create_test_files("episode.nfo", test_data_dir / "episode.nfo")
+
+    processor.process_file(test_path)
+
+    assert isinstance(processor.translator, Mock)
+    assert processor.translator.get_translations.call_args is not None
+    assert processor.translator.get_translations.call_args.kwargs[
+        "release_date"
+    ] == date(2008, 1, 20)
 
 
 def test_process_file_movie_parses_and_preserves_other_xml_fields(
@@ -1714,7 +1732,9 @@ def test_process_file_multi_episode_partial_update(
     suffix = "\nhttps://www.thetvdb.com/?tab=series&id=81189"
     nfo_path.write_text(nfo_path.read_text(encoding="utf-8") + suffix, encoding="utf-8")
 
-    def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
+    def get_translations(
+        tmdb_ids: TmdbIds, release_date: date | None = None
+    ) -> dict[str, TranslatedContent]:
         if tmdb_ids.episode == 1:
             return {
                 "zh-CN": translated_content("试播集", "沃尔特开始了犯罪生涯。", "zh-CN")
@@ -1904,7 +1924,9 @@ def test_process_file_multi_episode_reports_already_matched_entries(
         encoding="utf-8",
     )
 
-    def get_translations(tmdb_ids: TmdbIds) -> dict[str, TranslatedContent]:
+    def get_translations(
+        tmdb_ids: TmdbIds, release_date: date | None = None
+    ) -> dict[str, TranslatedContent]:
         if tmdb_ids.episode == 1:
             return {
                 "zh-CN": translated_content("试播集", "沃尔特开始了犯罪生涯。", "zh-CN")
