@@ -487,34 +487,41 @@ def test_translation_cache_ttl_is_symmetric_and_adaptive() -> None:
 
     assert past_ttl == pytest.approx(future_ttl)
     assert _calculate_translation_cache_ttl(720, today, today=today) == pytest.approx(
-        720 * 3600 * 0.01
+        720 * 0.01
     )
-    assert _calculate_translation_cache_ttl(720, None, today=today) == 720 * 3600
+    assert _calculate_translation_cache_ttl(720, None, today=today) == 720
 
 
-def test_translation_cache_ttl_respects_custom_duration_and_maximum(
+@pytest.mark.parametrize("cache_duration_hours", [24, 168, 720])
+def test_translation_cache_ttl_scales_with_custom_duration(
     test_data_dir: Path,
+    cache_duration_hours: int,
 ) -> None:
-    """The configured maximum controls both the minimum and asymptote."""
+    """The normalized curve is stable across configured maximum durations."""
     settings = Settings(
         tmdb_api_key="test_key",
         rewrite_root_dirs=[test_data_dir],
         preferred_languages=["en"],
-        cache_duration_hours=168,
+        cache_duration_hours=cache_duration_hours,
     )
     today = date(2026, 8, 9)
-    maximum = 168 * 3600
+    expected_ratios = [(0, 0.01), (1, 0.208), (2, 0.505), (4, 0.802)]
 
-    minimum = _calculate_translation_cache_ttl(
-        settings.cache_duration_hours, today, today=today
-    )
+    for maximum_ratio, expected_ratio in expected_ratios:
+        release_date = today - timedelta(days=cache_duration_hours * maximum_ratio / 24)
+        ttl_hours = _calculate_translation_cache_ttl(
+            settings.cache_duration_hours, release_date, today=today
+        )
+
+        assert ttl_hours / settings.cache_duration_hours == pytest.approx(
+            expected_ratio
+        )
+
     far_away = _calculate_translation_cache_ttl(
         settings.cache_duration_hours, today + timedelta(days=1_000_000), today=today
     )
-
-    assert minimum == pytest.approx(maximum * 0.01)
-    assert far_away < maximum
-    assert far_away > maximum * 0.999999
+    assert far_away < settings.cache_duration_hours
+    assert far_away > settings.cache_duration_hours * 0.999999
 
 
 @patch("time.time", return_value=1_000_000.0)
@@ -577,7 +584,7 @@ def test_existing_translation_cache_entry_is_shortened(
 
     _, expire_time = translator.cache.get(cache_key, expire_time=True)
     assert expire_time is not None
-    assert expire_time - time.time() <= expected_ttl + 1
+    assert expire_time - time.time() <= expected_ttl * 3600 + 1
     mock_get.assert_not_called()
 
 

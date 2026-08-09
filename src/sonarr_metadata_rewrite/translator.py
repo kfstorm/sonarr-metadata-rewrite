@@ -32,15 +32,18 @@ def _calculate_translation_cache_ttl(
     *,
     today: date | None = None,
 ) -> float:
-    """Calculate a translation response TTL from its release date."""
-    maximum = cache_duration_hours * 3600
+    """Calculate a translation response TTL in hours from its release date."""
+    maximum = cache_duration_hours
     if release_date is None:
         return maximum
 
     minimum = maximum * 0.01
-    days = abs(((today or date.today()) - release_date).days)
-    days_squared = days**2
-    return minimum + (maximum - minimum) * days_squared / (days_squared + 60**2)
+    age_hours = abs(((today or date.today()) - release_date).days) * 24
+    age_hours_squared = age_hours**2
+    scale_hours = 2 * maximum
+    return minimum + (maximum - minimum) * age_hours_squared / (
+        age_hours_squared + scale_hours**2
+    )
 
 
 class Translator:
@@ -73,10 +76,10 @@ class Translator:
             Dictionary mapping language codes to TranslatedContent objects
         """
         endpoint = f"/{tmdb_ids}/translations"
-        cache_expire_seconds = _calculate_translation_cache_ttl(
+        cache_expire_hours = _calculate_translation_cache_ttl(
             self.settings.cache_duration_hours, release_date
         )
-        api_data = self._get_cached_json(endpoint, expire=cache_expire_seconds)
+        api_data = self._get_cached_json(endpoint, expire=cache_expire_hours * 3600)
         if api_data is None:
             return {}
 
