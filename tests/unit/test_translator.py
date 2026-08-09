@@ -279,13 +279,13 @@ def test_get_translations_keeps_tagline_only_record(translator: Translator) -> N
     assert translations["zh-CN"].tagline.content == "命运由你掌握。"
 
 
-def test_parse_api_translations_normalizes_carriage_returns(
+def test_parse_api_translations_normalizes_xml_characters(
     translator: Translator,
 ) -> None:
-    """Test that CR and CRLF in TMDB content are normalized to LF.
+    """Test that TMDB content is normalized consistently with XML parsing.
 
-    Without this, a written .nfo would contain normalized LF after XML round-trip
-    while the in-memory translation kept CR, triggering endless rewrites.
+    Without this, a written .nfo can differ from the in-memory translation after
+    XML round-trip, triggering endless rewrites.
     """
     translations = translator._parse_api_translations(
         {
@@ -294,9 +294,9 @@ def test_parse_api_translations_normalizes_carriage_returns(
                     "iso_639_1": "de",
                     "iso_3166_1": "DE",
                     "data": {
-                        "name": "Sachen.\r Wendy",
-                        "overview": "Zeile eins.\r\nZeile zwei.\rZeile drei.",
-                        "tagline": "Ein\rTag.",
+                        "name": "Sachen.\ufeff\r Wendy",
+                        "overview": "Zeile eins.\r\nZeile zwei.\ufeff\rZeile drei.",
+                        "tagline": "Ein\ufeff\rTag.",
                     },
                 }
             ]
