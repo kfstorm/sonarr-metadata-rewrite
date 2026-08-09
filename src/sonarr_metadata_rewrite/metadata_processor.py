@@ -308,6 +308,7 @@ class MetadataProcessor:
                 unchanged_count=unchanged_count,
                 unavailable_count=unavailable_count,
                 episode_count=len(episode_entries),
+                unchanged_translation=selected_translation,
             )
             return MetadataProcessResult(
                 success=True,
@@ -816,11 +817,30 @@ class MetadataProcessor:
         return f"Successfully translated ({', '.join(parts)})"
 
     def _build_unchanged_message(self, translation: TranslatedContent) -> str:
-        """Build an unchanged result with Original Title fallback provenance."""
-        if translation.title.source != "original_title":
-            return "Content already matches preferred translation"
-        title = self._format_field_provenance("title", translation.title)
-        return f"Content already matches preferred translation ({title})"
+        """Build an unchanged result with selected content provenance."""
+        fields = (
+            ("title", translation.title),
+            ("description", translation.description),
+            ("tagline", translation.tagline),
+        )
+        selected_fields = [(name, value) for name, value in fields if value.content]
+        translation_tag = selected_fields[0][1].source_tag if selected_fields else None
+        all_translation = bool(selected_fields) and all(
+            value.source == "translation" for _, value in selected_fields
+        )
+        if (
+            all_translation
+            and translation_tag is not None
+            and all(value.source_tag == translation_tag for _, value in selected_fields)
+        ):
+            return f"Content already matches {translation_tag} translation"
+
+        parts = [
+            self._format_field_provenance(name, value)
+            for name, value in selected_fields
+        ]
+        selection_kind = "translation" if all_translation else "metadata"
+        return f"Content already matches selected {selection_kind} ({', '.join(parts)})"
 
     def _format_field_provenance(self, name: str, value: TranslatedString) -> str:
         """Format one selected field's provenance for a process result."""
@@ -870,11 +890,14 @@ class MetadataProcessor:
         unchanged_count: int,
         unavailable_count: int,
         episode_count: int,
+        unchanged_translation: TranslatedContent | None = None,
     ) -> str:
         """Build a status message for multi-episode files."""
         if episode_count == 1:
             if updated_count == 1:
                 return "Successfully translated 1 episode"
+            if unchanged_translation is not None:
+                return self._build_unchanged_message(unchanged_translation)
             return "Content already matches preferred translation"
 
         parts = [f"{updated_count} of {episode_count} episodes updated"]

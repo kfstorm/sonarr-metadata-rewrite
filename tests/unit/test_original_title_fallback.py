@@ -80,11 +80,14 @@ def test_original_title_fallback_noop_message_includes_provenance(
                 source_tag="zh",
                 selection_tag="zh-CN",
             ),
-            description=TranslatedString(content=""),
+            description=TranslatedString(
+                content="中文简介", source="translation", source_tag="zh-CN"
+            ),
         )
     )
 
     assert message == (
-        "Content already matches preferred translation "
-        '(title: Original Title "捕风追影" [zh], fallback for zh-CN)'
+        "Content already matches selected metadata "
+        '(title: Original Title "捕风追影" [zh], fallback for zh-CN, '
+        "description: zh-CN)"
     )

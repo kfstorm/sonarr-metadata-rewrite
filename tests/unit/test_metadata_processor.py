@@ -658,6 +658,37 @@ def test_build_success_message_mixed_languages(
     assert message == "Successfully translated (title: fr-CA, description: fr-FR)"
 
 
+def test_build_unchanged_message_single_language(
+    processor: MetadataProcessor,
+) -> None:
+    """Test unchanged content reports the language of a complete translation."""
+    translation = TranslatedContent(
+        title=TranslatedString(content="Titre français", language="fr-FR"),
+        description=TranslatedString(content="Description française", language="fr-FR"),
+    )
+
+    message = processor._build_unchanged_message(translation)
+
+    assert message == "Content already matches fr-FR translation"
+
+
+def test_build_unchanged_message_mixed_languages(
+    processor: MetadataProcessor,
+) -> None:
+    """Test unchanged content reports provenance for mixed translations."""
+    translation = TranslatedContent(
+        title=TranslatedString(content="Titre français", language="fr-FR"),
+        description=TranslatedString(content="English description", language="en-US"),
+    )
+
+    message = processor._build_unchanged_message(translation)
+
+    assert message == (
+        "Content already matches selected translation "
+        "(title: fr-FR, description: en-US)"
+    )
+
+
 def test_build_success_message_reports_existing_nfo_content(
     processor: MetadataProcessor,
 ) -> None:
@@ -1104,7 +1135,7 @@ def test_content_matches_preferred_translation_skips_processing(
         expected_success=True,
         expected_file_modified=False,
         expected_language="zh-CN",
-        expected_message_contains="already matches preferred translation",
+        expected_message_contains="already matches zh-CN translation",
     )
 
 
@@ -1235,7 +1266,7 @@ def test_multiple_rapid_processing_only_first_modifies(
         result2,
         expected_success=True,
         expected_file_modified=False,
-        expected_message_contains="already matches preferred translation",
+        expected_message_contains="already matches zh-CN translation",
     )
 
     # Third processing - still should skip
@@ -1707,7 +1738,7 @@ def test_content_matches_after_fallback_skips_processing(
         result,
         expected_success=True,
         expected_file_modified=False,  # Key test: should NOT modify file
-        expected_message_contains="already matches preferred translation",
+        expected_message_contains="already matches selected metadata",
     )
 
     # Verify the translated content reflects the fallback result
@@ -1718,6 +1749,42 @@ def test_content_matches_after_fallback_skips_processing(
     assert result.translated_content.title.source == "existing_nfo"
     assert result.translated_content.description.content == "这是一个示例描述"
     assert result.translated_content.description.source_tag == "zh-CN"
+
+
+def test_single_episode_unchanged_message_uses_translation_provenance(
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+) -> None:
+    """Test a single unchanged episode reports its selected translation."""
+    settings = create_test_settings(test_data_dir, preferred_languages="fr-FR")
+    mock_translator = Mock(spec=Translator)
+    mock_translator.get_translations.return_value = {
+        "fr-FR": translated_content("Titre français", "Description française", "fr-FR")
+    }
+    processor = MetadataProcessor(settings, mock_translator)
+
+    nfo_path = create_test_files("episode.nfo", test_data_dir / "episode.nfo")
+    nfo_path.write_text(
+        nfo_path.read_text(encoding="utf-8")
+        .replace("Pilot", "Titre français")
+        .replace(
+            "Walter White, a struggling high school chemistry teacher, is diagnosed "
+            "with advanced lung cancer. He turns to a life of crime, producing and "
+            "selling methamphetamine with a former student, Jesse Pinkman, with the "
+            "goal of securing his family's financial future before he dies.",
+            "Description française",
+        ),
+        encoding="utf-8",
+    )
+
+    result = processor.process_file(nfo_path)
+
+    assert result.success is True
+    assert result.file_modified is False
+    assert result.message == "Content already matches fr-FR translation"
+    assert result.translated_content is not None
+    assert result.translated_content.title.source_tag == "fr-FR"
+    assert result.translated_content.description.source_tag == "fr-FR"
 
 
 def test_process_file_multi_episode_partial_update(
