@@ -956,6 +956,39 @@ class TestAdditionalCoverageScenarios:
         assert result.success is False
         assert "Unsupported image format" in result.message
 
+    def test_process_svg_candidate_downloads_png_variant(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """Test SVG candidates use TMDB's transparent PNG variant."""
+        series_dir = tmp_path / "Series"
+        series_dir.mkdir()
+        clearlogo_path = series_dir / "clearlogo.png"
+
+        create_test_image(clearlogo_path)
+
+        candidate = ImageCandidate(
+            file_path="/test_logo.svg", iso_639_1="en", iso_3166_1="US"
+        )
+        image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
+
+        png = Image.new("RGBA", (120, 120), color=(255, 0, 0, 128))
+        output = BytesIO()
+        png.save(output, format="PNG")
+        mock_response = Mock(content=output.getvalue())
+        image_processor.http_client.get = Mock(return_value=mock_response)  # type: ignore[method-assign]
+
+        image_processor._download_and_write_image(clearlogo_path, candidate)
+
+        image_processor.http_client.get.assert_called_once_with(
+            "https://image.tmdb.org/t/p/original/test_logo.png"
+        )
+        assert clearlogo_path.exists()
+        with Image.open(clearlogo_path) as img:
+            assert img.format == "PNG"
+            assert img.mode == "RGBA"
+            assert img.getchannel("A").getextrema()[1] > 0
+        assert read_embedded_marker(clearlogo_path) == candidate
+
     def test_close_http_client(self, image_processor: ImageProcessor) -> None:
         """Test closing HTTP client."""
         image_processor.close()
