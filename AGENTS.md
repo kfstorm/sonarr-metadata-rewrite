@@ -138,8 +138,8 @@ rewrite with embedded marker, and atomic writes with optional backup.
 
 1. **ImageUtils** (`image_utils.py`)
 Image metadata helpers for embedding and reading markers in PNG (tEXt chunk) and
-JPEG (EXIF UserComment) formats. Markers contain TMDB file_path and language info
-to enable reprocessing avoidance.
+JPEG (EXIF UserComment) formats. Markers contain TMDB file_path and language
+info to enable reprocessing avoidance.
 
 1. **RollbackService** (`rollback_service.py`)
 Backup restoration service that reverts .nfo and image files to their original
@@ -177,6 +177,9 @@ development fallback.
   `/tv/{series_id}/season/{season_number}/images`, and `/movie/{movie_id}/images`
   - Don't pass `include_image_language`; fetch all and filter client-side in
     code due to TMDB API quirk
+  - TMDB clearlogos are often `.svg`; request TMDB's `.png` variant (preserving
+    transparency) before embedding markers, while retaining the `.svg` path in
+    the marker
 - **Rate Limits**: TMDB has rate limits, and explicit rate limiting with
   exponential backoff retry is implemented to handle HTTP 429 responses
 - **Language Codes**: ISO 639-1 format with optional country codes (e.g.,
@@ -238,7 +241,8 @@ scripts/ (development automation)
   in PNG tEXt or JPEG EXIF UserComment; if marker matches current selection,
   skip writing
 - Atomic writes: write to temp file and replace; normalize extension according
-  to TMDB candidate while preserving original stem
+  to TMDB candidate while preserving original stem (TMDB `.svg` candidates use
+  TMDB's `.png` variant to keep transparency)
 - Backups: if `ORIGINAL_FILES_BACKUP_DIR` is set, copy original before rewrite
 - Rollback: restores both `.nfo` and image files; removes conflicting ext variants
 

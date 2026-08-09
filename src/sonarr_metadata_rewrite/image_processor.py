@@ -246,8 +246,20 @@ class ImageProcessor:
             dst_path: Destination path for image
             candidate: ImageCandidate with file_path and language info
         """
-        # Build full URL
-        url = f"{TMDB_IMAGE_BASE_URL}{candidate.file_path}"
+        candidate_ext = Path(candidate.file_path).suffix.lower()
+        download_path = candidate.file_path
+        if candidate_ext == ".svg":
+            # TMDB serves SVG logos as PNG when requested with this extension.
+            download_path = f"{candidate.file_path[: -len(candidate_ext)]}.png"
+            candidate_ext = ".png"
+        elif candidate_ext not in IMAGE_EXTENSIONS:
+            raise ValueError(
+                f"Unsupported image format from TMDB: {candidate_ext}. "
+                f"Supported formats: {', '.join(sorted(IMAGE_EXTENSIONS))}, .svg"
+            )
+
+        # Keep the original SVG candidate path in the marker, but download its PNG.
+        url = f"{TMDB_IMAGE_BASE_URL}{download_path}"
 
         # Download with retry
         @retry(timeout=30.0, interval=1.0, exceptions=(httpx.HTTPError,))
@@ -260,15 +272,6 @@ class ImageProcessor:
 
         # Build marker
         marker = candidate
-
-        # Compute destination path with correct extension
-        # Extract extension from candidate.file_path
-        candidate_ext = Path(candidate.file_path).suffix.lower()
-        if candidate_ext not in IMAGE_EXTENSIONS:
-            raise ValueError(
-                f"Unsupported image format from TMDB: {candidate_ext}. "
-                f"Supported formats: {', '.join(sorted(IMAGE_EXTENSIONS))}"
-            )
 
         # Use original filename stem with TMDB extension
         original_stem = dst_path.stem
