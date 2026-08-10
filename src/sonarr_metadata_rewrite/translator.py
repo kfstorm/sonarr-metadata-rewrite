@@ -18,12 +18,12 @@ from sonarr_metadata_rewrite.models import (
 
 
 def _normalize_line_endings(value: str) -> str:
-    """Normalize CRLF and lone CR to LF.
+    """Normalize line endings and remove BOM characters.
 
-    TMDB content can contain carriage returns; XML parsing normalizes CR to LF,
-    so without this the written file would never match the in-memory translation.
+    XML parsing normalizes carriage returns and removes BOM characters, so TMDB
+    content needs the same normalization to avoid repeat rewrites.
     """
-    return value.replace("\r\n", "\n").replace("\r", "\n")
+    return value.replace("\ufeff", "").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _calculate_translation_cache_ttl(
