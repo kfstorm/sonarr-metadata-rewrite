@@ -1,5 +1,6 @@
 """Tests for NFO utility functions."""
 
+import stat
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import date
@@ -10,13 +11,68 @@ import pytest
 
 from sonarr_metadata_rewrite.file_utils import (
     UnsupportedNfoRootError,
+    atomic_write_bytes,
     extract_metadata_info,
     find_root_dir_for_file,
     find_target_files,
     is_nfo_file,
     is_rewritable_image,
     parse_nfo_with_retry,
+    replace_file_bytes,
 )
+
+
+class TestAtomicReplacement:
+    """Behavior of the shared replacement primitives."""
+
+    def test_atomic_write_preserves_current_mode(self, tmp_path: Path) -> None:
+        """Replace an existing file without changing its permission bits."""
+        dst = tmp_path / "metadata.nfo"
+        dst.write_bytes(b"old")
+        dst.chmod(0o640)
+
+        atomic_write_bytes(dst, b"new", mode_from=dst)
+
+        assert dst.read_bytes() == b"new"
+        assert stat.S_IMODE(dst.stat().st_mode) == 0o640
+
+    def test_failed_replace_cleans_temp_and_leaves_original(
+        self, tmp_path: Path
+    ) -> None:
+        """A failed atomic replace must leave no partial replacement."""
+        dst = tmp_path / "metadata.nfo"
+        dst.write_bytes(b"original")
+        with (
+            patch.object(Path, "replace", side_effect=OSError("replace failed")),
+            pytest.raises(OSError, match="replace failed"),
+        ):
+            atomic_write_bytes(dst, b"new", mode_from=dst)
+
+        assert dst.read_bytes() == b"original"
+        assert list(tmp_path.glob(".tmp_*")) == []
+
+    def test_failed_source_removal_keeps_both_files(self, tmp_path: Path) -> None:
+        """A deletion failure reports an error without undoing the new image."""
+        src = tmp_path / "poster.jpg"
+        dst = tmp_path / "poster.png"
+        src.write_bytes(b"old image")
+        src.chmod(0o664)
+        original_unlink = Path.unlink
+
+        def fail_source_unlink(path: Path, missing_ok: bool = False) -> None:
+            if path == src:
+                raise PermissionError("unlink failed")
+            original_unlink(path, missing_ok=missing_ok)
+
+        with (
+            patch.object(Path, "unlink", autospec=True, side_effect=fail_source_unlink),
+            pytest.raises(PermissionError, match="unlink failed"),
+        ):
+            replace_file_bytes(src, dst, b"new image")
+
+        assert src.read_bytes() == b"old image"
+        assert dst.read_bytes() == b"new image"
+        assert stat.S_IMODE(dst.stat().st_mode) == 0o664
 
 
 class TestIsNfoFile:

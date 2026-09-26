@@ -18,9 +18,10 @@ from sonarr_metadata_rewrite.file_utils import (
     extract_metadata_info,
     is_nfo_file,
     parse_image_info,
+    replace_file_bytes,
 )
 from sonarr_metadata_rewrite.image_utils import (
-    embed_marker_and_atomic_write,
+    embed_marker,
     read_embedded_marker,
 )
 from sonarr_metadata_rewrite.models import ImageCandidate, ImageProcessResult, TmdbIds
@@ -279,12 +280,7 @@ class ImageProcessor:
 
         final_dst = dst_path.parent / normalized_name
 
-        # Embed marker and write atomically
-        embed_marker_and_atomic_write(raw_bytes, final_dst, marker)
-
-        # Remove old file if extension changed
-        if final_dst != dst_path and dst_path.exists():
-            dst_path.unlink()
+        replace_file_bytes(dst_path, final_dst, embed_marker(raw_bytes, marker))
 
     def close(self) -> None:
         """Close HTTP client."""
