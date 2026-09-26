@@ -3,14 +3,13 @@
 import json
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
 
 import piexif  # type: ignore[import-untyped]
 import pytest
 from PIL import Image, PngImagePlugin
 
 from sonarr_metadata_rewrite.image_utils import (
-    embed_marker_and_atomic_write,
+    embed_marker,
     read_embedded_marker,
 )
 from sonarr_metadata_rewrite.models import ImageCandidate
@@ -151,11 +150,11 @@ class TestReadEmbeddedMarker:
         )
 
 
-class TestEmbedMarkerAndAtomicWrite:
-    """Tests for embed_marker_and_atomic_write() function."""
+class TestEmbedMarker:
+    """Tests for image encoding with an embedded marker."""
 
     def test_embed_png_with_marker(self, tmp_path: Path) -> None:
-        """Test embedding marker in PNG and writing atomically."""
+        """Test encoding a PNG with an embedded marker."""
         marker_data = ImageCandidate(
             file_path="/test/path.png",
             iso_639_1="zh",
@@ -166,7 +165,7 @@ class TestEmbedMarkerAndAtomicWrite:
         # Create PNG bytes
         raw_bytes = _create_image_bytes((50, 50), "purple", "PNG")
 
-        embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
+        dst.write_bytes(embed_marker(raw_bytes, marker_data))
 
         # Verify file exists
         assert dst.exists()
@@ -187,7 +186,7 @@ class TestEmbedMarkerAndAtomicWrite:
         # Create JPEG bytes
         raw_bytes = _create_image_bytes((60, 60), "orange", "JPEG")
 
-        embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
+        dst.write_bytes(embed_marker(raw_bytes, marker_data))
 
         # Verify file exists
         assert dst.exists()
@@ -196,37 +195,16 @@ class TestEmbedMarkerAndAtomicWrite:
         result = read_embedded_marker(dst)
         assert result == marker_data
 
-    def test_atomic_write_uses_temp_file(self, tmp_path: Path) -> None:
-        """Test that atomic write uses a temporary file and Path.replace()."""
-        marker_data = ImageCandidate(
-            file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
-        )
-        dst = tmp_path / "atomic.png"
-
-        raw_bytes = _create_image_bytes((30, 30), "white", "PNG")
-
-        with patch.object(Path, "replace", autospec=True) as mock_replace:
-            embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
-
-            # Verify Path.replace was called (atomic operation)
-            assert mock_replace.called
-            args = mock_replace.call_args[0]
-            # First arg should be temp file, second should be destination
-            assert args[1] == dst
-            assert args[0] != dst  # Temp file is different
-
-    def test_invalid_image_data_raises_error(self, tmp_path: Path) -> None:
+    def test_invalid_image_data_raises_error(self) -> None:
         """Test that invalid image data raises appropriate exception."""
         marker_data = ImageCandidate(
             file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
         )
-        dst = tmp_path / "invalid.png"
-
         # Provide corrupted/invalid image bytes
         invalid_bytes = b"not valid image data"
 
         with pytest.raises((OSError, ValueError)):
-            embed_marker_and_atomic_write(invalid_bytes, dst, marker_data)
+            embed_marker(invalid_bytes, marker_data)
 
     def test_embed_marker_in_unsupported_format(self, tmp_path: Path) -> None:
         """Test embedding marker in unsupported format saves as-is."""
@@ -242,29 +220,9 @@ class TestEmbedMarkerAndAtomicWrite:
         raw_bytes = output.getvalue()
 
         # Should not raise
-        embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
+        dst.write_bytes(embed_marker(raw_bytes, marker_data))
 
         assert dst.exists()
         # Marker won't be readable from BMP
         result = read_embedded_marker(dst)
         assert result is None
-
-    def test_atomic_write_cleanup_on_error(self, tmp_path: Path) -> None:
-        """Test temp file cleanup on write error."""
-        marker_data = ImageCandidate(
-            file_path="/test/path.png", iso_639_1="en", iso_3166_1="US"
-        )
-        dst = tmp_path / "error.png"
-
-        raw_bytes = _create_image_bytes((30, 30), "white", "PNG")
-
-        # Mock atomic replacement to raise an exception.
-        with (
-            patch.object(Path, "replace", side_effect=OSError("Mock error")),
-            pytest.raises(OSError, match="Mock error"),
-        ):
-            embed_marker_and_atomic_write(raw_bytes, dst, marker_data)
-
-        # Verify temp files cleaned up
-        temp_files = list(tmp_path.glob(".tmp_*"))
-        assert len(temp_files) == 0

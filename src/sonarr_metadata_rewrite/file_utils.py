@@ -1,10 +1,14 @@
-"""Utility functions for handling .nfo/.NFO files and image filenames.
+"""Utilities for replacing files and handling NFO and image filenames.
 
-Centralizes image filename rules (poster/clearlogo/season posters) and supported
-extensions so other modules can reuse the same logic consistently.
+Centralizes atomic replacement and image filename rules (poster/clearlogo/season
+posters) so other modules can reuse the same logic consistently.
 """
 
+import contextlib
+import os
 import re
+import stat
+import tempfile
 import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
@@ -27,6 +31,28 @@ class UnsupportedNfoRootError(ValueError):
     def __init__(self, root_tag: str) -> None:
         """Initialize the error for the unsupported root tag."""
         super().__init__(f"Unsupported NFO root tag: {root_tag}")
+
+
+def atomic_write_bytes(dst: Path, content: bytes, *, mode_from: Path) -> None:
+    """Atomically replace dst with bytes using the current mode of mode_from."""
+    fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=dst.suffix)
+    temp_file = Path(temp_path)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(content)
+            os.fchmod(output.fileno(), stat.S_IMODE(mode_from.stat().st_mode))
+        temp_file.replace(dst)
+    except Exception:
+        with contextlib.suppress(OSError):
+            temp_file.unlink()
+        raise
+
+
+def replace_file_bytes(src: Path, dst: Path, content: bytes) -> None:
+    """Replace dst with src's mode, then remove src if its name changed."""
+    atomic_write_bytes(dst, content, mode_from=src)
+    if src != dst:
+        src.unlink()
 
 
 def parse_image_info(basename: str) -> tuple[str, int | None]:

@@ -2,8 +2,6 @@
 
 import contextlib
 import json
-import os
-import tempfile
 from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
@@ -59,15 +57,15 @@ def read_embedded_marker(path: Path) -> ImageCandidate | None:
     return None
 
 
-def embed_marker_and_atomic_write(
-    raw_bytes: bytes, dst: Path, marker: ImageCandidate
-) -> None:
-    """Embed marker into image and write atomically.
+def embed_marker(raw_bytes: bytes, marker: ImageCandidate) -> bytes:
+    """Embed a marker into image bytes.
 
     Args:
         raw_bytes: Raw image bytes to process
-        dst: Destination path for final image
         marker: ImageCandidate to embed as JSON
+
+    Returns:
+        Encoded image bytes with the marker
     """
     marker_json = json.dumps(asdict(marker), separators=(",", ":"))
 
@@ -93,22 +91,4 @@ def embed_marker_and_atomic_write(
         # Unsupported format, save as-is
         img.save(output, format=img.format)
 
-    # Write atomically using temp file
-    final_bytes = output.getvalue()
-    dst.parent.mkdir(parents=True, exist_ok=True)
-
-    # Create temp file in same directory for atomic replace
-    fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=dst.suffix)
-    temp_file = Path(temp_path)
-    try:
-        os.write(fd, final_bytes)
-        os.close(fd)
-        # Atomic replace
-        temp_file.replace(dst)
-    except Exception:
-        # Clean up temp file on error
-        with contextlib.suppress(Exception):
-            os.close(fd)
-        with contextlib.suppress(Exception):
-            temp_file.unlink()
-        raise
+    return output.getvalue()

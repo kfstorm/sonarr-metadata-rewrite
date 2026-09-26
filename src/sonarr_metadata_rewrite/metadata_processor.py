@@ -2,6 +2,7 @@
 
 import logging
 import xml.etree.ElementTree as ET
+from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
@@ -11,6 +12,7 @@ from sonarr_metadata_rewrite.file_utils import (
     UnsupportedNfoRootError,
     extract_metadata_info,
     is_nfo_file,
+    replace_file_bytes,
 )
 from sonarr_metadata_rewrite.models import (
     EpisodeMetadataInfo,
@@ -631,25 +633,14 @@ class MetadataProcessor:
 
         self._write_tagline(root, translation)
 
-        # Write the updated XML back to file atomically
-        temp_path = nfo_path.with_suffix(".nfo.tmp")
-        try:
-            # Configure XML formatting
-            ET.indent(xml_tree, space="  ", level=0)
-            xml_tree.write(
-                temp_path, encoding="utf-8", xml_declaration=True, method="xml"
-            )
-            with temp_path.open("ab") as temp_file:
-                temp_file.write(trailing_scraper_urls.encode("utf-8"))
-
-            # Atomic replacement
-            temp_path.replace(nfo_path)
-
-        except Exception:
-            # Clean up temporary file if something went wrong
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
+        ET.indent(xml_tree, space="  ", level=0)
+        output = BytesIO()
+        xml_tree.write(output, encoding="utf-8", xml_declaration=True, method="xml")
+        replace_file_bytes(
+            nfo_path,
+            nfo_path,
+            output.getvalue() + trailing_scraper_urls.encode("utf-8"),
+        )
 
     def _write_translated_episode_entries(
         self,
@@ -659,43 +650,38 @@ class MetadataProcessor:
         trailing_scraper_urls: str = "",
     ) -> None:
         """Write translated content for one or more episode XML documents."""
-        temp_path = nfo_path.with_suffix(".nfo.tmp")
-        try:
-            serialized_documents: list[str] = []
-            for index, entry in enumerate(episode_entries):
-                xml_tree = entry.xml_tree
-                if xml_tree is None:
-                    raise ValueError("Episode XML tree cannot be None")
-                root = xml_tree.getroot()
-                if root is None:
-                    raise ValueError("Episode XML root cannot be None")
+        serialized_documents: list[str] = []
+        for index, entry in enumerate(episode_entries):
+            xml_tree = entry.xml_tree
+            if xml_tree is None:
+                raise ValueError("Episode XML tree cannot be None")
+            root = xml_tree.getroot()
+            if root is None:
+                raise ValueError("Episode XML root cannot be None")
 
-                translation = updated_translations.get(index)
-                if translation:
-                    title_element = root.find("title")
-                    if title_element is not None:
-                        title_element.text = translation.title.content
-                    plot_element = root.find("plot")
-                    if plot_element is not None:
-                        plot_element.text = translation.description.content
-                    self._write_tagline(root, translation)
+            translation = updated_translations.get(index)
+            if translation:
+                title_element = root.find("title")
+                if title_element is not None:
+                    title_element.text = translation.title.content
+                plot_element = root.find("plot")
+                if plot_element is not None:
+                    plot_element.text = translation.description.content
+                self._write_tagline(root, translation)
 
-                ET.indent(xml_tree, space="  ", level=0)
-                serialized_documents.append(ET.tostring(root, encoding="unicode"))
+            ET.indent(xml_tree, space="  ", level=0)
+            serialized_documents.append(ET.tostring(root, encoding="unicode"))
 
-            content = (
-                '<?xml version="1.0" encoding="utf-8"?>\n'
-                + "\n".join(serialized_documents)
-                + "\n"
-            )
-            temp_path.write_bytes(
-                content.encode("utf-8") + trailing_scraper_urls.encode("utf-8")
-            )
-            temp_path.replace(nfo_path)
-        except Exception:
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
+        content = (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            + "\n".join(serialized_documents)
+            + "\n"
+        )
+        replace_file_bytes(
+            nfo_path,
+            nfo_path,
+            content.encode("utf-8") + trailing_scraper_urls.encode("utf-8"),
+        )
 
     def _select_preferred_translation(
         self,

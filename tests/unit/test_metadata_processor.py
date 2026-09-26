@@ -1,5 +1,6 @@
 """Unit tests for metadata processor."""
 
+import stat
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import date
@@ -88,6 +89,7 @@ def test_process_file_series_success(
 ) -> None:
     """Test successful processing of series .nfo files."""
     test_path = create_test_files("tvshow.nfo", test_data_dir / "test_series.nfo")
+    test_path.chmod(0o640)
 
     result = processor.process_file(test_path)
 
@@ -99,6 +101,7 @@ def test_process_file_series_success(
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
     )
+    assert stat.S_IMODE(test_path.stat().st_mode) == 0o640
 
 
 def test_process_file_episode_success(
@@ -108,6 +111,7 @@ def test_process_file_episode_success(
 ) -> None:
     """Test successful processing of episode .nfo files."""
     test_path = create_test_files("episode.nfo", test_data_dir / "test_episode.nfo")
+    test_path.chmod(0o664)
 
     result = processor.process_file(test_path)
 
@@ -121,6 +125,7 @@ def test_process_file_episode_success(
         expected_language="zh-CN",
         expected_message_contains="Successfully translated",
     )
+    assert stat.S_IMODE(test_path.stat().st_mode) == 0o664
 
 
 def test_process_file_passes_episode_release_date_to_translator(
@@ -1827,6 +1832,7 @@ def test_process_file_multi_episode_partial_update(
     nfo_path = create_test_files("multi_episode.nfo", series_dir / "episodes.nfo")
     suffix = "\nhttps://www.thetvdb.com/?tab=series&id=81189"
     nfo_path.write_text(nfo_path.read_text(encoding="utf-8") + suffix, encoding="utf-8")
+    nfo_path.chmod(0o640)
 
     def get_translations(
         tmdb_ids: TmdbIds, release_date: date | None = None
@@ -1859,6 +1865,7 @@ def test_process_file_multi_episode_partial_update(
     assert "Cat's in the Bag..." in content
     assert "Walt and Jesse deal with the aftermath." in content
     assert content.endswith(suffix)
+    assert stat.S_IMODE(nfo_path.stat().st_mode) == 0o640
 
 
 def test_process_file_multi_episode_restore_from_backup_when_translation_missing(

@@ -1,5 +1,6 @@
 """Unit tests for ImageProcessor."""
 
+import stat
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -16,7 +17,7 @@ from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_utils import parse_image_info
 from sonarr_metadata_rewrite.image_processor import ImageProcessor
 from sonarr_metadata_rewrite.image_utils import (
-    embed_marker_and_atomic_write,
+    embed_marker,
     read_embedded_marker,
 )
 from sonarr_metadata_rewrite.models import ImageCandidate, TmdbIds
@@ -78,7 +79,7 @@ def create_marked_jpeg(path: Path) -> None:
     output = BytesIO()
     image.save(output, format="JPEG")
     marker = ImageCandidate(file_path="/ja.jpg", iso_639_1="ja", iso_3166_1="JP")
-    embed_marker_and_atomic_write(output.getvalue(), path, marker)
+    path.write_bytes(embed_marker(output.getvalue(), marker))
 
 
 def backup_path_for(image_processor: ImageProcessor, image_path: Path) -> Path:
@@ -214,7 +215,7 @@ class TestProcessSuccessScenarios:
         candidate = ImageCandidate(
             file_path="/same_poster.jpg", iso_639_1="en", iso_3166_1="US"
         )
-        embed_marker_and_atomic_write(output.getvalue(), poster_path, candidate)
+        poster_path.write_bytes(embed_marker(output.getvalue(), candidate))
 
         image_processor.translator.select_best_image = Mock(return_value=candidate)  # type: ignore[method-assign]
 
@@ -625,6 +626,7 @@ class TestDownloadAndWriteImage:
         """Test that extension changes are handled (jpg -> png)."""
         poster_path = tmp_path / "poster.jpg"
         create_test_image(poster_path)
+        poster_path.chmod(0o664)
 
         candidate = ImageCandidate(
             file_path="/test.png", iso_639_1="en", iso_3166_1="US"
@@ -645,13 +647,38 @@ class TestDownloadAndWriteImage:
 
         # Original .jpg should be removed, .png should exist
         assert not poster_path.exists()
-        assert (tmp_path / "poster.png").exists()
+        new_poster = tmp_path / "poster.png"
+        assert stat.S_IMODE(new_poster.stat().st_mode) == 0o664
+        assert read_embedded_marker(new_poster) == candidate
+        with Image.open(new_poster) as image:
+            assert image.format == "PNG"
+
+    def test_same_extension_preserves_mode(
+        self, tmp_path: Path, image_processor: ImageProcessor
+    ) -> None:
+        """A same-name rewrite keeps non-default access permissions."""
+        poster_path = tmp_path / "poster.jpg"
+        create_test_image(poster_path)
+        poster_path.chmod(0o640)
+        candidate = ImageCandidate("/updated.jpg", "en", "US")
+        output = BytesIO()
+        Image.new("RGB", (40, 40), "blue").save(output, format="JPEG")
+        with patch.object(
+            image_processor.http_client,
+            "get",
+            return_value=Mock(content=output.getvalue()),
+        ):
+            image_processor._download_and_write_image(poster_path, candidate)
+
+        assert stat.S_IMODE(poster_path.stat().st_mode) == 0o640
+        assert read_embedded_marker(poster_path) == candidate
 
     def test_download_and_write_image_atomic_write(
         self, tmp_path: Path, image_processor: ImageProcessor
     ) -> None:
         """Test atomic write is used."""
         poster_path = tmp_path / "poster.jpg"
+        create_test_image(poster_path)
 
         candidate = ImageCandidate(
             file_path="/test.jpg", iso_639_1="en", iso_3166_1="US"
