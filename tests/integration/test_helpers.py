@@ -386,6 +386,10 @@ class ServiceRunner:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Stop service when leaving context."""
         self.service.stop()
+        if exc_type is None:
+            assert not self.service.error_logs, (
+                "Service emitted ERROR logs:\n" + "\n".join(self.service.error_logs)
+            )
 
 
 def verify_translations(
