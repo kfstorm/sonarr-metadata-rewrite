@@ -14,6 +14,7 @@ class BaseProcessManager:
         self.should_stream_output = False
         self._output_thread: threading.Thread | None = None
         self._startup_event: threading.Event | None = None
+        self.error_logs: list[str] = []
 
     def _start_process(
         self,
@@ -39,6 +40,7 @@ class BaseProcessManager:
         if self.process is not None:
             raise RuntimeError("A process is already running")
 
+        self.error_logs.clear()
         cmd_str = " ".join(cmd)
         print(f"Starting process: {cmd_str}")
 
@@ -93,6 +95,8 @@ class BaseProcessManager:
                 for line in iter(process.stdout.readline, ""):
                     if line:
                         line_stripped = line.rstrip()
+                        if " - ERROR - " in line_stripped:
+                            self.error_logs.append(line_stripped)
                         if self.should_stream_output:
                             print(f"[process] {line_stripped}")
 
@@ -145,6 +149,8 @@ class BaseProcessManager:
 
         # Send SIGTERM for graceful shutdown
         self._terminate_process(self.process, timeout)
+        if self._output_thread is not None:
+            self._output_thread.join(timeout=timeout)
         print("Process stopped")
 
         # Clean up references

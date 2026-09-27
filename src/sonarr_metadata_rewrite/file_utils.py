@@ -35,7 +35,7 @@ class UnsupportedNfoRootError(ValueError):
 
 def atomic_write_bytes(dst: Path, content: bytes, *, mode_from: Path) -> None:
     """Atomically replace dst with bytes using the current mode of mode_from."""
-    fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=dst.suffix)
+    fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=".tmp")
     temp_file = Path(temp_path)
     try:
         with os.fdopen(fd, "wb") as output:

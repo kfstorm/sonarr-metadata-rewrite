@@ -17,6 +17,7 @@ from sonarr_metadata_rewrite.file_utils import (
     find_target_files,
     is_nfo_file,
     is_rewritable_image,
+    is_target_file,
     parse_nfo_with_retry,
     replace_file_bytes,
 )
@@ -35,6 +36,31 @@ class TestAtomicReplacement:
 
         assert dst.read_bytes() == b"new"
         assert stat.S_IMODE(dst.stat().st_mode) == 0o640
+
+    @pytest.mark.parametrize("filename", ["metadata.nfo", "poster.jpg"])
+    def test_atomic_write_temp_is_not_a_target(
+        self, tmp_path: Path, filename: str
+    ) -> None:
+        """Temporary files must not be picked up by the monitor or scanner."""
+        dst = tmp_path / filename
+        dst.write_bytes(b"old")
+        original_replace = Path.replace
+        observed_temps: list[Path] = []
+
+        def check_temp_before_replace(src: Path, target: Path) -> Path:
+            assert src.parent == dst.parent
+            assert src.is_file()
+            assert not is_target_file(src)
+            observed_temps.append(src)
+            return original_replace(src, target)
+
+        with patch.object(
+            Path, "replace", autospec=True, side_effect=check_temp_before_replace
+        ):
+            atomic_write_bytes(dst, b"new", mode_from=dst)
+
+        assert len(observed_temps) == 1
+        assert dst.read_bytes() == b"new"
 
     def test_failed_replace_cleans_temp_and_leaves_original(
         self, tmp_path: Path
