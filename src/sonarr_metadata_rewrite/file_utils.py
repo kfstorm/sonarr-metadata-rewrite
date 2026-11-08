@@ -4,9 +4,11 @@ Centralizes atomic replacement and image filename rules (poster/clearlogo/season
 posters) so other modules can reuse the same logic consistently.
 """
 
-import contextlib
+import errno
+import logging
 import os
 import re
+import secrets
 import stat
 import tempfile
 import xml.etree.ElementTree as ET
@@ -23,6 +25,125 @@ TRAILING_SCRAPER_URLS_RE = re.compile(
     r"(?P<suffix>(?:[ \t]*\r?\n)+[ \t]*https?://[^\s<>]+"
     r"(?:[ \t]*\r?\n[ \t]*https?://[^\s<>]+)*(?:[ \t]*\r?\n)*)\Z"
 )
+logger = logging.getLogger(__name__)
+_UNSUPPORTED = {errno.ENOTSUP, errno.EOPNOTSUPP}
+_ABSENT_XATTR = _UNSUPPORTED | {errno.ENODATA}
+_BEST_EFFORT_ERRORS = _UNSUPPORTED | {errno.EIO, errno.EPERM, errno.EACCES}
+# Probe these even when listing fails: listing support and ACL support can differ.
+_ACCESS_XATTRS = {
+    "system.posix_acl_access",
+    "system.posix_acl_default",
+    "system.nfs4_acl",
+    "system.nfs4acl",
+    "system.richacl",
+    "security.selinux",
+    "security.SMACK64",
+    "security.capability",
+}
+
+
+def _is_access_xattr(name: str) -> bool:
+    return name in _ACCESS_XATTRS or name.startswith("security.")
+
+
+def _read_xattrs(path: Path) -> dict[str, bytes]:
+    """Read supported metadata, failing closed for known access attributes."""
+    if not hasattr(os, "listxattr"):
+        return {}
+    try:
+        names = set(os.listxattr(path, follow_symlinks=False))
+    except OSError as error:
+        if error.errno not in _BEST_EFFORT_ERRORS:
+            raise
+        logger.warning(
+            "Cannot list xattrs for %s; probing access attributes: %s", path, error
+        )
+        names = set()
+    attributes = {}
+    for name in sorted(names | _ACCESS_XATTRS):
+        try:
+            attributes[name] = os.getxattr(path, name, follow_symlinks=False)
+        except OSError as error:
+            if name not in names and error.errno in _ABSENT_XATTR:
+                continue
+            if _is_access_xattr(name) or error.errno not in _BEST_EFFORT_ERRORS:
+                raise
+            logger.warning("Cannot read optional xattr %s on %s: %s", name, path, error)
+    return attributes
+
+
+def _verify_access_xattrs(fd: int, attributes: dict[str, bytes]) -> None:
+    """Check both retained permissions and absence of inherited access grants."""
+    names = _ACCESS_XATTRS | {name for name in attributes if _is_access_xattr(name)}
+    for name in names:
+        try:
+            value = os.getxattr(fd, name)
+        except OSError as error:
+            if name not in attributes and error.errno in _ABSENT_XATTR:
+                continue
+            raise
+        if value != attributes.get(name):
+            raise OSError(f"Access attribute changed during preparation: {name}")
+
+
+def _apply_xattrs(fd: int, attributes: dict[str, bytes]) -> None:
+    """Restore xattrs after chmod and verify known access-control attributes."""
+    # A directory default ACL/security label may have been inherited by the temp.
+    for name in _ACCESS_XATTRS - attributes.keys():
+        try:
+            os.getxattr(fd, name)
+        except OSError as error:
+            if error.errno not in _ABSENT_XATTR:
+                raise
+        else:
+            os.removexattr(fd, name)
+    for name, value in attributes.items():
+        try:
+            os.setxattr(fd, name, value)
+        except OSError as error:
+            if _is_access_xattr(name):
+                if os.getxattr(fd, name) != value:
+                    raise
+            elif error.errno in _BEST_EFFORT_ERRORS:
+                logger.warning("Cannot preserve optional xattr %s: %s", name, error)
+            else:
+                raise
+    _verify_access_xattrs(fd, attributes)
+
+
+def _apply_access_metadata(
+    fd: int, source: os.stat_result, attributes: dict[str, bytes]
+) -> None:
+    """Apply ownership before modes and ACLs, then verify effective access."""
+    current = os.fstat(fd)
+    if (current.st_uid, current.st_gid) != (source.st_uid, source.st_gid):
+        try:
+            # -1 avoids asking an unprivileged owner to chown an unchanged UID.
+            os.fchown(
+                fd,
+                source.st_uid if current.st_uid != source.st_uid else -1,
+                source.st_gid if current.st_gid != source.st_gid else -1,
+            )
+        except OSError:
+            current = os.fstat(fd)
+            if (current.st_uid, current.st_gid) != (source.st_uid, source.st_gid):
+                raise
+    mode = stat.S_IMODE(source.st_mode)
+    try:
+        os.fchmod(fd, mode)
+    except OSError:
+        if stat.S_IMODE(os.fstat(fd).st_mode) != mode:
+            raise
+    if hasattr(os, "listxattr"):
+        _apply_xattrs(fd, attributes)
+
+    current = os.fstat(fd)
+    if (current.st_uid, current.st_gid, stat.S_IMODE(current.st_mode)) != (
+        source.st_uid,
+        source.st_gid,
+        mode,
+    ):
+        raise PermissionError("Replacement would change ownership or permission mode")
 
 
 class UnsupportedNfoRootError(ValueError):
@@ -33,25 +154,91 @@ class UnsupportedNfoRootError(ValueError):
         super().__init__(f"Unsupported NFO root tag: {root_tag}")
 
 
-def atomic_write_bytes(dst: Path, content: bytes, *, mode_from: Path) -> None:
-    """Atomically replace dst with bytes using the current mode of mode_from."""
-    fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=".tmp")
+def stat_regular_file(path: Path) -> os.stat_result | None:
+    """Snapshot a regular file, rejecting symlinks and special files."""
+    try:
+        state = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(state.st_mode):
+        raise OSError(f"Refusing non-regular file: {path}")
+    return state
+
+
+def check_file_unchanged(path: Path, expected: os.stat_result | None) -> None:
+    """Reject detectable concurrent changes; this is not a filesystem lock."""
+    current = stat_regular_file(path)
+    if current is None or expected is None:
+        unchanged = current is expected
+    else:
+        unchanged = all(
+            getattr(current, field) == getattr(expected, field)
+            for field in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_uid",
+                "st_gid",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        )
+    if not unchanged:
+        raise OSError(f"File changed during preparation: {path}")
+
+
+def atomic_write_bytes(dst: Path, content: bytes, *, mode_from: Path | None) -> None:
+    """Prepare bytes and current access metadata before publishing a replacement.
+
+    Missing sources use normal creation permissions. Existing files are never
+    truncated. Snapshot checks detect changes during preparation, but cannot close
+    the check/rename race or make extension changes a single transaction.
+    """
+    source = stat_regular_file(mode_from) if mode_from is not None else None
+    if mode_from is not None and source is None:
+        raise FileNotFoundError(mode_from)
+    destination = stat_regular_file(dst)
+    if mode_from is None and destination is not None:
+        raise FileExistsError(dst)
+    attributes = _read_xattrs(mode_from) if mode_from is not None else {}
+    if source is None:
+        # Unlike mkstemp's 0600, 0666 observes umask and the directory default ACL.
+        temp_path = str(dst.parent / f".tmp_{secrets.token_hex(16)}.tmp")
+        fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    else:
+        fd, temp_path = tempfile.mkstemp(dir=dst.parent, prefix=".tmp_", suffix=".tmp")
     temp_file = Path(temp_path)
     try:
         with os.fdopen(fd, "wb") as output:
             output.write(content)
-            os.fchmod(output.fileno(), stat.S_IMODE(mode_from.stat().st_mode))
-        temp_file.replace(dst)
-    except Exception:
-        with contextlib.suppress(OSError):
+            output.flush()
+            if source is not None:
+                _apply_access_metadata(output.fileno(), source, attributes)
+        if mode_from is not None:
+            check_file_unchanged(mode_from, source)
+        check_file_unchanged(dst, destination)
+        if destination is None:
+            os.link(temp_file, dst)
             temp_file.unlink()
+        else:
+            temp_file.replace(dst)
+    except Exception:
+        try:
+            temp_file.unlink(missing_ok=True)
+        except OSError:
+            logger.exception(
+                "Failed to clean up replacement temporary file %s", temp_file
+            )
         raise
 
 
 def replace_file_bytes(src: Path, dst: Path, content: bytes) -> None:
-    """Replace dst with src's mode, then remove src if its name changed."""
+    """Replace dst with src's access metadata, then remove an unchanged src."""
+    source = stat_regular_file(src)
     atomic_write_bytes(dst, content, mode_from=src)
     if src != dst:
+        check_file_unchanged(src, source)
         src.unlink()
 
 

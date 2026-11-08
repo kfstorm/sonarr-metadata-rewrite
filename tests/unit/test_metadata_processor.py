@@ -1,5 +1,7 @@
 """Unit tests for metadata processor."""
 
+import os
+import shutil
 import stat
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -90,6 +92,9 @@ def test_process_file_series_success(
     """Test successful processing of series .nfo files."""
     test_path = create_test_files("tvshow.nfo", test_data_dir / "test_series.nfo")
     test_path.chmod(0o640)
+    os.setxattr(test_path, "user.example", b"current metadata")
+    os.utime(test_path, (1, 1))
+    before = test_path.stat()
 
     result = processor.process_file(test_path)
 
@@ -102,6 +107,40 @@ def test_process_file_series_success(
         expected_message_contains="Successfully translated",
     )
     assert stat.S_IMODE(test_path.stat().st_mode) == 0o640
+    assert (test_path.stat().st_uid, test_path.stat().st_gid) == (
+        before.st_uid,
+        before.st_gid,
+    )
+    assert os.getxattr(test_path, "user.example") == b"current metadata"
+    assert test_path.stat().st_mtime > 1
+
+
+@pytest.mark.parametrize("filename", ["tvshow.nfo", "episode.nfo", "multi_episode.nfo"])
+def test_failed_enabled_backup_prevents_nfo_rewrite(
+    processor: MetadataProcessor,
+    test_data_dir: Path,
+    create_test_files: Callable[[str, Path], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+) -> None:
+    """An incomplete backup must not be followed by any NFO modification."""
+    target = create_test_files(filename, test_data_dir / filename)
+    if filename != "tvshow.nfo":
+        create_test_files("tvshow.nfo", test_data_dir / "tvshow.nfo")
+    original = target.read_bytes()
+
+    def partial_copy(source: Path, destination: Path) -> None:
+        destination.write_bytes(b"partial")
+        raise OSError("backup content read failed")
+
+    monkeypatch.setattr(shutil, "copyfile", partial_copy)
+    result = processor.process_file(target)
+    assert result.success is False
+    assert target.read_bytes() == original
+    backups = processor.settings.original_files_backup_dir
+    assert backups is not None
+    assert not list(backups.rglob("*.nfo"))
+    assert not list(backups.rglob(".backup_*"))
 
 
 def test_process_file_episode_success(

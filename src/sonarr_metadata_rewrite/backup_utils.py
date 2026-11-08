@@ -25,8 +25,18 @@ New backups are always written in the new format; the legacy path is only ever
 *read*, never written.
 """
 
+import os
 import shutil
+import tempfile
 from pathlib import Path
+
+from sonarr_metadata_rewrite.file_utils import (
+    IMAGE_EXTENSIONS,
+    atomic_write_bytes,
+    check_file_unchanged,
+    is_rewritable_image,
+    stat_regular_file,
+)
 
 
 def _legacy_backup_path(
@@ -79,13 +89,13 @@ def get_backup_path(
     # --- New format: full absolute path under backup_dir ---
     backup_path = backup_dir / file_path.relative_to("/")
 
-    if backup_path.exists():
+    if stat_regular_file(backup_path) is not None:
         return backup_path
 
     if backup_path.parent.exists():
         stem = backup_path.stem
         for existing_file in backup_path.parent.iterdir():
-            if existing_file.is_file() and existing_file.stem == stem:
+            if existing_file.stem == stem and stat_regular_file(existing_file):
                 return existing_file
 
     # --- Legacy format fallback (backward compat) ---
@@ -94,12 +104,12 @@ def get_backup_path(
             legacy = _legacy_backup_path(file_path, backup_dir, root_dir)
             if legacy is None:
                 continue
-            if legacy.exists():
+            if stat_regular_file(legacy) is not None:
                 return legacy
             if legacy.parent.exists():
                 stem = legacy.stem
                 for existing_file in legacy.parent.iterdir():
-                    if existing_file.is_file() and existing_file.stem == stem:
+                    if existing_file.stem == stem and stat_regular_file(existing_file):
                         return existing_file
 
     return None
@@ -123,13 +133,15 @@ def create_backup(
             fallback for backups created by earlier versions of this tool.
 
     Returns:
-        True if backup was created or already exists, False if backup disabled
+        True if backup was created or already exists, False if backup disabled.
+        Enabled backup failures raise and must stop the rewrite.
     """
     if backup_dir is None:
         return False
 
-    if not file_path.exists():
-        return False
+    source_state = stat_regular_file(file_path)
+    if source_state is None:
+        raise FileNotFoundError(file_path)
 
     if get_backup_path(file_path, backup_dir, root_dirs) is not None:
         return True
@@ -137,7 +149,23 @@ def create_backup(
     # --- Create new backup at new-format path ---
     backup_path = backup_dir / file_path.relative_to("/")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(file_path, backup_path)
+    fd, name = tempfile.mkstemp(
+        dir=backup_path.parent, prefix=".backup_", suffix=".tmp"
+    )
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        # copyfile deliberately avoids copystat/listxattr, including on FUSE mounts.
+        shutil.copyfile(file_path, temporary)
+        check_file_unchanged(file_path, source_state)
+        try:
+            # A hard link publishes complete bytes without replacing a racing backup.
+            os.link(temporary, backup_path)
+        except FileExistsError:
+            if stat_regular_file(backup_path) is None:
+                raise
+    finally:
+        temporary.unlink()
     return True
 
 
@@ -148,12 +176,11 @@ def restore_from_backup(
 ) -> bool:
     """Restore file from backup, handling stem-matching and extension changes.
 
-    This function handles the case where a backup might have a different extension
-    than the current file (e.g., poster.png backup for poster.jpg current).
-    It will:
-    1. Find the backup using stem-matching (new format first, then legacy)
-    2. Delete any files with the same stem but different extensions
-    3. Copy the backup to the original location
+    Image contents are published under the backup's extension. Access attributes
+    come from the requested current file, the final target, or the first sorted
+    supported image variant, in that order. Without a current file, normal
+    creation permissions apply. Only after publication are obsolete supported
+    image variants removed; cleanup failures raise and leave restored bytes intact.
 
     Args:
         file_path: Absolute path to file to restore
@@ -168,14 +195,39 @@ def restore_from_backup(
     if not backup_path:
         return False
 
-    # Delete files with same stem but different extensions
-    # This handles cases like poster.jpg existing when restoring poster.png
-    if file_path.parent.exists():
-        stem = file_path.stem
-        for existing_file in file_path.parent.iterdir():
-            if existing_file.is_file() and existing_file.stem == stem:
-                existing_file.unlink()
+    target = file_path
+    variants: dict[Path, os.stat_result] = {}
+    if is_rewritable_image(file_path):
+        if backup_path.suffix.lower() not in IMAGE_EXTENSIONS:
+            raise ValueError(f"Unsupported backup image extension: {backup_path}")
+        target = file_path.with_suffix(backup_path.suffix)
+        if file_path.parent.exists():
+            for path in sorted(file_path.parent.iterdir()):
+                if (
+                    path.stem == file_path.stem
+                    and path.suffix.lower() in IMAGE_EXTENSIONS
+                ):
+                    state = stat_regular_file(path)
+                    if state is not None:
+                        variants[path] = state
 
-    # Copy backup to original location
-    shutil.copy2(backup_path, file_path)
+    current = None
+    for candidate in (file_path, target, *variants):
+        if stat_regular_file(candidate) is not None:
+            current = candidate
+            break
+
+    backup_state = stat_regular_file(backup_path)
+    content = backup_path.read_bytes()
+    check_file_unchanged(backup_path, backup_state)
+    atomic_write_bytes(target, content, mode_from=current)
+    for path, state in variants.items():
+        if path != target:
+            try:
+                check_file_unchanged(path, state)
+                path.unlink()
+            except OSError as error:
+                raise OSError(
+                    f"Restored {target}, but could not remove obsolete variant {path}"
+                ) from error
     return True

@@ -1,5 +1,6 @@
 """Unit tests for ImageProcessor."""
 
+import os
 import stat
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
@@ -401,11 +402,13 @@ class TestProcessSuccessScenarios:
         assert result.file_modified is True
         assert "Reverted poster to original" in result.message
 
-        # Verify poster reverted (should still be JPEG since we copy over it)
-        assert poster_path.exists()
-        restored_marker = read_embedded_marker(poster_path)
-        # Backup was PNG without marker, copied to JPEG location
-        # The file will have PNG content but .jpg extension
+        # Restored PNG bytes must use the original PNG extension.
+        assert not poster_path.exists()
+        restored_path = poster_path.with_suffix(".png")
+        assert restored_path.exists()
+        with Image.open(restored_path) as restored:
+            assert restored.format == "PNG"
+        restored_marker = read_embedded_marker(restored_path)
         assert restored_marker is None
 
     def test_process_tmdb_download_fails(
@@ -470,7 +473,7 @@ class TestProcessSuccessScenarios:
             patch.object(
                 image_processor.http_client, "get", return_value=mock_response
             ),
-            patch("shutil.copy2", side_effect=PermissionError("No permission")),
+            patch("shutil.copyfile", side_effect=PermissionError("No permission")),
         ):
             result = image_processor.process(poster_path)
 
@@ -660,6 +663,9 @@ class TestDownloadAndWriteImage:
         poster_path = tmp_path / "poster.jpg"
         create_test_image(poster_path)
         poster_path.chmod(0o640)
+        os.setxattr(poster_path, "user.example", b"current artwork")
+        os.utime(poster_path, (1, 1))
+        before = poster_path.stat()
         candidate = ImageCandidate("/updated.jpg", "en", "US")
         output = BytesIO()
         Image.new("RGB", (40, 40), "blue").save(output, format="JPEG")
@@ -671,6 +677,12 @@ class TestDownloadAndWriteImage:
             image_processor._download_and_write_image(poster_path, candidate)
 
         assert stat.S_IMODE(poster_path.stat().st_mode) == 0o640
+        assert (poster_path.stat().st_uid, poster_path.stat().st_gid) == (
+            before.st_uid,
+            before.st_gid,
+        )
+        assert os.getxattr(poster_path, "user.example") == b"current artwork"
+        assert poster_path.stat().st_mtime > 1
         assert read_embedded_marker(poster_path) == candidate
 
     def test_download_and_write_image_atomic_write(
@@ -799,7 +811,7 @@ class TestErrorScenarios:
             patch.object(
                 image_processor.http_client, "get", return_value=mock_response
             ),
-            patch("shutil.copy2", side_effect=PermissionError("Denied")),
+            patch("shutil.copyfile", side_effect=PermissionError("Denied")),
         ):
             result = image_processor.process(poster_path)
 
