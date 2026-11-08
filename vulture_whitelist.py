@@ -5,6 +5,7 @@
 _.model_config
 
 # Pydantic validators are used by the framework
+_.normalize_backup_dir
 _.normalize_tmdb_api_key
 _.parse_preferred_languages
 _.parse_rewrite_root_dirs
