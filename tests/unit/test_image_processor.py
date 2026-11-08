@@ -3,7 +3,7 @@
 import os
 import stat
 import xml.etree.ElementTree as ET
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -940,8 +940,13 @@ class TestAdditionalCoverageScenarios:
         assert result.success is True
         assert result.backup_created is False
 
+    @pytest.mark.parametrize("no_links", [False, True])
     def test_process_extension_change_removes_old_file(
-        self, tmp_path: Path, image_processor: ImageProcessor
+        self,
+        tmp_path: Path,
+        image_processor: ImageProcessor,
+        no_links: bool,
+        disable_hard_links: Callable[[], None],
     ) -> None:
         """Test old file removed when extension changes."""
         series_dir = tmp_path / "Series"
@@ -951,6 +956,10 @@ class TestAdditionalCoverageScenarios:
         nfo_path = series_dir / "tvshow.nfo"
         create_test_image(old_poster)
         create_test_nfo(nfo_path, 12345)
+        old_poster.chmod(0o640)
+        if no_links:
+            image_processor.settings.original_files_backup_dir = None
+            disable_hard_links()
 
         # TMDB returns .jpg
         candidate = ImageCandidate(
@@ -968,7 +977,12 @@ class TestAdditionalCoverageScenarios:
 
         assert result.success is True
         assert not old_poster.exists()
-        assert (series_dir / "poster.jpg").exists()
+        restored = series_dir / "poster.jpg"
+        assert stat.S_IMODE(restored.stat().st_mode) == 0o640
+        assert read_embedded_marker(restored) == candidate
+        with Image.open(restored) as image:
+            assert image.format == "JPEG"
+        assert not list(series_dir.glob(".tmp_*"))
 
     def test_process_unsupported_tmdb_format(
         self, tmp_path: Path, image_processor: ImageProcessor

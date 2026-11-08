@@ -284,8 +284,11 @@ def test_restore_image_with_extension_change(test_data_dir: Path) -> None:
     assert restored_file.read_bytes() == b"PNG image data"
 
 
-def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
-    """Test rollback removes all image extension variants."""
+@pytest.mark.parametrize("current_target", [False, True])
+def test_restore_multiple_extension_variants_requires_authoritative_current_file(
+    test_data_dir: Path, caplog: pytest.LogCaptureFixture, current_target: bool
+) -> None:
+    """Ambiguous variants fail without cleanup; an existing target selects metadata."""
     backup_dir = test_data_dir / "backups"
     backup_dir.mkdir(exist_ok=True)
 
@@ -297,7 +300,10 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
     original_logo = original_show_dir / "clearlogo.png"
     original_logo.write_bytes(b"Original PNG logo")
     _make_backup(original_logo, backup_dir)
-    original_logo.unlink()
+    if current_target:
+        original_logo.write_bytes(b"Current PNG logo")
+    else:
+        original_logo.unlink()
 
     # Current directory contains multiple extension variants
     (original_show_dir / "clearlogo.jpg").write_bytes(b"JPEG logo 1")
@@ -311,8 +317,16 @@ def test_restore_removes_all_extension_variants(test_data_dir: Path) -> None:
     )
     service = RollbackService(settings)
 
-    service.execute_rollback()
+    with caplog.at_level("INFO"):
+        service.execute_rollback()
 
+    if not current_target:
+        assert "0 files restored, 1 failed" in caplog.text
+        assert (original_show_dir / "clearlogo.jpg").read_bytes() == b"JPEG logo 1"
+        assert (original_show_dir / "clearlogo.jpeg").read_bytes() == b"JPEG logo 2"
+        assert not original_logo.exists()
+        return
+    assert "1 files restored, 0 failed" in caplog.text
     assert not (original_show_dir / "clearlogo.jpg").exists()
     assert not (original_show_dir / "clearlogo.jpeg").exists()
     restored_file = original_show_dir / "clearlogo.png"

@@ -304,7 +304,7 @@ def test_restore_same_extension() -> None:
         result = restore_from_backup(file_path, backup_dir)
         assert result is True
         assert file_path.read_text() == "backup content"
-        assert not same_stem_file.exists()
+        assert same_stem_file.read_bytes() == b"existing same-stem file"
 
 
 def test_restore_different_extension() -> None:
@@ -333,8 +333,8 @@ def test_restore_different_extension() -> None:
         assert poster_files[0] == restored
 
 
-def test_restore_deletes_files_with_same_stem() -> None:
-    """Restore retains the existing same-stem cleanup scope across extensions."""
+def test_restore_deletes_only_artwork_extension_variants() -> None:
+    """Restore removes supported image and WebP artwork variants after publication."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         backup_dir = temp_path / "backup"
@@ -353,7 +353,7 @@ def test_restore_deletes_files_with_same_stem() -> None:
         jpeg_file.write_bytes(b"JPEG")
         webp_file.write_bytes(b"WEBP")
 
-        result = restore_from_backup(file_path_png, backup_dir)
+        result = restore_from_backup(jpg_file, backup_dir)
         assert result is True
         assert file_path_png.exists()
         assert file_path_png.read_bytes() == b"PNG backup"

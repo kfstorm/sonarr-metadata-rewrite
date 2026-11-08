@@ -169,6 +169,19 @@ def create_backup(
     return True
 
 
+def _restore_metadata_source(
+    requested: Path, target: Path, variants: dict[Path, os.stat_result]
+) -> Path | None:
+    """Prefer explicit existing files; never guess between fallback artwork variants."""
+    for candidate in (requested, target):
+        if stat_regular_file(candidate) is not None:
+            return candidate
+    # Refuse ambiguity without attempting to compare opaque filesystem ACLs.
+    if len(variants) > 1:
+        raise ValueError(f"Ambiguous current artwork variants for {requested}")
+    return next(iter(variants), None)
+
+
 def restore_from_backup(
     file_path: Path,
     backup_dir: Path | None,
@@ -177,10 +190,11 @@ def restore_from_backup(
     """Restore file from backup, handling stem-matching and extension changes.
 
     Image contents are published under the backup's extension. Access attributes
-    come from the requested current file, the final target, or the first sorted
-    supported image variant, in that order. Without a current file, normal
-    creation permissions apply. The existing same-stem cleanup scope is retained,
-    but cleanup runs only after publication; failures leave restored bytes intact.
+    come from the requested current file, the final target, or a sole artwork
+    variant, in that order. Multiple fallback variants are ambiguous and rejected.
+    Without a current file, normal creation permissions apply. Only recognized
+    artwork variants (including WebP) are removed, after publication; unrelated
+    files and all NFO siblings are preserved. Cleanup failures retain restored bytes.
 
     Args:
         file_path: Absolute path to file to restore
@@ -197,23 +211,23 @@ def restore_from_backup(
 
     target = file_path
     variants: dict[Path, os.stat_result] = {}
-    if is_rewritable_image(file_path):
+    artwork = is_rewritable_image(file_path)
+    if artwork:
         if backup_path.suffix.lower() not in IMAGE_EXTENSIONS:
             raise ValueError(f"Unsupported backup image extension: {backup_path}")
         target = file_path.with_suffix(backup_path.suffix)
-    if file_path.parent.exists():
+    if artwork and file_path.parent.exists():
         for path in sorted(file_path.parent.iterdir()):
-            if path.stem == file_path.stem:
+            # WebP is a cleanup/metadata candidate only for recognized artwork.
+            if (
+                path.stem == file_path.stem
+                and path.suffix.lower() in IMAGE_EXTENSIONS | {".webp"}
+            ):
                 state = stat_regular_file(path)
                 if state is not None:
                     variants[path] = state
 
-    current = None
-    image_variants = [path for path in variants if is_rewritable_image(path)]
-    for candidate in (file_path, target, *image_variants):
-        if stat_regular_file(candidate) is not None:
-            current = candidate
-            break
+    current = _restore_metadata_source(file_path, target, variants)
 
     backup_state = stat_regular_file(backup_path)
     content = backup_path.read_bytes()

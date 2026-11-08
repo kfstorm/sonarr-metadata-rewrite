@@ -167,7 +167,10 @@ def test_group_only_chown_does_not_request_unchanged_uid(
     assert stat.S_IMODE(target.stat().st_mode) == 0o2640
 
 
-@pytest.mark.parametrize("error_number", [errno.EIO, errno.ENOTSUP, errno.EPERM])
+@pytest.mark.parametrize(
+    "error_number",
+    [errno.EIO, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS, errno.EPERM],
+)
 def test_unavailable_xattr_listing_probes_access_metadata(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_number: int
 ) -> None:
@@ -186,7 +189,10 @@ def test_unavailable_xattr_listing_probes_access_metadata(
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
 
 
-@pytest.mark.parametrize("error_number", [errno.EIO, errno.ENOTSUP, errno.EPERM])
+@pytest.mark.parametrize(
+    "error_number",
+    [errno.EIO, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS, errno.EPERM],
+)
 @pytest.mark.parametrize("attribute", ["user.example", "system.posix_acl_access"])
 def test_optional_xattr_failure_and_strict_acl_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_number: int, attribute: str
@@ -217,13 +223,16 @@ def test_optional_xattr_failure_and_strict_acl_failure(
     assert list(tmp_path.glob(".tmp_*")) == []
 
 
-@pytest.mark.parametrize("error_number", [errno.EIO, errno.EPERM])
+@pytest.mark.parametrize(
+    "error_number", [errno.EIO, errno.EPERM, errno.ENOTSUP, errno.ENOSYS, errno.ENODATA]
+)
 def test_unreadable_access_attribute_fails_before_replacement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_number: int
 ) -> None:
     """An unknown effective ACL must never be silently discarded."""
     target = tmp_path / "metadata.nfo"
     target.write_bytes(b"old")
+    add_access_acl(target)
     getxattr = os.getxattr
 
     def unreadable_acl(
@@ -293,8 +302,9 @@ def test_inherited_acl_cannot_grant_additional_access(
     assert not list(directory.glob(".tmp_*"))
 
 
+@pytest.mark.parametrize("degraded", [False, True])
 def test_partial_content_write_is_not_a_metadata_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, degraded: bool
 ) -> None:
     """Content EIO must retain the complete old file and discard partial bytes."""
     target = tmp_path / "metadata.nfo"
@@ -314,6 +324,13 @@ def test_partial_content_write_is_not_a_metadata_fallback(
             yield writer
 
     monkeypatch.setattr(os, "fdopen", partial_writer)
+    if degraded:
+
+        def unavailable_xattrs(*args: object, **kwargs: object) -> None:
+            raise OSError(errno.EIO, "metadata unavailable")
+
+        monkeypatch.setattr(os, "listxattr", unavailable_xattrs)
+        monkeypatch.setattr(os, "getxattr", unavailable_xattrs)
     with pytest.raises(OSError, match="content write failed"):
         atomic_write_bytes(target, b"complete new content", mode_from=target)
     assert target.read_bytes() == b"complete old content"
@@ -415,7 +432,7 @@ def test_metadata_error_policy_depends_on_operation(
     allowed = (
         operation in {"list", "optional_read", "optional_write"}
         and error_number != errno.ENOSPC
-    ) or (operation == "access_probe" and error_number == errno.ENOTSUP)
+    ) or (operation == "access_probe" and error_number != errno.ENOSPC)
     if allowed:
         atomic_write_bytes(target, b"replacement", mode_from=target)
         assert target.read_bytes() == b"replacement"
@@ -463,15 +480,16 @@ def test_denied_acl_write_requires_matching_inherited_acl(
     assert not list(tmp_path.glob(".tmp_*"))
 
 
+@pytest.mark.parametrize("missing_api", ["listxattr", "getxattr"])
 def test_replacement_without_xattr_api_preserves_posix_attributes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing_api: str
 ) -> None:
     """Platforms without xattr APIs still preserve ownership and mode."""
     target = tmp_path / "metadata.nfo"
     target.write_bytes(b"original")
     target.chmod(0o640)
     before = target.stat()
-    monkeypatch.delattr(os, "listxattr")
+    monkeypatch.delattr(os, missing_api)
     atomic_write_bytes(target, b"replacement", mode_from=target)
     assert target.read_bytes() == b"replacement"
     after = target.stat()
@@ -535,3 +553,132 @@ def test_failed_temp_cleanup_keeps_primary_failure_and_reports_leftover(
     assert "Failed to clean up replacement temporary file" in caplog.text
     assert "temporary cleanup denied" in caplog.text
     leftovers[0].unlink()
+
+
+@pytest.mark.parametrize("unavailable_on", ["source", "temporary", "both"])
+@pytest.mark.parametrize(
+    "error_number", [errno.EIO, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS]
+)
+def test_unavailable_xattr_interfaces_preserve_verified_posix_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    unavailable_on: str,
+    error_number: int,
+) -> None:
+    """Unavailable metadata APIs cannot make ordinary FUSE writes unusable."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+    target.chmod(0o2640)
+    before = target.stat()
+    listxattr, getxattr = os.listxattr, os.getxattr
+
+    def unavailable(path: Path | int) -> bool:
+        return unavailable_on == "both" or (
+            isinstance(path, int) == (unavailable_on == "temporary")
+        )
+
+    def list_attributes(path: Path | int, *, follow_symlinks: bool = True) -> list[str]:
+        if unavailable(path):
+            raise OSError(error_number, "xattr API unavailable")
+        return listxattr(path)
+
+    def read_attribute(
+        path: Path | int, name: str, *, follow_symlinks: bool = True
+    ) -> bytes:
+        if unavailable(path):
+            raise OSError(error_number, "xattr API unavailable")
+        return getxattr(path, name)
+
+    monkeypatch.setattr(os, "listxattr", list_attributes)
+    monkeypatch.setattr(os, "getxattr", read_attribute)
+    atomic_write_bytes(target, b"replacement", mode_from=target)
+    after = target.stat()
+    assert target.read_bytes() == b"replacement"
+    assert (after.st_uid, after.st_gid, stat.S_IMODE(after.st_mode)) == (
+        before.st_uid,
+        before.st_gid,
+        0o2640,
+    )
+    assert "cannot verify" in caplog.text
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+@pytest.mark.parametrize("error_number", [errno.EIO, errno.ENOSYS, errno.ENOTSUP])
+def test_identified_acl_requires_usable_temporary_xattr_interface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_number: int
+) -> None:
+    """Degraded temporary metadata cannot waive verification of a known source ACL."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"protected original")
+    acl = add_access_acl(target)
+    getxattr = os.getxattr
+
+    def unavailable_on_fd(
+        path: Path | int, name: str, *, follow_symlinks: bool = True
+    ) -> bytes:
+        if isinstance(path, int):
+            raise OSError(error_number, "temporary xattrs unavailable")
+        return getxattr(path, name, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(os, "getxattr", unavailable_on_fd)
+    with pytest.raises(OSError, match="temporary xattrs unavailable"):
+        atomic_write_bytes(target, b"new", mode_from=target)
+    assert target.read_bytes() == b"protected original"
+    assert getxattr(target, "system.posix_acl_access") == acl
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+@pytest.mark.parametrize("location", ["source", "temporary"])
+@pytest.mark.parametrize("operation", ["listxattr", "getxattr"])
+def test_unexpected_metadata_error_stops_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, location: str, operation: str
+) -> None:
+    """Resource failures are not evidence that an xattr API is merely unsupported."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"unchanged contents")
+    original = getattr(os, operation)
+
+    def fail_metadata(path: Path | int, *args: object, **kwargs: object) -> object:
+        if isinstance(path, int) == (location == "temporary"):
+            raise OSError(errno.ENOSPC, "unexpected metadata failure")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, operation, fail_metadata)
+    with pytest.raises(OSError, match="unexpected metadata failure"):
+        atomic_write_bytes(target, b"replacement", mode_from=target)
+    assert target.read_bytes() == b"unchanged contents"
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+@pytest.mark.parametrize("attribute", ["system.posix_acl_access", "security.example"])
+def test_inherited_access_attribute_is_not_removed_when_source_is_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attribute: str
+) -> None:
+    """An unavailable source interface is not evidence an inherited grant is absent."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"protected contents")
+    listxattr, getxattr = os.listxattr, os.getxattr
+
+    def enumerate_attributes(
+        path: Path | int, *, follow_symlinks: bool = True
+    ) -> list[str]:
+        if not isinstance(path, int):
+            raise OSError(errno.EIO, "source enumeration unavailable")
+        return [*listxattr(path), attribute]
+
+    def read_attribute(
+        path: Path | int, name: str, *, follow_symlinks: bool = True
+    ) -> bytes:
+        if name == attribute:
+            if isinstance(path, int):
+                return b"synthetic inherited access metadata"
+            raise OSError(errno.EIO, "source access metadata unavailable")
+        return getxattr(path, name)
+
+    monkeypatch.setattr(os, "listxattr", enumerate_attributes)
+    monkeypatch.setattr(os, "getxattr", read_attribute)
+    with pytest.raises(OSError, match="Cannot establish original access attribute"):
+        atomic_write_bytes(target, b"replacement", mode_from=target)
+    assert target.read_bytes() == b"protected contents"
+    assert not list(tmp_path.glob(".tmp_*"))
