@@ -1,7 +1,12 @@
 """Tests for backup utility functions."""
 
+import errno
+import os
+import shutil
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
@@ -10,6 +15,107 @@ from sonarr_metadata_rewrite.backup_utils import (
     get_backup_path,
     restore_from_backup,
 )
+
+
+@pytest.mark.parametrize("content", [b"<tvshow>original</tvshow>", bytes(range(256))])
+def test_backup_needs_only_content_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, content: bytes
+) -> None:
+    """Unreadable source xattrs must not prevent a complete content backup."""
+    source = tmp_path / "poster.png"
+    source.write_bytes(content)
+    source.chmod(0o751)
+    os.setxattr(source, "user.example", b"source metadata")
+    os.utime(source, (1, 1))
+
+    def fail_listxattr(*args: object, **kwargs: object) -> list[str]:
+        raise OSError(errno.EIO, "xattrs unavailable")
+
+    monkeypatch.setattr(os, "listxattr", fail_listxattr)
+    backup_dir = tmp_path / "backups"
+    assert create_backup(source, backup_dir)
+    backup = get_backup_path(source, backup_dir)
+    assert backup is not None
+    assert backup.read_bytes() == content
+    assert backup.stat().st_mode & 0o777 != 0o751
+    assert backup.stat().st_mtime > 1
+    with pytest.raises(OSError) as missing_attribute:
+        os.getxattr(backup, "user.example")
+    assert missing_attribute.value.errno == errno.ENODATA
+
+
+@pytest.mark.parametrize("failure", ["copy", "publish", "vanished_winner"])
+def test_failed_backup_is_never_discoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Partial writes and failed publication leave no valid backup or temp file."""
+    source = tmp_path / "metadata.nfo"
+    source.write_bytes(b"complete original")
+    backups = tmp_path / "backups"
+
+    def fail_copy(src: Path, dst: Path) -> None:
+        dst.write_bytes(b"partial")
+        raise OSError(errno.EIO, "copy failed")
+
+    def fail_publish(src: Path, dst: Path) -> None:
+        if failure == "vanished_winner":
+            raise FileExistsError(errno.EEXIST, "racing backup has disappeared")
+        raise OSError(errno.EPERM, "publication failed")
+
+    if failure == "copy":
+        monkeypatch.setattr(shutil, "copyfile", fail_copy)
+    else:
+        monkeypatch.setattr(os, "link", fail_publish)
+    with pytest.raises(OSError):
+        create_backup(source, backups)
+    assert source.read_bytes() == b"complete original"
+    assert get_backup_path(source, backups) is None
+    assert not list(backups.rglob(".backup_*"))
+
+
+def test_concurrent_backup_creation_publishes_only_one_complete_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two creators cannot overwrite the winner or expose partial bytes."""
+    source = tmp_path / "poster.png"
+    source.write_bytes(bytes(range(256)) * 1024)
+    backups = tmp_path / "backups"
+    barrier = Barrier(2)
+    copyfile = shutil.copyfile
+
+    def concurrent_copy(src: Path, dst: Path) -> None:
+        copyfile(src, dst)
+        barrier.wait(timeout=10)
+
+    monkeypatch.setattr(shutil, "copyfile", concurrent_copy)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: create_backup(source, backups), range(2)))
+    assert results == [True, True]
+    backup = get_backup_path(source, backups)
+    assert backup is not None
+    assert backup.read_bytes() == source.read_bytes()
+    assert list(backup.parent.iterdir()) == [backup]
+
+
+def test_racing_backup_is_not_overwritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An already published winner survives even when it has different bytes."""
+    source = tmp_path / "metadata.nfo"
+    source.write_bytes(b"newer contents")
+    backups = tmp_path / "backups"
+    link = os.link
+
+    def race_publish(src: Path, dst: Path) -> None:
+        dst.write_bytes(b"first original")
+        link(src, dst)
+
+    monkeypatch.setattr(os, "link", race_publish)
+    assert create_backup(source, backups)
+    backup = get_backup_path(source, backups)
+    assert backup is not None
+    assert backup.read_bytes() == b"first original"
+    assert list(backup.parent.iterdir()) == [backup]
 
 
 def create_legacy_backup(backup_dir: Path, filename: str, content: str) -> Path:
@@ -39,13 +145,14 @@ def test_backup_with_none_backup_dir() -> None:
 
 
 def test_backup_nonexistent_file() -> None:
-    """Test that create_backup returns False for nonexistent file."""
+    """An enabled backup cannot silently proceed after the source disappears."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         backup_dir = temp_path / "backup"
         file_path = temp_path / "nonexistent.nfo"
 
-        assert create_backup(file_path, backup_dir) is False
+        with pytest.raises(FileNotFoundError):
+            create_backup(file_path, backup_dir)
 
 
 def test_backup_and_retrieval_workflow() -> None:
@@ -186,6 +293,8 @@ def test_restore_same_extension() -> None:
 
         file_path = temp_path / "test.nfo"
         file_path.write_text("modified content")
+        same_stem_file = temp_path / "test.bak"
+        same_stem_file.write_bytes(b"existing same-stem file")
 
         # Create backup using the full absolute path structure
         backup_path = backup_dir / file_path.relative_to("/")
@@ -195,6 +304,7 @@ def test_restore_same_extension() -> None:
         result = restore_from_backup(file_path, backup_dir)
         assert result is True
         assert file_path.read_text() == "backup content"
+        assert same_stem_file.read_bytes() == b"existing same-stem file"
 
 
 def test_restore_different_extension() -> None:
@@ -213,17 +323,18 @@ def test_restore_different_extension() -> None:
 
         result = restore_from_backup(file_path_jpg, backup_dir)
         assert result is True
-        assert file_path_jpg.exists()
-        assert file_path_jpg.read_bytes() == b"PNG backup"
+        restored = temp_path / "poster.png"
+        assert not file_path_jpg.exists()
+        assert restored.read_bytes() == b"PNG backup"
 
         # Only one poster file should remain
         poster_files = list(temp_path.glob("poster.*"))
         assert len(poster_files) == 1
-        assert poster_files[0] == file_path_jpg
+        assert poster_files[0] == restored
 
 
-def test_restore_deletes_files_with_same_stem() -> None:
-    """Test restore deletes all files with same stem but diff extensions."""
+def test_restore_deletes_only_artwork_extension_variants() -> None:
+    """Restore removes supported image and WebP artwork variants after publication."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         backup_dir = temp_path / "backup"
@@ -242,7 +353,7 @@ def test_restore_deletes_files_with_same_stem() -> None:
         jpeg_file.write_bytes(b"JPEG")
         webp_file.write_bytes(b"WEBP")
 
-        result = restore_from_backup(file_path_png, backup_dir)
+        result = restore_from_backup(jpg_file, backup_dir)
         assert result is True
         assert file_path_png.exists()
         assert file_path_png.read_bytes() == b"PNG backup"
@@ -290,8 +401,8 @@ def test_restore_creates_target_in_backup_extension() -> None:
         # Restore requesting the .jpg path (which does not exist yet)
         result = restore_from_backup(file_path_jpg, backup_dir)
         assert result is True
-        assert file_path_jpg.exists()
-        assert file_path_jpg.read_bytes() == b"PNG backup"
+        assert not file_path_jpg.exists()
+        assert (temp_path / "poster.png").read_bytes() == b"PNG backup"
 
 
 # ---------------------------------------------------------------------------
@@ -485,11 +596,7 @@ def test_create_backup_legacy_stem_match_skips_creation() -> None:
 
 
 def test_restore_from_backup_file_parent_does_not_exist() -> None:
-    """restore_from_backup skips stem-cleanup when parent dir is absent (line 196->203).
-
-    When the original parent directory no longer exists, the stem-cleanup loop
-    is skipped entirely and shutil.copy2 propagates a FileNotFoundError.
-    """
+    """A missing destination directory fails without publishing a restored file."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         backup_dir = temp_path / "backup"
@@ -503,6 +610,6 @@ def test_restore_from_backup_file_parent_does_not_exist() -> None:
         # Parent of file_path does NOT exist (show dir was never created)
         assert not file_path.parent.exists()
 
-        # shutil.copy2 will raise because the destination parent is missing
+        # Preparing a temporary file requires an existing destination directory.
         with pytest.raises(FileNotFoundError):
             restore_from_backup(file_path, backup_dir)

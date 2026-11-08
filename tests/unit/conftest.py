@@ -1,5 +1,7 @@
 """Unit test specific configuration and fixtures."""
 
+import errno
+import os
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Generator
@@ -16,6 +18,16 @@ from sonarr_metadata_rewrite.config import Settings
 from sonarr_metadata_rewrite.file_utils import _parse_nfo_documents
 from sonarr_metadata_rewrite.retry_utils import retry
 from sonarr_metadata_rewrite.translator import Translator
+
+
+@pytest.fixture
+def disable_hard_links(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
+    """Allow tests to disable links after preparing backups on another filesystem."""
+
+    def unsupported_link(src: Path, dst: Path) -> None:
+        raise OSError(errno.EOPNOTSUPP, "hard links unavailable")
+
+    return lambda: monkeypatch.setattr(os, "link", unsupported_link)
 
 
 @pytest.fixture(autouse=True)

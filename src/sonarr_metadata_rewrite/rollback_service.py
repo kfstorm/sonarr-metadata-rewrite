@@ -120,10 +120,8 @@ class RollbackService:
                     )
                     return False
 
-            # Use shared restore function which handles:
-            # - Stem-matching for different extensions
-            # - Deleting files with same stem but different extensions
-            # - Copying backup to original location
+            # Publish complete contents with current access attributes before
+            # removing obsolete image variants. Cleanup errors count as failures.
             success = restore_from_backup(
                 original_file,
                 self.settings.original_files_backup_dir,
