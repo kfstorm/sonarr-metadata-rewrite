@@ -175,6 +175,14 @@ class Settings(BaseSettings):
         description="Directory to backup original files (None disables backup)",
     )
 
+    @field_validator("original_files_backup_dir", mode="before")
+    @classmethod
+    def normalize_backup_dir(cls, v: object) -> object:
+        """Disable backups for blank strings before Path converts them to '.'."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     # Service mode
     service_mode: str = Field(
         default="rewrite", description="Service mode: 'rewrite' or 'rollback'"
@@ -207,6 +215,10 @@ class Settings(BaseSettings):
         """Validate configuration requirements that depend on service mode."""
         if self.service_mode == "rewrite" and not self.tmdb_api_key:
             raise ValueError("TMDB_API_KEY is required when SERVICE_MODE=rewrite")
+        if self.service_mode == "rollback" and self.original_files_backup_dir is None:
+            raise ValueError(
+                "ORIGINAL_FILES_BACKUP_DIR is required when SERVICE_MODE=rollback"
+            )
         return self
 
 
