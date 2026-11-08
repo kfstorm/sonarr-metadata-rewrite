@@ -147,3 +147,16 @@ def test_unusual_current_variant_is_not_destroyed(tmp_path: Path, kind: str) -> 
         restore_from_backup(target, backups)
     assert target.read_bytes() == b"current bytes"
     assert other.lstat()
+
+
+def test_unsupported_backup_extension_does_not_destroy_current_image(
+    tmp_path: Path,
+) -> None:
+    """A stem-matched unsupported backup cannot be published under a false format."""
+    target, backup, backups = prepare_restore(tmp_path, "poster.png")
+    backup = backup.rename(backup.with_suffix(".webp"))
+    with pytest.raises(ValueError, match="Unsupported backup image extension"):
+        restore_from_backup(target, backups)
+    assert target.read_bytes() == b"current bytes"
+    assert backup.read_bytes() == b"original bytes"
+    assert not list(tmp_path.glob(".tmp_*"))

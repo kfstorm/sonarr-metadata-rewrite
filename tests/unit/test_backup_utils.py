@@ -44,7 +44,7 @@ def test_backup_needs_only_content_reads(
     assert missing_attribute.value.errno == errno.ENODATA
 
 
-@pytest.mark.parametrize("failure", ["copy", "publish"])
+@pytest.mark.parametrize("failure", ["copy", "publish", "vanished_winner"])
 def test_failed_backup_is_never_discoverable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
@@ -58,6 +58,8 @@ def test_failed_backup_is_never_discoverable(
         raise OSError(errno.EIO, "copy failed")
 
     def fail_publish(src: Path, dst: Path) -> None:
+        if failure == "vanished_winner":
+            raise FileExistsError(errno.EEXIST, "racing backup has disappeared")
         raise OSError(errno.EPERM, "publication failed")
 
     if failure == "copy":

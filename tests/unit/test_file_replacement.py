@@ -15,11 +15,11 @@ import pytest
 from sonarr_metadata_rewrite.file_utils import atomic_write_bytes
 
 
-def add_access_acl(target: Path) -> bytes:
+def add_access_acl(target: Path, named_user: int = 12345) -> bytes:
     """Install a synthetic Linux POSIX ACL with an additional read-only user."""
     entries = [
         (1, 6, 0xFFFFFFFF),
-        (2, 4, 12345),
+        (2, 4, named_user),
         (4, 4, 0xFFFFFFFF),
         (16, 4, 0xFFFFFFFF),
         (32, 0, 0xFFFFFFFF),
@@ -362,3 +362,176 @@ def test_creation_without_metadata_source_cannot_replace_an_existing_file(
     assert target.read_bytes() == b"concurrent contents"
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
     assert not list(tmp_path.glob(".tmp_*"))
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["list", "optional_read", "optional_write", "access_probe", "access_verify"],
+)
+@pytest.mark.parametrize(
+    "error_number", [errno.EIO, errno.EPERM, errno.ENOTSUP, errno.ENOSPC]
+)
+def test_metadata_error_policy_depends_on_operation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, error_number: int
+) -> None:
+    """Only expected optional-metadata failures may publish a replacement."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+    target.chmod(0o640)
+    os.setxattr(target, "user.example", b"optional metadata")
+    acl = add_access_acl(target) if operation == "access_verify" else None
+    listxattr, getxattr, setxattr = os.listxattr, os.getxattr, os.setxattr
+
+    def list_attributes(path: Path, *, follow_symlinks: bool = True) -> list[str]:
+        if operation == "list":
+            raise OSError(error_number, "injected metadata error")
+        return listxattr(path, follow_symlinks=follow_symlinks)
+
+    def read_attribute(
+        path: Path | int, name: str, *, follow_symlinks: bool = True
+    ) -> bytes:
+        optional_read = operation == "optional_read" and name == "user.example"
+        access_read = (
+            operation in {"access_probe", "access_verify"}
+            and isinstance(path, int)
+            and name == "system.posix_acl_access"
+        )
+        if optional_read or access_read:
+            raise OSError(error_number, "injected metadata error")
+        return (
+            getxattr(path, name)
+            if isinstance(path, int)
+            else getxattr(path, name, follow_symlinks=follow_symlinks)
+        )
+
+    def write_attribute(fd: int, name: str, value: bytes) -> None:
+        if operation == "optional_write" and name == "user.example":
+            raise OSError(error_number, "injected metadata error")
+        setxattr(fd, name, value)
+
+    monkeypatch.setattr(os, "listxattr", list_attributes)
+    monkeypatch.setattr(os, "getxattr", read_attribute)
+    monkeypatch.setattr(os, "setxattr", write_attribute)
+    allowed = (
+        operation in {"list", "optional_read", "optional_write"}
+        and error_number != errno.ENOSPC
+    ) or (operation == "access_probe" and error_number == errno.ENOTSUP)
+    if allowed:
+        atomic_write_bytes(target, b"replacement", mode_from=target)
+        assert target.read_bytes() == b"replacement"
+    else:
+        with pytest.raises(OSError, match="injected metadata error") as failure:
+            atomic_write_bytes(target, b"replacement", mode_from=target)
+        assert failure.value.errno == error_number
+        assert target.read_bytes() == b"original"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+    if acl is not None:
+        assert getxattr(target, "system.posix_acl_access") == acl
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+@pytest.mark.parametrize("matching_acl", [False, True])
+def test_denied_acl_write_requires_matching_inherited_acl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, matching_acl: bool
+) -> None:
+    """A denied ACL write may proceed only when inherited effective access matches."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+    expected_acl = add_access_acl(target)
+    template = tmp_path / "acl-template"
+    template.touch()
+    inherited_acl = add_access_acl(
+        template, named_user=12345 if matching_acl else 23456
+    )
+    os.setxattr(tmp_path, "system.posix_acl_default", inherited_acl)
+    setxattr = os.setxattr
+
+    def deny_acl_write(fd: int, name: str, value: bytes) -> None:
+        if name == "system.posix_acl_access":
+            raise PermissionError(errno.EPERM, "ACL write denied")
+        setxattr(fd, name, value)
+
+    monkeypatch.setattr(os, "setxattr", deny_acl_write)
+    if matching_acl:
+        atomic_write_bytes(target, b"replacement", mode_from=target)
+        assert target.read_bytes() == b"replacement"
+    else:
+        with pytest.raises(PermissionError, match="ACL write denied"):
+            atomic_write_bytes(target, b"replacement", mode_from=target)
+        assert target.read_bytes() == b"original"
+    assert os.getxattr(target, "system.posix_acl_access") == expected_acl
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+def test_replacement_without_xattr_api_preserves_posix_attributes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Platforms without xattr APIs still preserve ownership and mode."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+    target.chmod(0o640)
+    before = target.stat()
+    monkeypatch.delattr(os, "listxattr")
+    atomic_write_bytes(target, b"replacement", mode_from=target)
+    assert target.read_bytes() == b"replacement"
+    after = target.stat()
+    assert (after.st_uid, after.st_gid, stat.S_IMODE(after.st_mode)) == (
+        before.st_uid,
+        before.st_gid,
+        0o640,
+    )
+
+
+def test_silently_ignored_chmod_does_not_publish_incorrect_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful syscall is insufficient when final permission bits differ."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+    target.chmod(0o640)
+    monkeypatch.setattr(os, "fchmod", lambda *args: None)
+    with pytest.raises(PermissionError, match="ownership or permission mode"):
+        atomic_write_bytes(target, b"replacement", mode_from=target)
+    assert target.read_bytes() == b"original"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+def test_missing_metadata_source_leaves_existing_destination_intact(
+    tmp_path: Path,
+) -> None:
+    """A disappeared metadata source cannot downgrade an existing target's access."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+    with pytest.raises(FileNotFoundError):
+        atomic_write_bytes(target, b"replacement", mode_from=tmp_path / "missing.nfo")
+    assert target.read_bytes() == b"original"
+    assert not list(tmp_path.glob(".tmp_*"))
+
+
+def test_failed_temp_cleanup_keeps_primary_failure_and_reports_leftover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Cleanup errors must not hide a publication failure or destroy old contents."""
+    target = tmp_path / "metadata.nfo"
+    target.write_bytes(b"original")
+
+    def fail_publication(*args: object) -> None:
+        raise OSError(errno.EIO, "publication failed")
+
+    def fail_cleanup(*args: object, **kwargs: object) -> None:
+        raise PermissionError(errno.EPERM, "temporary cleanup denied")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", fail_publication)
+        patch.setattr(Path, "unlink", fail_cleanup)
+        with pytest.raises(OSError, match="publication failed") as failure:
+            atomic_write_bytes(target, b"replacement", mode_from=target)
+        assert failure.value.errno == errno.EIO
+    assert target.read_bytes() == b"original"
+    leftovers = list(tmp_path.glob(".tmp_*"))
+    assert len(leftovers) == 1
+    assert leftovers[0].read_bytes() == b"replacement"
+    assert "Failed to clean up replacement temporary file" in caplog.text
+    assert "temporary cleanup denied" in caplog.text
+    leftovers[0].unlink()
