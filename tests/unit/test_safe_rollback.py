@@ -65,6 +65,8 @@ def test_failed_preparation_or_publication_leaves_current_files(
     target, backup, backups = prepare_restore(tmp_path, "poster.png")
     if different_extension:
         target = target.rename(target.with_suffix(".jpg"))
+    same_stem_file = target.with_suffix(".webp")
+    same_stem_file.write_bytes(b"existing variant")
     read_bytes = Path.read_bytes
 
     def fail_read(path: Path) -> bytes:
@@ -89,6 +91,7 @@ def test_failed_preparation_or_publication_leaves_current_files(
     with pytest.raises(OSError):
         restore_from_backup(target, backups)
     assert target.read_bytes() == b"current bytes"
+    assert same_stem_file.read_bytes() == b"existing variant"
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
     if different_extension:
         assert not target.with_suffix(".png").exists()

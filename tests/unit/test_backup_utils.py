@@ -291,6 +291,8 @@ def test_restore_same_extension() -> None:
 
         file_path = temp_path / "test.nfo"
         file_path.write_text("modified content")
+        same_stem_file = temp_path / "test.bak"
+        same_stem_file.write_bytes(b"existing same-stem file")
 
         # Create backup using the full absolute path structure
         backup_path = backup_dir / file_path.relative_to("/")
@@ -300,6 +302,7 @@ def test_restore_same_extension() -> None:
         result = restore_from_backup(file_path, backup_dir)
         assert result is True
         assert file_path.read_text() == "backup content"
+        assert not same_stem_file.exists()
 
 
 def test_restore_different_extension() -> None:
@@ -329,7 +332,7 @@ def test_restore_different_extension() -> None:
 
 
 def test_restore_deletes_files_with_same_stem() -> None:
-    """Restore removes supported image variants and leaves unrelated files."""
+    """Restore retains the existing same-stem cleanup scope across extensions."""
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         backup_dir = temp_path / "backup"
@@ -354,8 +357,7 @@ def test_restore_deletes_files_with_same_stem() -> None:
         assert file_path_png.read_bytes() == b"PNG backup"
         assert not jpg_file.exists()
         assert not jpeg_file.exists()
-        # Only supported rewrite variants are obsolete; unrelated files survive.
-        assert webp_file.read_bytes() == b"WEBP"
+        assert not webp_file.exists()
 
 
 def test_restore_with_no_backup() -> None:

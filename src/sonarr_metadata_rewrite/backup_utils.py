@@ -179,8 +179,8 @@ def restore_from_backup(
     Image contents are published under the backup's extension. Access attributes
     come from the requested current file, the final target, or the first sorted
     supported image variant, in that order. Without a current file, normal
-    creation permissions apply. Only after publication are obsolete supported
-    image variants removed; cleanup failures raise and leave restored bytes intact.
+    creation permissions apply. The existing same-stem cleanup scope is retained,
+    but cleanup runs only after publication; failures leave restored bytes intact.
 
     Args:
         file_path: Absolute path to file to restore
@@ -201,18 +201,16 @@ def restore_from_backup(
         if backup_path.suffix.lower() not in IMAGE_EXTENSIONS:
             raise ValueError(f"Unsupported backup image extension: {backup_path}")
         target = file_path.with_suffix(backup_path.suffix)
-        if file_path.parent.exists():
-            for path in sorted(file_path.parent.iterdir()):
-                if (
-                    path.stem == file_path.stem
-                    and path.suffix.lower() in IMAGE_EXTENSIONS
-                ):
-                    state = stat_regular_file(path)
-                    if state is not None:
-                        variants[path] = state
+    if file_path.parent.exists():
+        for path in sorted(file_path.parent.iterdir()):
+            if path.stem == file_path.stem:
+                state = stat_regular_file(path)
+                if state is not None:
+                    variants[path] = state
 
     current = None
-    for candidate in (file_path, target, *variants):
+    image_variants = [path for path in variants if is_rewritable_image(path)]
+    for candidate in (file_path, target, *image_variants):
         if stat_regular_file(candidate) is not None:
             current = candidate
             break
